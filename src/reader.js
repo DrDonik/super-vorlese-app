@@ -117,6 +117,7 @@ export class ReaderView {
     const token = ++this.renderToken;
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
+    if (stage.clientWidth === 0 || stage.clientHeight === 0) return;
     try {
       await renderPageToCanvas(this.pdf, this.currentPage, canvas, stage.clientWidth, stage.clientHeight);
     } catch (err) {
