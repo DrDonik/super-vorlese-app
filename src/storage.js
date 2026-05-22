@@ -1,4 +1,4 @@
-import { get, set, del, entries } from 'idb-keyval';
+import { get, set, del, keys, getMany } from 'idb-keyval';
 
 const BOOK_PREFIX = 'book:';
 const META_PREFIX = 'meta:';
@@ -31,10 +31,11 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
 }
 
 export async function listBooks() {
-  const allEntries = await entries();
-  return allEntries
-    .filter(([k]) => typeof k === 'string' && k.startsWith(META_PREFIX))
-    .map(([, v]) => v)
+  const allKeys = await keys();
+  const metaKeys = allKeys.filter((k) => typeof k === 'string' && k.startsWith(META_PREFIX));
+  const metas = await getMany(metaKeys);
+  return metas
+    .filter((m) => m)
     .sort((a, b) => b.addedAt - a.addedAt);
 }
 
