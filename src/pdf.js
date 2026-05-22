@@ -14,12 +14,12 @@ export async function loadPdf(source) {
   return loadingTask.promise;
 }
 
-export async function renderPageToCanvas(pdf, pageNumber, canvas, maxDimension) {
+export async function renderPageToCanvas(pdf, pageNumber, canvas, maxWidth, maxHeight) {
   const page = await pdf.getPage(pageNumber);
   const viewport = page.getViewport({ scale: 1 });
   const scale = Math.min(
-    maxDimension / viewport.width,
-    maxDimension / viewport.height,
+    maxWidth / viewport.width,
+    maxHeight / viewport.height,
   );
   const dpr = window.devicePixelRatio || 1;
   const scaledViewport = page.getViewport({ scale: scale * dpr });
