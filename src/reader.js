@@ -60,7 +60,7 @@ export class ReaderView {
     this.totalPages = this.pdf.numPages;
     this.currentPage = Math.min(Math.max(meta.lastPage || 1, 1), this.totalPages);
 
-    this.root.querySelector('.reader-loading').hidden = true;
+    this.root.querySelector('.reader-loading').remove();
     await this.renderCurrent();
     this.showChrome();
   }
