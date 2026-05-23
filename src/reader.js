@@ -30,6 +30,14 @@ export class ReaderView {
           <button class="reader-zone reader-zone-prev" type="button" aria-label="Zurück"></button>
           <button class="reader-zone reader-zone-next" type="button" aria-label="Vor"></button>
         </div>
+        <div class="reader-end" hidden>
+          <div class="reader-end-card">
+            <div class="reader-end-title">Ende des Buches</div>
+            <div class="reader-end-sub">Du hast die letzte Seite erreicht.</div>
+            <button class="reader-end-library" type="button">Zur Bibliothek</button>
+            <button class="reader-end-stay" type="button">Weiterlesen</button>
+          </div>
+        </div>
         <div class="reader-loading">Lade…</div>
       </div>
     `;
@@ -38,10 +46,16 @@ export class ReaderView {
     reader.querySelector('.reader-back').addEventListener('click', () => this.close());
     reader.querySelector('.reader-zone-prev').addEventListener('click', () => this.goPrev());
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
+    reader.querySelector('.reader-end-library').addEventListener('click', () => this.close());
+    reader.querySelector('.reader-end-stay').addEventListener('click', () => this.hideEnd());
+    reader.querySelector('.reader-end').addEventListener('click', (e) => {
+      if (e.target.closest('.reader-end-card')) return;
+      this.hideEnd();
+    });
 
     reader.addEventListener('mousemove', () => this.showChrome());
     reader.addEventListener('touchstart', (e) => {
-      if (e.target.closest('.reader-zone')) return;
+      if (e.target.closest('button')) return;
       this.showChrome();
     }, { passive: true });
 
@@ -99,15 +113,15 @@ export class ReaderView {
   async goNext() {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
-      this.showChrome();
       await this.renderCurrent();
+    } else {
+      this.showEnd();
     }
   }
 
   async goPrev() {
     if (this.currentPage > 1) {
       this.currentPage--;
-      this.showChrome();
       await this.renderCurrent();
     }
   }
@@ -147,6 +161,16 @@ export class ReaderView {
     this.hideTimer = setTimeout(() => {
       reader.classList.add('chrome-hidden');
     }, HIDE_CHROME_AFTER_MS);
+  }
+
+  showEnd() {
+    const end = this.root.querySelector('.reader-end');
+    if (end) end.hidden = false;
+  }
+
+  hideEnd() {
+    const end = this.root.querySelector('.reader-end');
+    if (end) end.hidden = true;
   }
 
   close() {
