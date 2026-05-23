@@ -54,9 +54,11 @@ export class LibraryView {
     }
     grid.innerHTML = '';
     for (const book of books) {
-      const card = document.createElement('button');
+      const card = document.createElement('div');
       card.className = 'book-card';
-      card.type = 'button';
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.setAttribute('aria-label', `${book.title} öffnen`);
       card.innerHTML = `
         <div class="book-cover"></div>
         <div class="book-title"></div>
@@ -66,7 +68,8 @@ export class LibraryView {
           <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
         </div>
       `;
-      card.querySelector('.book-title').textContent = book.title;
+      const titleEl = card.querySelector('.book-title');
+      titleEl.textContent = book.title;
       card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
 
       const cover = card.querySelector('.book-cover');
@@ -83,9 +86,17 @@ export class LibraryView {
         cover.textContent = '📖';
       }
 
+      const open = () => this.onOpenBook(book.id);
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.book-action')) return;
-        this.onOpenBook(book.id);
+        if (e.target.closest('.book-actions')) return;
+        open();
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.target !== card) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
       });
 
       const renameBtn = card.querySelector('.book-rename');
@@ -96,7 +107,9 @@ export class LibraryView {
         const trimmed = newTitle.trim();
         if (!trimmed || trimmed === book.title) return;
         await renameBook(book.id, trimmed);
-        await this.renderGrid();
+        book.title = trimmed;
+        titleEl.textContent = trimmed;
+        card.setAttribute('aria-label', `${trimmed} öffnen`);
       });
 
       const delBtn = card.querySelector('.book-delete');

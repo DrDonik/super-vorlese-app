@@ -101,6 +101,11 @@ button {
   transform: scale(0.98);
 }
 
+.book-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .book-cover {
   aspect-ratio: 3 / 4;
   background: #000;
