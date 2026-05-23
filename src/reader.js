@@ -117,12 +117,9 @@ export class ReaderView {
     const token = ++this.renderToken;
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
-    const maxDim = Math.min(stage.clientWidth, stage.clientHeight) * window.devicePixelRatio;
-    const targetW = stage.clientWidth;
-    const targetH = stage.clientHeight;
-    const longSide = Math.max(targetW, targetH);
+    if (stage.clientWidth === 0 || stage.clientHeight === 0) return;
     try {
-      await renderPageToCanvas(this.pdf, this.currentPage, canvas, longSide);
+      await renderPageToCanvas(this.pdf, this.currentPage, canvas, stage.clientWidth, stage.clientHeight);
     } catch (err) {
       if (token !== this.renderToken) return;
       console.error('Render-Fehler', err);
@@ -130,7 +127,6 @@ export class ReaderView {
     if (token !== this.renderToken) return;
     this.updateIndicator();
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
-    void maxDim;
   }
 
   updateIndicator() {

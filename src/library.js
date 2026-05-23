@@ -104,13 +104,12 @@ export class LibraryView {
       const file = files[i];
       status.textContent = `Verarbeite ${i + 1}/${files.length}: ${file.name}…`;
       try {
-        const buffer = await file.arrayBuffer();
-        const pdf = await loadPdf(buffer.slice(0));
+        const pdf = await loadPdf(file);
         const thumbBlob = await renderThumbnail(pdf, 1, 480);
         await saveBook({
           id: uid(),
           title: deriveTitle(file.name),
-          fileBlob: new Blob([buffer], { type: 'application/pdf' }),
+          fileBlob: file,
           thumbBlob,
           pageCount: pdf.numPages,
         });
