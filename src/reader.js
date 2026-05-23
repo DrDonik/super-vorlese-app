@@ -40,7 +40,10 @@ export class ReaderView {
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
 
     reader.addEventListener('mousemove', () => this.showChrome());
-    reader.addEventListener('touchstart', () => this.showChrome(), { passive: true });
+    reader.addEventListener('touchstart', (e) => {
+      if (e.target.closest('.reader-zone')) return;
+      this.showChrome();
+    }, { passive: true });
 
     this.attachSwipe(reader.querySelector('.reader-stage'));
 
@@ -96,6 +99,7 @@ export class ReaderView {
   async goNext() {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
+      this.showChrome();
       await this.renderCurrent();
     }
   }
@@ -103,6 +107,7 @@ export class ReaderView {
   async goPrev() {
     if (this.currentPage > 1) {
       this.currentPage--;
+      this.showChrome();
       await this.renderCurrent();
     }
   }

@@ -255,6 +255,7 @@ button {
   border: none;
   cursor: pointer;
   z-index: 5;
+  touch-action: manipulation;
 }
 
 .reader-zone-prev { left: 0; }
