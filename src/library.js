@@ -173,8 +173,7 @@ export class LibraryView {
       status.textContent = `„${title}" importiert.`;
     } catch (err) {
       console.error('Import fehlgeschlagen', err);
-      alert(`Import fehlgeschlagen: ${err.message || err}`);
-      status.hidden = true;
+      status.textContent = `Import fehlgeschlagen: ${err.message || err}`;
     }
     const bundleInput = this.root.querySelector('.bundle-input');
     if (bundleInput) bundleInput.value = '';
@@ -182,7 +181,7 @@ export class LibraryView {
     const finalMsg = status.textContent;
     setTimeout(() => {
       if (status.textContent === finalMsg) status.hidden = true;
-    }, 2500);
+    }, 4000);
   }
 
   async handleFiles(fileList) {

@@ -3,6 +3,7 @@ import {
   getMeta, getPhotoPages, getBookFile, getThumb,
   savePhotoBook, saveBook, uid,
 } from './storage.js';
+import { loadPdf } from './pdf.js';
 
 const APP_TAG = 'super-vorlese';
 const BUNDLE_VERSION = 1;
@@ -121,12 +122,21 @@ export async function importBundle(file) {
   } else if (manifest.type === 'pdf') {
     const pdfBytes = entries['book.pdf'];
     if (!pdfBytes) throw new Error('PDF fehlt im Bundle.');
+    const fileBlob = new Blob([pdfBytes], { type: 'application/pdf' });
+    let actualPageCount;
+    try {
+      const pdf = await loadPdf(fileBlob);
+      actualPageCount = pdf.numPages;
+      pdf.destroy?.();
+    } catch {
+      throw new Error('PDF im Bundle ist beschädigt.');
+    }
     await saveBook({
       id,
       title,
-      fileBlob: new Blob([pdfBytes], { type: 'application/pdf' }),
+      fileBlob,
       thumbBlob,
-      pageCount,
+      pageCount: actualPageCount,
     });
   } else {
     throw new Error(`Unbekannter Buch-Typ: ${manifest.type}`);
