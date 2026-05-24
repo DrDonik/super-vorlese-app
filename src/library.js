@@ -14,9 +14,10 @@ function deriveTitle(filename) {
 }
 
 export class LibraryView {
-  constructor(root, { onOpenBook }) {
+  constructor(root, { onOpenBook, onAddPhotos }) {
     this.root = root;
     this.onOpenBook = onOpenBook;
+    this.onAddPhotos = onAddPhotos;
     this.thumbUrls = [];
   }
 
@@ -25,10 +26,15 @@ export class LibraryView {
     this.root.innerHTML = `
       <header class="library-header">
         <h1>Vorlese-Bibliothek</h1>
-        <label class="add-book">
-          <input type="file" accept="application/pdf" multiple hidden />
-          <span>+ Buch hinzufügen</span>
-        </label>
+        <div class="library-actions">
+          <button class="add-book add-photos" type="button">
+            <span>📷 Fotografieren</span>
+          </button>
+          <label class="add-book">
+            <input type="file" accept="application/pdf" multiple hidden />
+            <span>+ PDF hinzufügen</span>
+          </label>
+        </div>
       </header>
       <div class="library-status" hidden></div>
       <div class="library-grid"></div>
@@ -36,6 +42,9 @@ export class LibraryView {
 
     const input = this.root.querySelector('input[type=file]');
     input.addEventListener('change', (e) => this.handleFiles(e.target.files));
+
+    const photoBtn = this.root.querySelector('.add-photos');
+    photoBtn.addEventListener('click', () => this.onAddPhotos?.());
 
     await this.renderGrid();
   }
