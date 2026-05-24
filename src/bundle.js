@@ -75,6 +75,8 @@ export async function exportBook(id) {
   };
 }
 
+const MAX_PAGE_COUNT = 1000;
+
 export async function importBundle(file) {
   const data = new Uint8Array(await file.arrayBuffer());
   let entries;
@@ -93,30 +95,42 @@ export async function importBundle(file) {
   }
   if (manifest.app !== APP_TAG) throw new Error('Diese Datei stammt nicht aus der Vorlese-App.');
 
+  const version = Number(manifest.version);
+  if (!Number.isInteger(version) || version < 1 || version > BUNDLE_VERSION) {
+    throw new Error('Die Datei hat ein unbekanntes oder zu neues Format.');
+  }
+  const title = String(manifest.title ?? '').trim() || 'Importiertes Buch';
+  const pageCount = Number(manifest.pageCount);
+  if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > MAX_PAGE_COUNT) {
+    throw new Error('Die Datei enthält eine ungültige Seitenanzahl.');
+  }
+
   const id = uid();
   const thumbBytes = entries['thumb.jpg'];
   const thumbBlob = thumbBytes ? new Blob([thumbBytes], { type: 'image/jpeg' }) : null;
 
   if (manifest.type === 'photos') {
     const pages = [];
-    for (let i = 1; i <= manifest.pageCount; i++) {
+    for (let i = 1; i <= pageCount; i++) {
       const pageBytes = entries[pagePath(i)];
       if (!pageBytes) throw new Error(`Seite ${i} fehlt im Bundle.`);
       pages.push(new Blob([pageBytes], { type: 'image/jpeg' }));
     }
-    await savePhotoBook({ id, title: manifest.title, pages, thumbBlob });
-  } else {
+    await savePhotoBook({ id, title, pages, thumbBlob });
+  } else if (manifest.type === 'pdf') {
     const pdfBytes = entries['book.pdf'];
     if (!pdfBytes) throw new Error('PDF fehlt im Bundle.');
     await saveBook({
       id,
-      title: manifest.title,
+      title,
       fileBlob: new Blob([pdfBytes], { type: 'application/pdf' }),
       thumbBlob,
-      pageCount: manifest.pageCount,
+      pageCount,
     });
+  } else {
+    throw new Error(`Unbekannter Buch-Typ: ${manifest.type}`);
   }
-  return { id, title: manifest.title };
+  return { id, title };
 }
 
 export async function shareOrDownload({ blob, filename }) {
