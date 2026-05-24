@@ -106,7 +106,13 @@ export class LibraryView {
         if (newTitle === null) return;
         const trimmed = newTitle.trim();
         if (!trimmed || trimmed === book.title) return;
-        await renameBook(book.id, trimmed);
+        try {
+          await renameBook(book.id, trimmed);
+        } catch (err) {
+          console.error('Fehler beim Umbenennen', err);
+          alert('Das Buch konnte nicht umbenannt werden.');
+          return;
+        }
         book.title = trimmed;
         titleEl.textContent = trimmed;
         card.setAttribute('aria-label', `${trimmed} öffnen`);
