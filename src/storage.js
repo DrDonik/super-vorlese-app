@@ -1,4 +1,4 @@
-import { get, set, del, keys, getMany } from 'idb-keyval';
+import { get, set, del, keys, getMany, setMany, delMany } from 'idb-keyval';
 
 const BOOK_PREFIX = 'book:';
 const META_PREFIX = 'meta:';
@@ -37,9 +37,7 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
 }
 
 export async function savePhotoBook({ id, title, pages, thumbBlob }) {
-  for (let i = 0; i < pages.length; i++) {
-    await set(pageKey(id, i + 1), pages[i]);
-  }
+  await setMany(pages.map((page, i) => [pageKey(id, i + 1), page]));
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
   }
@@ -95,13 +93,8 @@ export async function renameBook(id, title) {
 }
 
 export async function deleteBook(id) {
-  await del(bookKey(id));
-  await del(thumbKey(id));
-  await del(metaKey(id));
   const pagePrefix = `${PAGE_PREFIX}${id}:`;
   const allKeys = await keys();
   const pageKeys = allKeys.filter((k) => typeof k === 'string' && k.startsWith(pagePrefix));
-  for (const k of pageKeys) {
-    await del(k);
-  }
+  await delMany([bookKey(id), thumbKey(id), metaKey(id), ...pageKeys]);
 }
