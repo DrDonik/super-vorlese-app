@@ -195,6 +195,16 @@ button {
   color: #111;
 }
 
+.book-share:hover {
+  background: #0a84ff;
+  color: #fff;
+}
+
+.book-share:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 .book-delete:hover {
   background: var(--danger);
 }

@@ -1,9 +1,12 @@
 import { listBooks, saveBook, deleteBook, renameBook, getThumb, uid } from './storage.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
+import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
 const ICON_TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>`;
+
+const ICON_SHARE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13"/><path d="M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>`;
 
 function deriveTitle(filename) {
   return filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() || 'Unbenannt';
@@ -26,9 +29,13 @@ export class LibraryView {
           <button class="add-book add-photos" type="button">
             <span>📷 Fotografieren</span>
           </button>
-          <label class="add-book">
-            <input type="file" accept="application/pdf" multiple hidden />
-            <span>+ PDF hinzufügen</span>
+          <label class="add-book add-pdf">
+            <input class="pdf-input" type="file" accept="application/pdf" multiple hidden />
+            <span>+ PDF</span>
+          </label>
+          <label class="add-book add-bundle">
+            <input class="bundle-input" type="file" accept=".vorlese,application/zip" hidden />
+            <span>📥 Importieren</span>
           </label>
         </div>
       </header>
@@ -36,8 +43,11 @@ export class LibraryView {
       <div class="library-grid"></div>
     `;
 
-    const input = this.root.querySelector('input[type=file]');
-    input.addEventListener('change', (e) => this.handleFiles(e.target.files));
+    const pdfInput = this.root.querySelector('.pdf-input');
+    pdfInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
+
+    const bundleInput = this.root.querySelector('.bundle-input');
+    bundleInput.addEventListener('change', (e) => this.handleBundle(e.target.files));
 
     const photoBtn = this.root.querySelector('.add-photos');
     photoBtn.addEventListener('click', () => this.onAddPhotos?.());
@@ -52,7 +62,7 @@ export class LibraryView {
       grid.innerHTML = `
         <div class="empty">
           <p>Noch keine Bücher.</p>
-          <p>Tippe oben auf <strong>+ Buch hinzufügen</strong> und wähle ein PDF.</p>
+          <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
         </div>
       `;
       return;
@@ -69,6 +79,7 @@ export class LibraryView {
         <div class="book-title"></div>
         <div class="book-meta"></div>
         <div class="book-actions">
+          <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
           <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
           <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
         </div>
@@ -123,6 +134,21 @@ export class LibraryView {
         card.setAttribute('aria-label', `${trimmed} öffnen`);
       });
 
+      const shareBtn = card.querySelector('.book-share');
+      shareBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        shareBtn.disabled = true;
+        try {
+          const bundle = await exportBook(book.id);
+          await shareOrDownload(bundle);
+        } catch (err) {
+          console.error('Teilen fehlgeschlagen', err);
+          alert(`Das Buch konnte nicht geteilt werden: ${err.message || err}`);
+        } finally {
+          shareBtn.disabled = false;
+        }
+      });
+
       const delBtn = card.querySelector('.book-delete');
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
@@ -134,6 +160,26 @@ export class LibraryView {
 
       grid.appendChild(card);
     }
+  }
+
+  async handleBundle(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    const status = this.root.querySelector('.library-status');
+    status.hidden = false;
+    status.textContent = `Importiere ${files[0].name}…`;
+    try {
+      const { title } = await importBundle(files[0]);
+      status.textContent = `„${title}" importiert.`;
+    } catch (err) {
+      console.error('Import fehlgeschlagen', err);
+      alert(`Import fehlgeschlagen: ${err.message || err}`);
+      status.hidden = true;
+    }
+    const bundleInput = this.root.querySelector('.bundle-input');
+    if (bundleInput) bundleInput.value = '';
+    await this.renderGrid();
+    setTimeout(() => { status.hidden = true; }, 2500);
   }
 
   async handleFiles(fileList) {
