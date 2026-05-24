@@ -1,8 +1,9 @@
-import { get, set, del, keys, getMany } from 'idb-keyval';
+import { get, set, del, keys, getMany, setMany, delMany } from 'idb-keyval';
 
 const BOOK_PREFIX = 'book:';
 const META_PREFIX = 'meta:';
 const THUMB_PREFIX = 'thumb:';
+const PAGE_PREFIX = 'page:';
 
 function bookKey(id) {
   return `${BOOK_PREFIX}${id}`;
@@ -16,6 +17,14 @@ function thumbKey(id) {
   return `${THUMB_PREFIX}${id}`;
 }
 
+function pageKey(id, pageNumber) {
+  return `${PAGE_PREFIX}${id}:${pageNumber}`;
+}
+
+export function uid() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
@@ -23,8 +32,24 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
   }
   await set(metaKey(id), {
     id,
+    type: 'pdf',
     title,
     pageCount,
+    addedAt: Date.now(),
+    lastPage: 1,
+  });
+}
+
+export async function savePhotoBook({ id, title, pages, thumbBlob }) {
+  await setMany(pages.map((page, i) => [pageKey(id, i + 1), page]));
+  if (thumbBlob) {
+    await set(thumbKey(id), thumbBlob);
+  }
+  await set(metaKey(id), {
+    id,
+    type: 'photos',
+    title,
+    pageCount: pages.length,
     addedAt: Date.now(),
     lastPage: 1,
   });
@@ -41,6 +66,10 @@ export async function listBooks() {
 
 export async function getBookFile(id) {
   return get(bookKey(id));
+}
+
+export async function getPhotoPage(id, pageNumber) {
+  return get(pageKey(id, pageNumber));
 }
 
 export async function getThumb(id) {
@@ -68,7 +97,12 @@ export async function renameBook(id, title) {
 }
 
 export async function deleteBook(id) {
-  await del(bookKey(id));
-  await del(thumbKey(id));
-  await del(metaKey(id));
+  const meta = await get(metaKey(id));
+  const keysToDelete = [bookKey(id), thumbKey(id), metaKey(id)];
+  if (meta?.type === 'photos') {
+    for (let i = 1; i <= meta.pageCount; i++) {
+      keysToDelete.push(pageKey(id, i));
+    }
+  }
+  await delMany(keysToDelete);
 }

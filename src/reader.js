@@ -1,14 +1,51 @@
-import { getBookFile, getMeta, updateLastPage } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, updateLastPage } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
+import { renderImageToCanvas } from './image.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
+
+class PdfSource {
+  constructor(pdf) {
+    this.pdf = pdf;
+    this.numPages = pdf.numPages;
+  }
+  async renderPage(n, canvas, w, h) {
+    await renderPageToCanvas(this.pdf, n, canvas, w, h);
+  }
+  destroy() {
+    this.pdf?.destroy?.();
+  }
+}
+
+class PhotoSource {
+  constructor(bookId, numPages) {
+    this.bookId = bookId;
+    this.numPages = numPages;
+  }
+  async renderPage(n, canvas, w, h) {
+    const blob = await getPhotoPage(this.bookId, n);
+    if (!blob) throw new Error(`Seite ${n} fehlt`);
+    await renderImageToCanvas(blob, canvas, w, h);
+  }
+  destroy() {}
+}
+
+async function createSource(meta) {
+  if (meta.type === 'photos') {
+    return new PhotoSource(meta.id, meta.pageCount);
+  }
+  const fileBlob = await getBookFile(meta.id);
+  if (!fileBlob) return null;
+  const pdf = await loadPdf(fileBlob);
+  return new PdfSource(pdf);
+}
 
 export class ReaderView {
   constructor(root, { bookId, onClose }) {
     this.root = root;
     this.bookId = bookId;
     this.onClose = onClose;
-    this.pdf = null;
+    this.source = null;
     this.currentPage = 1;
     this.totalPages = 0;
     this.renderToken = 0;
@@ -65,16 +102,20 @@ export class ReaderView {
     window.addEventListener('resize', this.boundResize);
 
     const meta = await getMeta(this.bookId);
-    const fileBlob = await getBookFile(this.bookId);
-    if (!fileBlob || !meta) {
+    if (!meta) {
       alert('Buch nicht gefunden.');
       this.close();
       return;
     }
     reader.querySelector('.reader-title').textContent = meta.title;
 
-    this.pdf = await loadPdf(fileBlob);
-    this.totalPages = this.pdf.numPages;
+    this.source = await createSource(meta);
+    if (!this.source) {
+      alert('Buch nicht gefunden.');
+      this.close();
+      return;
+    }
+    this.totalPages = this.source.numPages;
     this.currentPage = Math.min(Math.max(meta.lastPage || 1, 1), this.totalPages);
 
     await this.renderCurrent();
@@ -132,13 +173,13 @@ export class ReaderView {
   }
 
   async renderCurrent() {
-    if (!this.pdf) return;
+    if (!this.source) return;
     const token = ++this.renderToken;
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
     if (stage.clientWidth === 0 || stage.clientHeight === 0) return;
     try {
-      await renderPageToCanvas(this.pdf, this.currentPage, canvas, stage.clientWidth, stage.clientHeight);
+      await this.source.renderPage(this.currentPage, canvas, stage.clientWidth, stage.clientHeight);
     } catch (err) {
       if (token !== this.renderToken) return;
       console.error('Render-Fehler', err);
@@ -183,9 +224,9 @@ export class ReaderView {
     window.removeEventListener('resize', this.boundResize);
     clearTimeout(this.hideTimer);
     clearTimeout(this._resizeT);
-    if (this.pdf) {
-      this.pdf.destroy?.();
-      this.pdf = null;
+    if (this.source) {
+      this.source.destroy();
+      this.source = null;
     }
   }
 }
