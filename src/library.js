@@ -1,5 +1,9 @@
-import { listBooks, saveBook, deleteBook, getThumb } from './storage.js';
+import { listBooks, saveBook, deleteBook, renameBook, getThumb } from './storage.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
+
+const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
+
+const ICON_TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>`;
 
 function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -50,16 +54,22 @@ export class LibraryView {
     }
     grid.innerHTML = '';
     for (const book of books) {
-      const card = document.createElement('button');
+      const card = document.createElement('div');
       card.className = 'book-card';
-      card.type = 'button';
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.setAttribute('aria-label', `${book.title} öffnen`);
       card.innerHTML = `
         <div class="book-cover"></div>
         <div class="book-title"></div>
         <div class="book-meta"></div>
-        <button class="book-delete" type="button" aria-label="Buch löschen">×</button>
+        <div class="book-actions">
+          <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
+          <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
+        </div>
       `;
-      card.querySelector('.book-title').textContent = book.title;
+      const titleEl = card.querySelector('.book-title');
+      titleEl.textContent = book.title;
       card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
 
       const cover = card.querySelector('.book-cover');
@@ -76,9 +86,36 @@ export class LibraryView {
         cover.textContent = '📖';
       }
 
+      const open = () => this.onOpenBook(book.id);
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.book-delete')) return;
-        this.onOpenBook(book.id);
+        if (e.target.closest('.book-actions')) return;
+        open();
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.target !== card) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      });
+
+      const renameBtn = card.querySelector('.book-rename');
+      renameBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const newTitle = prompt('Neuer Titel:', book.title);
+        if (newTitle === null) return;
+        const trimmed = newTitle.trim();
+        if (!trimmed || trimmed === book.title) return;
+        try {
+          await renameBook(book.id, trimmed);
+        } catch (err) {
+          console.error('Fehler beim Umbenennen', err);
+          alert('Das Buch konnte nicht umbenannt werden.');
+          return;
+        }
+        book.title = trimmed;
+        titleEl.textContent = trimmed;
+        card.setAttribute('aria-label', `${trimmed} öffnen`);
       });
 
       const delBtn = card.querySelector('.book-delete');

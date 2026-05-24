@@ -59,6 +59,14 @@ export async function updateLastPage(id, page) {
   }
 }
 
+export async function renameBook(id, title) {
+  const meta = await get(metaKey(id));
+  if (meta) {
+    meta.title = title;
+    await set(metaKey(id), meta);
+  }
+}
+
 export async function deleteBook(id) {
   await del(bookKey(id));
   await del(thumbKey(id));
