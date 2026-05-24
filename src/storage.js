@@ -21,6 +21,10 @@ function pageKey(id, pageNumber) {
   return `${PAGE_PREFIX}${id}:${pageNumber}`;
 }
 
+export function uid() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
@@ -93,8 +97,12 @@ export async function renameBook(id, title) {
 }
 
 export async function deleteBook(id) {
-  const pagePrefix = `${PAGE_PREFIX}${id}:`;
-  const allKeys = await keys();
-  const pageKeys = allKeys.filter((k) => typeof k === 'string' && k.startsWith(pagePrefix));
-  await delMany([bookKey(id), thumbKey(id), metaKey(id), ...pageKeys]);
+  const meta = await get(metaKey(id));
+  const keysToDelete = [bookKey(id), thumbKey(id), metaKey(id)];
+  if (meta?.type === 'photos') {
+    for (let i = 1; i <= meta.pageCount; i++) {
+      keysToDelete.push(pageKey(id, i));
+    }
+  }
+  await delMany(keysToDelete);
 }
