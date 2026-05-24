@@ -1,6 +1,6 @@
 import { zip, unzip } from 'fflate';
 import {
-  getMeta, getPhotoPage, getBookFile, getThumb,
+  getMeta, getPhotoPages, getBookFile, getThumb,
   savePhotoBook, saveBook, uid,
 } from './storage.js';
 
@@ -57,10 +57,11 @@ export async function exportBook(id) {
   if (thumb) entries['thumb.jpg'] = await blobToBytes(thumb);
 
   if (type === 'photos') {
-    for (let i = 1; i <= meta.pageCount; i++) {
-      const page = await getPhotoPage(id, i);
-      if (!page) throw new Error(`Seite ${i} fehlt.`);
-      entries[pagePath(i)] = await blobToBytes(page);
+    const pages = await getPhotoPages(id, meta.pageCount);
+    for (let i = 0; i < pages.length; i++) {
+      const page = pages[i];
+      if (!page) throw new Error(`Seite ${i + 1} fehlt.`);
+      entries[pagePath(i + 1)] = await blobToBytes(page);
     }
   } else {
     const pdfBlob = await getBookFile(id);

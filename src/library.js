@@ -179,7 +179,10 @@ export class LibraryView {
     const bundleInput = this.root.querySelector('.bundle-input');
     if (bundleInput) bundleInput.value = '';
     await this.renderGrid();
-    setTimeout(() => { status.hidden = true; }, 2500);
+    const finalMsg = status.textContent;
+    setTimeout(() => {
+      if (status.textContent === finalMsg) status.hidden = true;
+    }, 2500);
   }
 
   async handleFiles(fileList) {
