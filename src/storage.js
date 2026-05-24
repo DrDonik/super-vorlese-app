@@ -72,6 +72,12 @@ export async function getPhotoPage(id, pageNumber) {
   return get(pageKey(id, pageNumber));
 }
 
+export async function getPhotoPages(id, count) {
+  const pageKeys = [];
+  for (let i = 1; i <= count; i++) pageKeys.push(pageKey(id, i));
+  return getMany(pageKeys);
+}
+
 export async function getThumb(id) {
   return get(thumbKey(id));
 }
