@@ -274,7 +274,7 @@ export class ReaderView {
       alert('Buch wird noch geladen. Bitte warten.');
       return;
     }
-    if (this.syncSession) this.syncSession.stop();
+    this.syncStop();
     try {
       const { SyncSession } = await import('./sync.js');
       const session = new SyncSession();
@@ -299,7 +299,7 @@ export class ReaderView {
     const input = this.root.querySelector('.sync-join-input');
     const code = input.value.trim();
     if (!code) return;
-    if (this.syncSession) this.syncSession.stop();
+    this.syncStop();
     try {
       const { SyncSession } = await import('./sync.js');
       const session = new SyncSession();
@@ -342,6 +342,8 @@ export class ReaderView {
     reader.querySelector('.sync-create-section').hidden = false;
     reader.querySelector('.sync-or').hidden = false;
     reader.querySelector('.sync-join-section').hidden = false;
+    const input = reader.querySelector('.sync-join-input');
+    if (input) input.value = '';
     reader.querySelector('.sync-panel-desc').hidden = false;
     reader.querySelector('.sync-active-section').hidden = true;
   }
