@@ -52,6 +52,7 @@ export class ReaderView {
     this.hideTimer = null;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
+    this.syncSession = null;
   }
 
   async render() {
@@ -60,7 +61,28 @@ export class ReaderView {
         <div class="reader-chrome">
           <button class="reader-back" type="button">← Bibliothek</button>
           <div class="reader-title"></div>
+          <button class="reader-sync-btn" type="button" aria-label="Sync">⇄</button>
           <div class="reader-page-indicator"></div>
+        </div>
+        <div class="sync-panel" hidden>
+          <div class="sync-panel-card">
+            <div class="sync-panel-title">Seiten synchronisieren</div>
+            <div class="sync-panel-desc">Teile den Code, damit jemand anderes die gleiche Seite sieht.</div>
+            <div class="sync-create-section">
+              <button class="sync-create-btn" type="button">Raum erstellen</button>
+            </div>
+            <div class="sync-or">— oder —</div>
+            <div class="sync-join-section">
+              <input class="sync-join-input" type="text" placeholder="Code eingeben" maxlength="6" autocomplete="off" spellcheck="false" />
+              <button class="sync-join-btn" type="button">Beitreten</button>
+            </div>
+            <div class="sync-active-section" hidden>
+              <div class="sync-code-display"></div>
+              <div class="sync-status">Verbunden</div>
+              <button class="sync-stop-btn" type="button">Trennen</button>
+            </div>
+            <button class="sync-panel-close" type="button">Schliessen</button>
+          </div>
         </div>
         <div class="reader-stage">
           <canvas class="reader-canvas"></canvas>
@@ -95,6 +117,8 @@ export class ReaderView {
       if (e.target.closest('button')) return;
       this.showChrome();
     }, { passive: true });
+
+    this.setupSync(reader);
 
     this.attachSwipe(reader.querySelector('.reader-stage'));
 
@@ -187,6 +211,10 @@ export class ReaderView {
     if (token !== this.renderToken) return;
     this.updateIndicator();
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
+    if (this.syncSession && !this._remoteUpdate) {
+      this.syncSession.sendPage(this.currentPage).catch(() => {});
+    }
+    this._remoteUpdate = false;
   }
 
   updateIndicator() {
@@ -214,6 +242,102 @@ export class ReaderView {
     if (end) end.hidden = true;
   }
 
+  setupSync(reader) {
+    const syncBtn = reader.querySelector('.reader-sync-btn');
+    const panel = reader.querySelector('.sync-panel');
+    const createBtn = reader.querySelector('.sync-create-btn');
+    const joinInput = reader.querySelector('.sync-join-input');
+    const joinBtn = reader.querySelector('.sync-join-btn');
+    const stopBtn = reader.querySelector('.sync-stop-btn');
+    const closeBtn = reader.querySelector('.sync-panel-close');
+
+    syncBtn.addEventListener('click', () => {
+      panel.hidden = !panel.hidden;
+    });
+
+    closeBtn.addEventListener('click', () => {
+      panel.hidden = true;
+    });
+
+    panel.addEventListener('click', (e) => {
+      if (e.target === panel) panel.hidden = true;
+    });
+
+    createBtn.addEventListener('click', () => this.syncCreate());
+    joinBtn.addEventListener('click', () => this.syncJoin());
+    joinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.syncJoin();
+    });
+    stopBtn.addEventListener('click', () => this.syncStop());
+  }
+
+  async syncCreate() {
+    const { SyncSession } = await import('./sync.js');
+    const session = new SyncSession();
+    session.onRemotePageChange = (page) => this.onRemotePage(page);
+    try {
+      const code = await session.createRoom(this.currentPage);
+      this.syncSession = session;
+      this.showSyncActive(code);
+    } catch {
+      alert('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    }
+  }
+
+  async syncJoin() {
+    const input = this.root.querySelector('.sync-join-input');
+    const code = input.value.trim();
+    if (!code) return;
+    const { SyncSession } = await import('./sync.js');
+    const session = new SyncSession();
+    session.onRemotePageChange = (page) => this.onRemotePage(page);
+    try {
+      const normalizedCode = await session.joinRoom(code);
+      this.syncSession = session;
+      this.showSyncActive(normalizedCode);
+    } catch (err) {
+      alert(err.message || 'Beitreten fehlgeschlagen.');
+    }
+  }
+
+  syncStop() {
+    if (this.syncSession) {
+      this.syncSession.stop();
+      this.syncSession = null;
+    }
+    this.showSyncInactive();
+    this.root.querySelector('.reader-sync-btn').classList.remove('sync-active');
+  }
+
+  showSyncActive(code) {
+    const reader = this.root.querySelector('.reader');
+    reader.querySelector('.sync-create-section').hidden = true;
+    reader.querySelector('.sync-or').hidden = true;
+    reader.querySelector('.sync-join-section').hidden = true;
+    reader.querySelector('.sync-panel-desc').hidden = true;
+    const active = reader.querySelector('.sync-active-section');
+    active.hidden = false;
+    active.querySelector('.sync-code-display').textContent = code;
+    this.root.querySelector('.reader-sync-btn').classList.add('sync-active');
+  }
+
+  showSyncInactive() {
+    const reader = this.root.querySelector('.reader');
+    reader.querySelector('.sync-create-section').hidden = false;
+    reader.querySelector('.sync-or').hidden = false;
+    reader.querySelector('.sync-join-section').hidden = false;
+    reader.querySelector('.sync-panel-desc').hidden = false;
+    reader.querySelector('.sync-active-section').hidden = true;
+  }
+
+  onRemotePage(page) {
+    if (page === this.currentPage) return;
+    if (page < 1 || page > this.totalPages) return;
+    this.currentPage = page;
+    this._remoteUpdate = true;
+    this.renderCurrent();
+  }
+
   close() {
     this.destroy();
     this.onClose();
@@ -224,6 +348,10 @@ export class ReaderView {
     window.removeEventListener('resize', this.boundResize);
     clearTimeout(this.hideTimer);
     clearTimeout(this._resizeT);
+    if (this.syncSession) {
+      this.syncSession.stop();
+      this.syncSession = null;
+    }
     if (this.source) {
       this.source.destroy();
       this.source = null;

@@ -405,6 +405,183 @@ button {
   .add-book { padding: 10px 14px; font-size: 14px; }
 }
 
+/* ============ SYNC ============ */
+
+.reader-sync-btn {
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: background 0.15s;
+}
+
+.reader-sync-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.reader-sync-btn.sync-active {
+  background: var(--accent);
+  color: #111;
+}
+
+.sync-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.sync-panel[hidden] {
+  display: none;
+}
+
+.sync-panel-card {
+  background: var(--bg-elev);
+  padding: 28px 32px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
+  min-width: 280px;
+  max-width: 360px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.sync-panel-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.sync-panel-desc {
+  font-size: 14px;
+  color: var(--fg-dim);
+}
+
+.sync-or {
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+.sync-create-btn {
+  background: var(--accent);
+  color: #111;
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  touch-action: manipulation;
+}
+
+.sync-join-section {
+  display: flex;
+  gap: 8px;
+}
+
+.sync-join-input {
+  flex: 1;
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--fg);
+  font-size: 16px;
+  font-family: monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.sync-join-input::placeholder {
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: inherit;
+}
+
+.sync-join-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.sync-join-btn {
+  background: #2c2c2e;
+  color: var(--fg);
+  padding: 12px 16px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sync-join-btn:hover {
+  background: #3a3a3c;
+}
+
+.sync-active-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.sync-code-display {
+  font-size: 32px;
+  font-weight: 700;
+  font-family: monospace;
+  letter-spacing: 4px;
+  color: var(--accent);
+  padding: 12px 20px;
+  background: rgba(255, 179, 64, 0.1);
+  border-radius: 12px;
+}
+
+.sync-status {
+  font-size: 14px;
+  color: #30d158;
+}
+
+.sync-stop-btn {
+  background: var(--danger);
+  color: #fff;
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+}
+
+.sync-panel-close {
+  background: transparent;
+  color: var(--fg-dim);
+  padding: 10px 18px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  margin-top: 4px;
+}
+
+.sync-panel-close:hover {
+  color: var(--fg);
+}
+
 /* ============ CAMERA ============ */
 
 .camera {
