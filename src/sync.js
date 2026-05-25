@@ -8,18 +8,20 @@ const firebaseConfig = {
   appId: "1:759114747696:web:d2c1718b08bf68d83282f5"
 };
 
-let firebaseModules = null;
+let firebasePromise = null;
 
 async function loadFirebase() {
-  if (firebaseModules) return firebaseModules;
-  const [appMod, dbMod] = await Promise.all([
-    import('firebase/app'),
-    import('firebase/database'),
-  ]);
-  const app = appMod.initializeApp(firebaseConfig);
-  const db = dbMod.getDatabase(app);
-  firebaseModules = { db, ...dbMod };
-  return firebaseModules;
+  if (firebasePromise) return firebasePromise;
+  firebasePromise = (async () => {
+    const [appMod, dbMod] = await Promise.all([
+      import('firebase/app'),
+      import('firebase/database'),
+    ]);
+    const app = appMod.initializeApp(firebaseConfig);
+    const db = dbMod.getDatabase(app);
+    return { db, ...dbMod };
+  })();
+  return firebasePromise;
 }
 
 function generateRoomCode() {
@@ -36,7 +38,9 @@ export class SyncSession {
     this.roomCode = null;
     this.unsubscribe = null;
     this.onRemotePageChange = null;
-    this.localUpdate = false;
+    this.onRoomDeleted = null;
+    this.isCreator = false;
+    this.clientId = Math.random().toString(36).substring(2, 9);
     this.fb = null;
   }
 
@@ -44,9 +48,14 @@ export class SyncSession {
     this.fb = await loadFirebase();
     const code = generateRoomCode();
     const r = this.fb.ref(this.fb.db, `rooms/${code}`);
-    await this.fb.set(r, { page: initialPage, updatedAt: Date.now() });
+    await this.fb.set(r, {
+      page: initialPage,
+      senderId: this.clientId,
+      updatedAt: this.fb.serverTimestamp(),
+    });
     this.fb.onDisconnect(r).remove();
     this.roomCode = code;
+    this.isCreator = true;
     this.listen();
     return code;
   }
@@ -57,7 +66,13 @@ export class SyncSession {
     if (normalizedCode.length !== 6) {
       throw new Error('Code muss 6 Zeichen lang sein');
     }
+    const r = this.fb.ref(this.fb.db, `rooms/${normalizedCode}`);
+    const snapshot = await this.fb.get(r);
+    if (!snapshot.exists()) {
+      throw new Error('Raum existiert nicht');
+    }
     this.roomCode = normalizedCode;
+    this.isCreator = false;
     this.listen();
     return normalizedCode;
   }
@@ -69,12 +84,12 @@ export class SyncSession {
     }
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
     const callback = (snapshot) => {
-      if (this.localUpdate) {
-        this.localUpdate = false;
+      const data = snapshot.val();
+      if (!data) {
+        if (this.onRoomDeleted) this.onRoomDeleted();
         return;
       }
-      const data = snapshot.val();
-      if (data && this.onRemotePageChange) {
+      if (data.senderId !== this.clientId && this.onRemotePageChange) {
         this.onRemotePageChange(data.page);
       }
     };
@@ -84,9 +99,12 @@ export class SyncSession {
 
   async sendPage(page) {
     if (!this.roomCode || !this.fb) return;
-    this.localUpdate = true;
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
-    await this.fb.set(r, { page, updatedAt: Date.now() });
+    await this.fb.set(r, {
+      page,
+      senderId: this.clientId,
+      updatedAt: this.fb.serverTimestamp(),
+    });
   }
 
   stop() {
@@ -94,10 +112,11 @@ export class SyncSession {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    if (this.roomCode && this.fb) {
+    if (this.roomCode && this.fb && this.isCreator) {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       this.fb.remove(r).catch(() => {});
     }
     this.roomCode = null;
+    this.isCreator = false;
   }
 }

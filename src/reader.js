@@ -179,6 +179,7 @@ export class ReaderView {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
       await this.renderCurrent();
+      if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
     } else {
       this.showEnd();
     }
@@ -188,6 +189,7 @@ export class ReaderView {
     if (this.currentPage > 1) {
       this.currentPage--;
       await this.renderCurrent();
+      if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
     }
   }
 
@@ -211,10 +213,6 @@ export class ReaderView {
     if (token !== this.renderToken) return;
     this.updateIndicator();
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
-    if (this.syncSession && !this._remoteUpdate) {
-      this.syncSession.sendPage(this.currentPage).catch(() => {});
-    }
-    this._remoteUpdate = false;
   }
 
   updateIndicator() {
@@ -272,9 +270,18 @@ export class ReaderView {
   }
 
   async syncCreate() {
+    if (!this.source) {
+      alert('Buch wird noch geladen. Bitte warten.');
+      return;
+    }
+    if (this.syncSession) this.syncSession.stop();
     const { SyncSession } = await import('./sync.js');
     const session = new SyncSession();
     session.onRemotePageChange = (page) => this.onRemotePage(page);
+    session.onRoomDeleted = () => {
+      this.syncStop();
+      alert('Der Raum wurde geschlossen.');
+    };
     try {
       const code = await session.createRoom(this.currentPage);
       this.syncSession = session;
@@ -285,12 +292,21 @@ export class ReaderView {
   }
 
   async syncJoin() {
+    if (!this.source) {
+      alert('Buch wird noch geladen. Bitte warten.');
+      return;
+    }
     const input = this.root.querySelector('.sync-join-input');
     const code = input.value.trim();
     if (!code) return;
+    if (this.syncSession) this.syncSession.stop();
     const { SyncSession } = await import('./sync.js');
     const session = new SyncSession();
     session.onRemotePageChange = (page) => this.onRemotePage(page);
+    session.onRoomDeleted = () => {
+      this.syncStop();
+      alert('Der Raum wurde geschlossen.');
+    };
     try {
       const normalizedCode = await session.joinRoom(code);
       this.syncSession = session;
@@ -334,7 +350,6 @@ export class ReaderView {
     if (page === this.currentPage) return;
     if (page < 1 || page > this.totalPages) return;
     this.currentPage = page;
-    this._remoteUpdate = true;
     this.renderCurrent();
   }
 
