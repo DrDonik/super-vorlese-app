@@ -284,6 +284,10 @@ export class ReaderView {
         alert('Der Raum wurde geschlossen.');
       };
       const code = await session.createRoom(this.currentPage);
+      if (!this.source) {
+        session.stop();
+        return;
+      }
       this.syncSession = session;
       this.showSyncActive(code);
     } catch (err) {
@@ -309,6 +313,10 @@ export class ReaderView {
         alert('Der Raum wurde geschlossen.');
       };
       const normalizedCode = await session.joinRoom(code);
+      if (!this.source) {
+        session.stop();
+        return;
+      }
       this.syncSession = session;
       this.showSyncActive(normalizedCode);
     } catch (err) {

@@ -73,7 +73,7 @@ export class SyncSession {
 
   async joinRoom(code) {
     this.fb = await loadFirebase();
-    const normalizedCode = code.toUpperCase().replace(/[^A-Z2-9]/g, '');
+    const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
     if (normalizedCode.length !== 6) {
       throw new Error('Code muss 6 Zeichen lang sein');
     }
