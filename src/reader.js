@@ -53,6 +53,7 @@ export class ReaderView {
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
     this.syncSession = null;
+    this.isSyncing = false;
   }
 
   async render() {
@@ -274,6 +275,8 @@ export class ReaderView {
       alert('Buch wird noch geladen. Bitte warten.');
       return;
     }
+    if (this.isSyncing) return;
+    this.isSyncing = true;
     this.syncStop();
     try {
       const { SyncSession } = await import('./sync.js');
@@ -292,6 +295,8 @@ export class ReaderView {
       this.showSyncActive(code);
     } catch (err) {
       alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      this.isSyncing = false;
     }
   }
 
@@ -303,6 +308,8 @@ export class ReaderView {
     const input = this.root.querySelector('.sync-join-input');
     const code = input.value.trim();
     if (!code) return;
+    if (this.isSyncing) return;
+    this.isSyncing = true;
     this.syncStop();
     try {
       const { SyncSession } = await import('./sync.js');
@@ -321,6 +328,8 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       alert(err.message || 'Beitreten fehlgeschlagen.');
+    } finally {
+      this.isSyncing = false;
     }
   }
 

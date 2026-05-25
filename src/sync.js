@@ -94,17 +94,26 @@ export class SyncSession {
       this.unsubscribe = null;
     }
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
+    let stoppedDuringInit = false;
     const callback = (snapshot) => {
       const data = snapshot.val();
       if (!data) {
-        if (this.onRoomDeleted) this.onRoomDeleted();
+        if (this.onRoomDeleted) {
+          stoppedDuringInit = true;
+          this.onRoomDeleted();
+        }
         return;
       }
       if (data.senderId !== this.clientId && this.onRemotePageChange) {
         this.onRemotePageChange(data.page);
       }
     };
-    this.unsubscribe = this.fb.onValue(r, callback);
+    const unsub = this.fb.onValue(r, callback);
+    if (stoppedDuringInit) {
+      unsub();
+    } else {
+      this.unsubscribe = unsub;
+    }
   }
 
   async sendPage(page) {
