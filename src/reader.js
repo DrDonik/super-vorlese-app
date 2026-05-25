@@ -286,14 +286,16 @@ export class ReaderView {
         this.syncStop();
         alert('Der Raum wurde geschlossen.');
       };
+      this.syncSession = session;
       const code = await session.createRoom(this.currentPage);
       if (!this.source) {
         session.stop();
+        this.syncSession = null;
         return;
       }
-      this.syncSession = session;
       this.showSyncActive(code);
     } catch (err) {
+      this.syncStop();
       alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
     } finally {
       this.isSyncing = false;
@@ -319,14 +321,16 @@ export class ReaderView {
         this.syncStop();
         alert('Der Raum wurde geschlossen.');
       };
+      this.syncSession = session;
       const normalizedCode = await session.joinRoom(code);
       if (!this.source) {
         session.stop();
+        this.syncSession = null;
         return;
       }
-      this.syncSession = session;
       this.showSyncActive(normalizedCode);
     } catch (err) {
+      this.syncStop();
       alert(err.message || 'Beitreten fehlgeschlagen.');
     } finally {
       this.isSyncing = false;

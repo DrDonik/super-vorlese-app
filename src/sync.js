@@ -108,7 +108,9 @@ export class SyncSession {
         this.onRemotePageChange(data.page);
       }
     };
-    const unsub = this.fb.onValue(r, callback);
+    const unsub = this.fb.onValue(r, callback, () => {
+      if (this.onRoomDeleted) this.onRoomDeleted();
+    });
     if (stoppedDuringInit) {
       unsub();
     } else {
