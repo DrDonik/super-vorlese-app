@@ -1,11 +1,11 @@
 const firebaseConfig = {
-  apiKey: "AIzaSyBxQRtFMnFZMKsdOxS9rLE-mFNEwgOHl0I",
+  apiKey: "AIzaSyDeI6LYnu-34xlnAx7Onjwa_bI52boW8GM",
   authDomain: "super-vorlese-app.firebaseapp.com",
   databaseURL: "https://super-vorlese-app-default-rtdb.europe-west1.firebasedatabase.app",
   projectId: "super-vorlese-app",
   storageBucket: "super-vorlese-app.firebasestorage.app",
-  messagingSenderId: "1044414853498",
-  appId: "1:1044414853498:web:a1b2c3d4e5f6a7b8c9d0e1"
+  messagingSenderId: "759114747696",
+  appId: "1:759114747696:web:d2c1718b08bf68d83282f5"
 };
 
 let firebaseModules = null;
