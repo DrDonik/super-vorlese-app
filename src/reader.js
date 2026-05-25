@@ -275,14 +275,14 @@ export class ReaderView {
       return;
     }
     if (this.syncSession) this.syncSession.stop();
-    const { SyncSession } = await import('./sync.js');
-    const session = new SyncSession();
-    session.onRemotePageChange = (page) => this.onRemotePage(page);
-    session.onRoomDeleted = () => {
-      this.syncStop();
-      alert('Der Raum wurde geschlossen.');
-    };
     try {
+      const { SyncSession } = await import('./sync.js');
+      const session = new SyncSession();
+      session.onRemotePageChange = (page) => this.onRemotePage(page);
+      session.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
       const code = await session.createRoom(this.currentPage);
       this.syncSession = session;
       this.showSyncActive(code);
@@ -300,14 +300,14 @@ export class ReaderView {
     const code = input.value.trim();
     if (!code) return;
     if (this.syncSession) this.syncSession.stop();
-    const { SyncSession } = await import('./sync.js');
-    const session = new SyncSession();
-    session.onRemotePageChange = (page) => this.onRemotePage(page);
-    session.onRoomDeleted = () => {
-      this.syncStop();
-      alert('Der Raum wurde geschlossen.');
-    };
     try {
+      const { SyncSession } = await import('./sync.js');
+      const session = new SyncSession();
+      session.onRemotePageChange = (page) => this.onRemotePage(page);
+      session.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
       const normalizedCode = await session.joinRoom(code);
       this.syncSession = session;
       this.showSyncActive(normalizedCode);

@@ -13,13 +13,18 @@ let firebasePromise = null;
 async function loadFirebase() {
   if (firebasePromise) return firebasePromise;
   firebasePromise = (async () => {
-    const [appMod, dbMod] = await Promise.all([
-      import('firebase/app'),
-      import('firebase/database'),
-    ]);
-    const app = appMod.initializeApp(firebaseConfig);
-    const db = dbMod.getDatabase(app);
-    return { db, ...dbMod };
+    try {
+      const [appMod, dbMod] = await Promise.all([
+        import('firebase/app'),
+        import('firebase/database'),
+      ]);
+      const app = appMod.initializeApp(firebaseConfig);
+      const db = dbMod.getDatabase(app);
+      return { db, ...dbMod };
+    } catch (err) {
+      firebasePromise = null;
+      throw err;
+    }
   })();
   return firebasePromise;
 }
@@ -119,6 +124,7 @@ export class SyncSession {
     }
     if (this.roomCode && this.fb && this.isCreator) {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
+      this.fb.onDisconnect(r).cancel().catch(() => {});
       this.fb.remove(r).catch(() => {});
     }
     this.roomCode = null;
