@@ -296,7 +296,7 @@ export class ReaderView {
       this.showSyncActive(code);
     } catch (err) {
       this.syncStop();
-      alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      if (this.source) alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
     } finally {
       this.isSyncing = false;
     }
@@ -331,7 +331,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
-      alert(err.message || 'Beitreten fehlgeschlagen.');
+      if (this.source) alert(err.message || 'Beitreten fehlgeschlagen.');
     } finally {
       this.isSyncing = false;
     }
