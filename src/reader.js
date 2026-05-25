@@ -286,8 +286,8 @@ export class ReaderView {
       const code = await session.createRoom(this.currentPage);
       this.syncSession = session;
       this.showSyncActive(code);
-    } catch {
-      alert('Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } catch (err) {
+      alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
     }
   }
 

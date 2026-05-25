@@ -46,14 +46,20 @@ export class SyncSession {
 
   async createRoom(initialPage) {
     this.fb = await loadFirebase();
-    const code = generateRoomCode();
-    const r = this.fb.ref(this.fb.db, `rooms/${code}`);
+    let code, r;
+    for (let i = 0; i < 5; i++) {
+      code = generateRoomCode();
+      r = this.fb.ref(this.fb.db, `rooms/${code}`);
+      const snapshot = await this.fb.get(r);
+      if (!snapshot.exists()) break;
+      if (i === 4) throw new Error('Kein freier Raum-Code gefunden. Bitte erneut versuchen.');
+    }
     await this.fb.set(r, {
       page: initialPage,
       senderId: this.clientId,
       updatedAt: this.fb.serverTimestamp(),
     });
-    this.fb.onDisconnect(r).remove();
+    await this.fb.onDisconnect(r).remove();
     this.roomCode = code;
     this.isCreator = true;
     this.listen();
@@ -93,8 +99,7 @@ export class SyncSession {
         this.onRemotePageChange(data.page);
       }
     };
-    this.fb.onValue(r, callback);
-    this.unsubscribe = () => this.fb.off(r, 'value', callback);
+    this.unsubscribe = this.fb.onValue(r, callback);
   }
 
   async sendPage(page) {
