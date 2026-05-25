@@ -17,6 +17,7 @@ jobs:
       - name: Request Gemini re-review
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.GEMINI_TRIGGER_PAT }}
           script: |
             const prs = context.payload.workflow_run.pull_requests;
             if (!prs || prs.length === 0) {
