@@ -11,43 +11,13 @@ jobs:
     permissions:
       pull-requests: write
     steps:
-      - name: Post review summary as comment
+      - name: Notify Gemini review posted
         uses: actions/github-script@v7
         with:
           script: |
-            const review = context.payload.review;
-            const pr = context.payload.pull_request;
-
-            const { data: comments } = await github.rest.pulls.listReviewComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              pull_number: pr.number,
-              per_page: 100
-            });
-
-            const reviewComments = comments.filter(
-              c => c.pull_request_review_id === review.id
-            );
-
-            let body = `### Gemini Code Assist Review (${review.state.toLowerCase()})\n\n`;
-
-            if (review.body) {
-              body += review.body + '\n\n';
-            }
-
-            if (reviewComments.length > 0) {
-              body += `**${reviewComments.length} inline comment(s):**\n\n`;
-              for (const c of reviewComments) {
-                const line = c.line || c.original_line || '?';
-                body += `- **\`${c.path}\`** (line ${line}): ${c.body}\n`;
-              }
-            } else if (!review.body) {
-              body += '_No comments._\n';
-            }
-
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: pr.number,
-              body
+              issue_number: context.payload.pull_request.number,
+              body: `Gemini review posted (${context.payload.review.state.toLowerCase()}).`
             });
