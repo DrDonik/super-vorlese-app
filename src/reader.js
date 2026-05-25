@@ -52,6 +52,8 @@ export class ReaderView {
     this.hideTimer = null;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
+    this.syncSession = null;
+    this.isSyncing = false;
   }
 
   async render() {
@@ -60,7 +62,28 @@ export class ReaderView {
         <div class="reader-chrome">
           <button class="reader-back" type="button">← Bibliothek</button>
           <div class="reader-title"></div>
+          <button class="reader-sync-btn" type="button" aria-label="Sync">⇄</button>
           <div class="reader-page-indicator"></div>
+        </div>
+        <div class="sync-panel" hidden>
+          <div class="sync-panel-card">
+            <div class="sync-panel-title">Seiten synchronisieren</div>
+            <div class="sync-panel-desc">Teile den Code, damit jemand anderes die gleiche Seite sieht.</div>
+            <div class="sync-create-section">
+              <button class="sync-create-btn" type="button">Raum erstellen</button>
+            </div>
+            <div class="sync-or">— oder —</div>
+            <div class="sync-join-section">
+              <input class="sync-join-input" type="text" placeholder="Code eingeben" maxlength="6" autocomplete="off" spellcheck="false" />
+              <button class="sync-join-btn" type="button">Beitreten</button>
+            </div>
+            <div class="sync-active-section" hidden>
+              <div class="sync-code-display"></div>
+              <div class="sync-status">Verbunden</div>
+              <button class="sync-stop-btn" type="button">Trennen</button>
+            </div>
+            <button class="sync-panel-close" type="button">Schliessen</button>
+          </div>
         </div>
         <div class="reader-stage">
           <canvas class="reader-canvas"></canvas>
@@ -95,6 +118,8 @@ export class ReaderView {
       if (e.target.closest('button')) return;
       this.showChrome();
     }, { passive: true });
+
+    this.setupSync(reader);
 
     this.attachSwipe(reader.querySelector('.reader-stage'));
 
@@ -155,6 +180,7 @@ export class ReaderView {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
       await this.renderCurrent();
+      if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
     } else {
       this.showEnd();
     }
@@ -164,6 +190,7 @@ export class ReaderView {
     if (this.currentPage > 1) {
       this.currentPage--;
       await this.renderCurrent();
+      if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
     }
   }
 
@@ -214,6 +241,141 @@ export class ReaderView {
     if (end) end.hidden = true;
   }
 
+  setupSync(reader) {
+    const syncBtn = reader.querySelector('.reader-sync-btn');
+    const panel = reader.querySelector('.sync-panel');
+    const createBtn = reader.querySelector('.sync-create-btn');
+    const joinInput = reader.querySelector('.sync-join-input');
+    const joinBtn = reader.querySelector('.sync-join-btn');
+    const stopBtn = reader.querySelector('.sync-stop-btn');
+    const closeBtn = reader.querySelector('.sync-panel-close');
+
+    syncBtn.addEventListener('click', () => {
+      panel.hidden = !panel.hidden;
+    });
+
+    closeBtn.addEventListener('click', () => {
+      panel.hidden = true;
+    });
+
+    panel.addEventListener('click', (e) => {
+      if (e.target === panel) panel.hidden = true;
+    });
+
+    createBtn.addEventListener('click', () => this.syncCreate());
+    joinBtn.addEventListener('click', () => this.syncJoin());
+    joinInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') this.syncJoin();
+    });
+    stopBtn.addEventListener('click', () => this.syncStop());
+  }
+
+  async syncCreate() {
+    if (!this.source) {
+      alert('Buch wird noch geladen. Bitte warten.');
+      return;
+    }
+    if (this.isSyncing) return;
+    this.isSyncing = true;
+    this.syncStop();
+    try {
+      const { SyncSession } = await import('./sync.js');
+      const session = new SyncSession();
+      session.onRemotePageChange = (page) => this.onRemotePage(page);
+      session.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
+      this.syncSession = session;
+      const code = await session.createRoom(this.currentPage);
+      if (!this.source) {
+        session.stop();
+        this.syncSession = null;
+        return;
+      }
+      this.showSyncActive(code);
+    } catch (err) {
+      this.syncStop();
+      if (this.source) alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  async syncJoin() {
+    if (!this.source) {
+      alert('Buch wird noch geladen. Bitte warten.');
+      return;
+    }
+    const input = this.root.querySelector('.sync-join-input');
+    const code = input.value.trim();
+    if (!code) return;
+    if (this.isSyncing) return;
+    this.isSyncing = true;
+    this.syncStop();
+    try {
+      const { SyncSession } = await import('./sync.js');
+      const session = new SyncSession();
+      session.onRemotePageChange = (page) => this.onRemotePage(page);
+      session.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
+      this.syncSession = session;
+      const normalizedCode = await session.joinRoom(code);
+      if (!this.source) {
+        session.stop();
+        this.syncSession = null;
+        return;
+      }
+      this.showSyncActive(normalizedCode);
+    } catch (err) {
+      this.syncStop();
+      if (this.source) alert(err.message || 'Beitreten fehlgeschlagen.');
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  syncStop() {
+    if (this.syncSession) {
+      this.syncSession.stop();
+      this.syncSession = null;
+    }
+    this.showSyncInactive();
+    this.root.querySelector('.reader-sync-btn').classList.remove('sync-active');
+  }
+
+  showSyncActive(code) {
+    const reader = this.root.querySelector('.reader');
+    reader.querySelector('.sync-create-section').hidden = true;
+    reader.querySelector('.sync-or').hidden = true;
+    reader.querySelector('.sync-join-section').hidden = true;
+    reader.querySelector('.sync-panel-desc').hidden = true;
+    const active = reader.querySelector('.sync-active-section');
+    active.hidden = false;
+    active.querySelector('.sync-code-display').textContent = code;
+    this.root.querySelector('.reader-sync-btn').classList.add('sync-active');
+  }
+
+  showSyncInactive() {
+    const reader = this.root.querySelector('.reader');
+    reader.querySelector('.sync-create-section').hidden = false;
+    reader.querySelector('.sync-or').hidden = false;
+    reader.querySelector('.sync-join-section').hidden = false;
+    const input = reader.querySelector('.sync-join-input');
+    if (input) input.value = '';
+    reader.querySelector('.sync-panel-desc').hidden = false;
+    reader.querySelector('.sync-active-section').hidden = true;
+  }
+
+  onRemotePage(page) {
+    if (page === this.currentPage) return;
+    if (page < 1 || page > this.totalPages) return;
+    this.currentPage = page;
+    this.renderCurrent();
+  }
+
   close() {
     this.destroy();
     this.onClose();
@@ -224,6 +386,10 @@ export class ReaderView {
     window.removeEventListener('resize', this.boundResize);
     clearTimeout(this.hideTimer);
     clearTimeout(this._resizeT);
+    if (this.syncSession) {
+      this.syncSession.stop();
+      this.syncSession = null;
+    }
     if (this.source) {
       this.source.destroy();
       this.source = null;

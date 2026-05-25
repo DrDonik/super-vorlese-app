@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "fflate": "^0.8.3",
+    "firebase": "^12.13.0",
     "idb-keyval": "^6.2.1",
     "pdfjs-dist": "^4.7.76"
   },
