@@ -136,6 +136,10 @@ export class SyncSession {
   }
 
   detach() {
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = null;
+    }
     this.onRemotePageChange = null;
     this.onRoomDeleted = null;
   }

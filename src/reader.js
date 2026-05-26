@@ -156,6 +156,7 @@ export class ReaderView {
         this.syncStop();
         alert('Der Raum wurde geschlossen.');
       };
+      existing.listen();
       this.showSyncActive(existing.roomCode);
     }
   }
