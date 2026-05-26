@@ -74,7 +74,7 @@ export class SyncSession {
     if (this._stopped) {
       this.fb.onDisconnect(r).cancel().catch(() => {});
       this.fb.remove(r).catch(() => {});
-      return code;
+      throw new Error('Aktion abgebrochen');
     }
     this.roomCode = code;
     this.isCreator = true;
@@ -98,14 +98,14 @@ export class SyncSession {
     const data = snapshot.val();
     if (data.disconnectedAt) {
       const offsetSnap = await this.fb.get(this.fb.ref(this.fb.db, '.info/serverTimeOffset')).catch(() => null);
-      if (this._stopped) return normalizedCode;
+      if (this._stopped) throw new Error('Aktion abgebrochen');
       const serverTime = Date.now() + (offsetSnap?.val() || 0);
       if (serverTime - data.disconnectedAt > ROOM_TTL_MS) {
         this.fb.remove(r).catch(() => {});
         throw new Error('Raum existiert nicht');
       }
     }
-    if (this._stopped) return normalizedCode;
+    if (this._stopped) throw new Error('Aktion abgebrochen');
     this.roomCode = normalizedCode;
     this.isCreator = false;
     this.listen();
