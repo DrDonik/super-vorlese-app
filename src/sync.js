@@ -142,6 +142,7 @@ export class SyncSession {
   }
 
   _setupConnectionListener() {
+    this._removeConnectionListener();
     const connectedRef = this.fb.ref(this.fb.db, '.info/connected');
     let isFirstCall = true;
     this._unsubConnected = this.fb.onValue(connectedRef, (snap) => {
