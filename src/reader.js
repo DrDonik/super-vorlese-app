@@ -1,7 +1,7 @@
 import { getBookFile, getMeta, getPhotoPage, updateLastPage } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
+import { SyncSession, getSessionForBook } from './sync.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 
@@ -157,7 +157,9 @@ export class ReaderView {
         alert('Der Raum wurde geschlossen.');
       };
       existing.listen();
-      this.showSyncActive(existing.roomCode);
+      if (this.syncSession) {
+        this.showSyncActive(existing.roomCode);
+      }
     }
   }
 
@@ -350,7 +352,7 @@ export class ReaderView {
 
   syncStop() {
     if (this.syncSession) {
-      closeSyncForBook(this.bookId);
+      this.syncSession.stop();
       this.syncSession = null;
     }
     this.showSyncInactive();
