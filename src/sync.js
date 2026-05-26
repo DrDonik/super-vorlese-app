@@ -98,6 +98,7 @@ export class SyncSession {
         throw new Error('Raum existiert nicht');
       }
     }
+    if (this._stopped) return normalizedCode;
     this.roomCode = normalizedCode;
     this.isCreator = false;
     this.listen();
@@ -170,7 +171,7 @@ export class SyncSession {
     try {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       const snapshot = await this.fb.get(r);
-      if (!this.roomCode || !this.isCreator) return;
+      if (!this.roomCode || !this.isCreator || this._stopped) return;
       if (!snapshot.exists()) {
         this.stop();
         if (this.onRoomDeleted) this.onRoomDeleted();
@@ -178,7 +179,7 @@ export class SyncSession {
       }
       await this.fb.onDisconnect(r).cancel().catch(() => {});
       await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
-      if (!this.roomCode || !this.isCreator) return;
+      if (!this.roomCode || !this.isCreator || this._stopped) return;
       await this.fb.update(r, { disconnectedAt: null });
     } catch (_) {}
   }
