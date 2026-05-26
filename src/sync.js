@@ -88,9 +88,13 @@ export class SyncSession {
       throw new Error('Raum existiert nicht');
     }
     const data = snapshot.val();
-    if (data.disconnectedAt && (Date.now() - data.disconnectedAt > ROOM_TTL_MS)) {
-      this.fb.remove(r).catch(() => {});
-      throw new Error('Raum existiert nicht');
+    if (data.disconnectedAt) {
+      const offsetSnap = await this.fb.get(this.fb.ref(this.fb.db, '.info/serverTimeOffset')).catch(() => null);
+      const serverTime = Date.now() + (offsetSnap?.val() || 0);
+      if (serverTime - data.disconnectedAt > ROOM_TTL_MS) {
+        this.fb.remove(r).catch(() => {});
+        throw new Error('Raum existiert nicht');
+      }
     }
     this.roomCode = normalizedCode;
     this.isCreator = false;
