@@ -184,6 +184,7 @@ export class SyncSession {
         return;
       }
       await this.fb.onDisconnect(r).cancel().catch(() => {});
+      if (!this.roomCode || !this.isCreator || this._stopped) return;
       await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
       if (!this.roomCode || !this.isCreator || this._stopped) return;
       await this.fb.update(r, { disconnectedAt: null });
