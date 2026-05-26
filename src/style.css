@@ -499,8 +499,8 @@ button {
 }
 
 .sync-join-input {
-  flex: none;
-  width: 7.5em;
+  flex: 1;
+  min-width: 7.5em;
   background: #2c2c2e;
   border: 1px solid #3a3a3c;
   border-radius: 10px;
