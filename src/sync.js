@@ -55,6 +55,7 @@ export class SyncSession {
   }
 
   async createRoom(initialPage) {
+    this._stopped = false;
     this.fb = await loadFirebase();
     let code, r;
     for (let i = 0; i < 5; i++) {
@@ -83,6 +84,7 @@ export class SyncSession {
   }
 
   async joinRoom(code) {
+    this._stopped = false;
     this.fb = await loadFirebase();
     const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
     if (normalizedCode.length !== 6) {
