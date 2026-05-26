@@ -389,7 +389,7 @@ export class ReaderView {
     clearTimeout(this.hideTimer);
     clearTimeout(this._resizeT);
     if (this.syncSession) {
-      this.syncSession.stop();
+      this.syncSession.pause();
       this.syncSession = null;
     }
     if (this.source) {

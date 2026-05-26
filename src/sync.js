@@ -8,6 +8,8 @@ const firebaseConfig = {
   appId: "1:759114747696:web:d2c1718b08bf68d83282f5"
 };
 
+const ROOM_TTL_MS = 30 * 60 * 1000;
+
 let firebasePromise = null;
 
 async function loadFirebase() {
@@ -47,6 +49,8 @@ export class SyncSession {
     this.isCreator = false;
     this.clientId = Math.random().toString(36).substring(2, 9);
     this.fb = null;
+    this._boundVisibility = null;
+    this._boundOnline = null;
   }
 
   async createRoom(initialPage) {
@@ -64,9 +68,10 @@ export class SyncSession {
       senderId: this.clientId,
       updatedAt: this.fb.serverTimestamp(),
     });
-    await this.fb.onDisconnect(r).remove();
+    await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
     this.roomCode = code;
     this.isCreator = true;
+    this._setupVisibilityHandlers();
     this.listen();
     return code;
   }
@@ -80,6 +85,11 @@ export class SyncSession {
     const r = this.fb.ref(this.fb.db, `rooms/${normalizedCode}`);
     const snapshot = await this.fb.get(r);
     if (!snapshot.exists()) {
+      throw new Error('Raum existiert nicht');
+    }
+    const data = snapshot.val();
+    if (data.disconnectedAt && (Date.now() - data.disconnectedAt > ROOM_TTL_MS)) {
+      this.fb.remove(r).catch(() => {});
       throw new Error('Raum existiert nicht');
     }
     this.roomCode = normalizedCode;
@@ -128,11 +138,47 @@ export class SyncSession {
     });
   }
 
-  stop() {
+  _setupVisibilityHandlers() {
+    this._boundVisibility = () => {
+      if (document.visibilityState === 'visible') this._onResume();
+    };
+    this._boundOnline = () => this._onResume();
+    document.addEventListener('visibilitychange', this._boundVisibility);
+    window.addEventListener('online', this._boundOnline);
+  }
+
+  _removeVisibilityHandlers() {
+    if (this._boundVisibility) {
+      document.removeEventListener('visibilitychange', this._boundVisibility);
+      this._boundVisibility = null;
+    }
+    if (this._boundOnline) {
+      window.removeEventListener('online', this._boundOnline);
+      this._boundOnline = null;
+    }
+  }
+
+  async _onResume() {
+    if (!this.roomCode || !this.fb || !this.isCreator) return;
+    try {
+      const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
+      const snapshot = await this.fb.get(r);
+      if (!snapshot.exists()) return;
+      await this.fb.update(r, { disconnectedAt: null });
+      await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
+    } catch (_) {}
+  }
+
+  pause() {
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
     }
+    this._removeVisibilityHandlers();
+  }
+
+  stop() {
+    this.pause();
     if (this.roomCode && this.fb && this.isCreator) {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       this.fb.onDisconnect(r).cancel().catch(() => {});
