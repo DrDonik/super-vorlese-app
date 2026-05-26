@@ -163,7 +163,7 @@ export class LibraryView {
     const pdfs = [];
     const bundles = [];
     for (const f of files) {
-      const ext = f.name.split('.').pop().toLowerCase();
+      const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
       if (ext === 'pdf' || f.type === 'application/pdf') {
         pdfs.push(f);
       } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip' || f.type === 'application/octet-stream') {
