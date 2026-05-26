@@ -525,7 +525,7 @@ button {
 }
 
 .sync-join-btn {
-  flex: 1;
+  flex: none;
   background: #2c2c2e;
   color: var(--fg);
   padding: 12px 16px;
