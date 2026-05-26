@@ -1,6 +1,7 @@
 import { getBookFile, getMeta, getPhotoPage, updateLastPage } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
+import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 
@@ -146,6 +147,17 @@ export class ReaderView {
     await this.renderCurrent();
     reader.querySelector('.reader-loading')?.remove();
     this.showChrome();
+
+    const existing = getSessionForBook(this.bookId);
+    if (existing) {
+      this.syncSession = existing;
+      existing.onRemotePageChange = (page) => this.onRemotePage(page);
+      existing.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
+      this.showSyncActive(existing.roomCode);
+    }
   }
 
   attachSwipe(el) {
@@ -279,8 +291,7 @@ export class ReaderView {
     this.isSyncing = true;
     this.syncStop();
     try {
-      const { SyncSession } = await import('./sync.js');
-      const session = new SyncSession();
+      const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
@@ -314,8 +325,7 @@ export class ReaderView {
     this.isSyncing = true;
     this.syncStop();
     try {
-      const { SyncSession } = await import('./sync.js');
-      const session = new SyncSession();
+      const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
@@ -339,7 +349,7 @@ export class ReaderView {
 
   syncStop() {
     if (this.syncSession) {
-      this.syncSession.stop();
+      closeSyncForBook(this.bookId);
       this.syncSession = null;
     }
     this.showSyncInactive();
@@ -389,7 +399,7 @@ export class ReaderView {
     clearTimeout(this.hideTimer);
     clearTimeout(this._resizeT);
     if (this.syncSession) {
-      this.syncSession.stop();
+      this.syncSession.detach();
       this.syncSession = null;
     }
     if (this.source) {

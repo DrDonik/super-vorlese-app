@@ -38,8 +38,23 @@ function generateRoomCode() {
   return code;
 }
 
+const activeSessions = new Map();
+
+export function getSessionForBook(bookId) {
+  return activeSessions.get(bookId) || null;
+}
+
+export function closeSyncForBook(bookId) {
+  const session = activeSessions.get(bookId);
+  if (session) {
+    session.stop();
+    activeSessions.delete(bookId);
+  }
+}
+
 export class SyncSession {
-  constructor() {
+  constructor(bookId) {
+    this.bookId = bookId;
     this.roomCode = null;
     this.unsubscribe = null;
     this.onRemotePageChange = null;
@@ -67,6 +82,7 @@ export class SyncSession {
     await this.fb.onDisconnect(r).remove();
     this.roomCode = code;
     this.isCreator = true;
+    activeSessions.set(this.bookId, this);
     this.listen();
     return code;
   }
@@ -84,6 +100,7 @@ export class SyncSession {
     }
     this.roomCode = normalizedCode;
     this.isCreator = false;
+    activeSessions.set(this.bookId, this);
     this.listen();
     return normalizedCode;
   }
@@ -118,6 +135,11 @@ export class SyncSession {
     }
   }
 
+  detach() {
+    this.onRemotePageChange = null;
+    this.onRoomDeleted = null;
+  }
+
   async sendPage(page) {
     if (!this.roomCode || !this.fb) return;
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
@@ -138,6 +160,7 @@ export class SyncSession {
       this.fb.onDisconnect(r).cancel().catch(() => {});
       this.fb.remove(r).catch(() => {});
     }
+    activeSessions.delete(this.bookId);
     this.roomCode = null;
     this.isCreator = false;
   }
