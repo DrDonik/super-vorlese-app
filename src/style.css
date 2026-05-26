@@ -8,6 +8,10 @@
   --danger: #ff453a;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 * { box-sizing: border-box; }
 
 html, body, #app {
@@ -494,10 +498,6 @@ button {
   gap: 8px;
 }
 
-.sync-join-section[hidden] {
-  display: none;
-}
-
 .sync-join-input {
   flex: 1;
   background: #2c2c2e;
@@ -543,10 +543,6 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 12px;
-}
-
-.sync-active-section[hidden] {
-  display: none;
 }
 
 .sync-code-display {
