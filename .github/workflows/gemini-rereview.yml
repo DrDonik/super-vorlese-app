@@ -25,6 +25,35 @@ jobs:
               return;
             }
             for (const pr of prs) {
+              // Fetch current PR state to skip merged/closed PRs
+              const { data: prData } = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number
+              });
+              if (prData.state !== 'open') {
+                console.log(`PR #${pr.number} is ${prData.state}, skipping.`);
+                continue;
+              }
+
+              // Skip if a review request was already posted in the last 5 minutes
+              const { data: comments } = await github.rest.issues.listComments({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                per_page: 10,
+                direction: 'desc'
+              });
+              const fiveMinAgo = Date.now() - 5 * 60 * 1000;
+              const recentTrigger = comments.find(c =>
+                c.body.includes('@gemini-code-assist review') &&
+                new Date(c.created_at).getTime() > fiveMinAgo
+              );
+              if (recentTrigger) {
+                console.log(`PR #${pr.number} already has a recent review request, skipping.`);
+                continue;
+              }
+
               console.log(`Requesting Gemini review on PR #${pr.number}`);
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
