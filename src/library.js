@@ -29,12 +29,8 @@ export class LibraryView {
           <button class="add-book add-photos" type="button">
             <span>📷 Fotografieren</span>
           </button>
-          <label class="add-book add-pdf">
-            <input class="pdf-input" type="file" accept="application/pdf" multiple hidden />
-            <span>+ PDF</span>
-          </label>
-          <label class="add-book add-bundle">
-            <input class="bundle-input" type="file" accept=".vorlese,application/zip" hidden />
+          <label class="add-book add-import">
+            <input class="import-input" type="file" accept="application/pdf,.pdf,.vorlese,.zip,application/zip,application/octet-stream" multiple hidden />
             <span>📥 Importieren</span>
           </label>
         </div>
@@ -43,11 +39,8 @@ export class LibraryView {
       <div class="library-grid"></div>
     `;
 
-    const pdfInput = this.root.querySelector('.pdf-input');
-    pdfInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
-
-    const bundleInput = this.root.querySelector('.bundle-input');
-    bundleInput.addEventListener('change', (e) => this.handleBundle(e.target.files));
+    const importInput = this.root.querySelector('.import-input');
+    importInput.addEventListener('change', (e) => this.handleImport(e.target.files));
 
     const photoBtn = this.root.querySelector('.add-photos');
     photoBtn.addEventListener('click', () => this.onAddPhotos?.());
@@ -162,6 +155,27 @@ export class LibraryView {
     }
   }
 
+  async handleImport(fileList) {
+    const files = Array.from(fileList || []);
+    if (files.length === 0) return;
+    const pdfs = [];
+    const bundles = [];
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (ext === 'pdf' || f.type === 'application/pdf') {
+        pdfs.push(f);
+      } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip') {
+        bundles.push(f);
+      } else {
+        bundles.push(f);
+      }
+    }
+    if (pdfs.length > 0) await this.handleFiles(pdfs);
+    for (const bundle of bundles) await this.handleBundle([bundle]);
+    const importInput = this.root.querySelector('.import-input');
+    if (importInput) importInput.value = '';
+  }
+
   async handleBundle(fileList) {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
@@ -175,8 +189,6 @@ export class LibraryView {
       console.error('Import fehlgeschlagen', err);
       status.textContent = `Import fehlgeschlagen: ${err.message || err}`;
     }
-    const bundleInput = this.root.querySelector('.bundle-input');
-    if (bundleInput) bundleInput.value = '';
     await this.renderGrid();
     const finalMsg = status.textContent;
     setTimeout(() => {
@@ -184,8 +196,8 @@ export class LibraryView {
     }, 4000);
   }
 
-  async handleFiles(fileList) {
-    const files = Array.from(fileList || []);
+  async handleFiles(filesOrFileList) {
+    const files = Array.isArray(filesOrFileList) ? filesOrFileList : Array.from(filesOrFileList || []);
     if (files.length === 0) return;
     const status = this.root.querySelector('.library-status');
     status.hidden = false;
