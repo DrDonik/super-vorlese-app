@@ -146,11 +146,10 @@ export class SyncSession {
     const connectedRef = this.fb.ref(this.fb.db, '.info/connected');
     let isFirstCall = true;
     this._unsubConnected = this.fb.onValue(connectedRef, (snap) => {
+      const wasFirst = isFirstCall;
+      isFirstCall = false;
       if (snap.val() === true) {
-        if (isFirstCall) {
-          isFirstCall = false;
-          return;
-        }
+        if (wasFirst) return;
         this._onResume();
       }
     });
@@ -168,6 +167,7 @@ export class SyncSession {
     try {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       const snapshot = await this.fb.get(r);
+      if (!this.roomCode || !this.isCreator) return;
       if (!snapshot.exists()) {
         this.stop();
         if (this.onRoomDeleted) this.onRoomDeleted();
@@ -175,6 +175,7 @@ export class SyncSession {
       }
       await this.fb.onDisconnect(r).cancel().catch(() => {});
       await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
+      if (!this.roomCode || !this.isCreator) return;
       await this.fb.update(r, { disconnectedAt: null });
     } catch (_) {}
   }
