@@ -143,8 +143,15 @@ export class SyncSession {
 
   _setupConnectionListener() {
     const connectedRef = this.fb.ref(this.fb.db, '.info/connected');
+    let isFirstCall = true;
     this._unsubConnected = this.fb.onValue(connectedRef, (snap) => {
-      if (snap.val() === true) this._onResume();
+      if (snap.val() === true) {
+        if (isFirstCall) {
+          isFirstCall = false;
+          return;
+        }
+        this._onResume();
+      }
     });
   }
 
@@ -165,9 +172,9 @@ export class SyncSession {
         if (this.onRoomDeleted) this.onRoomDeleted();
         return;
       }
-      await this.fb.update(r, { disconnectedAt: null });
       await this.fb.onDisconnect(r).cancel().catch(() => {});
       await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
+      await this.fb.update(r, { disconnectedAt: null });
     } catch (_) {}
   }
 
