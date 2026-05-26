@@ -49,8 +49,7 @@ export class SyncSession {
     this.isCreator = false;
     this.clientId = Math.random().toString(36).substring(2, 9);
     this.fb = null;
-    this._boundVisibility = null;
-    this._boundOnline = null;
+    this._unsubConnected = null;
   }
 
   async createRoom(initialPage) {
@@ -71,7 +70,7 @@ export class SyncSession {
     await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
     this.roomCode = code;
     this.isCreator = true;
-    this._setupVisibilityHandlers();
+    this._setupConnectionListener();
     this.listen();
     return code;
   }
@@ -142,23 +141,17 @@ export class SyncSession {
     });
   }
 
-  _setupVisibilityHandlers() {
-    this._boundVisibility = () => {
-      if (document.visibilityState === 'visible') this._onResume();
-    };
-    this._boundOnline = () => this._onResume();
-    document.addEventListener('visibilitychange', this._boundVisibility);
-    window.addEventListener('online', this._boundOnline);
+  _setupConnectionListener() {
+    const connectedRef = this.fb.ref(this.fb.db, '.info/connected');
+    this._unsubConnected = this.fb.onValue(connectedRef, (snap) => {
+      if (snap.val() === true) this._onResume();
+    });
   }
 
-  _removeVisibilityHandlers() {
-    if (this._boundVisibility) {
-      document.removeEventListener('visibilitychange', this._boundVisibility);
-      this._boundVisibility = null;
-    }
-    if (this._boundOnline) {
-      window.removeEventListener('online', this._boundOnline);
-      this._boundOnline = null;
+  _removeConnectionListener() {
+    if (this._unsubConnected) {
+      this._unsubConnected();
+      this._unsubConnected = null;
     }
   }
 
@@ -167,8 +160,13 @@ export class SyncSession {
     try {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       const snapshot = await this.fb.get(r);
-      if (!snapshot.exists()) return;
+      if (!snapshot.exists()) {
+        this.stop();
+        if (this.onRoomDeleted) this.onRoomDeleted();
+        return;
+      }
       await this.fb.update(r, { disconnectedAt: null });
+      await this.fb.onDisconnect(r).cancel().catch(() => {});
       await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
     } catch (_) {}
   }
@@ -178,7 +176,7 @@ export class SyncSession {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    this._removeVisibilityHandlers();
+    this._removeConnectionListener();
   }
 
   stop() {
