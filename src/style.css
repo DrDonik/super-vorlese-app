@@ -8,6 +8,10 @@
   --danger: #ff453a;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 * { box-sizing: border-box; }
 
 html, body, #app {

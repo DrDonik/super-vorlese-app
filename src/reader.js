@@ -366,7 +366,9 @@ export class ReaderView {
     const input = reader.querySelector('.sync-join-input');
     if (input) input.value = '';
     reader.querySelector('.sync-panel-desc').hidden = false;
-    reader.querySelector('.sync-active-section').hidden = true;
+    const active = reader.querySelector('.sync-active-section');
+    active.hidden = true;
+    active.querySelector('.sync-code-display').textContent = '';
   }
 
   onRemotePage(page) {
