@@ -50,6 +50,7 @@ export class SyncSession {
     this.clientId = Math.random().toString(36).substring(2, 9);
     this.fb = null;
     this._unsubConnected = null;
+    this._stopped = false;
   }
 
   async createRoom(initialPage) {
@@ -68,6 +69,7 @@ export class SyncSession {
       updatedAt: this.fb.serverTimestamp(),
     });
     await this.fb.onDisconnect(r).update({ disconnectedAt: this.fb.serverTimestamp() });
+    if (this._stopped) return code;
     this.roomCode = code;
     this.isCreator = true;
     this._setupConnectionListener();
@@ -89,6 +91,7 @@ export class SyncSession {
     const data = snapshot.val();
     if (data.disconnectedAt) {
       const offsetSnap = await this.fb.get(this.fb.ref(this.fb.db, '.info/serverTimeOffset')).catch(() => null);
+      if (this._stopped) return normalizedCode;
       const serverTime = Date.now() + (offsetSnap?.val() || 0);
       if (serverTime - data.disconnectedAt > ROOM_TTL_MS) {
         this.fb.remove(r).catch(() => {});
@@ -163,7 +166,7 @@ export class SyncSession {
   }
 
   async _onResume() {
-    if (!this.roomCode || !this.fb || !this.isCreator) return;
+    if (!this.roomCode || !this.fb || !this.isCreator || this._stopped) return;
     try {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       const snapshot = await this.fb.get(r);
@@ -181,6 +184,7 @@ export class SyncSession {
   }
 
   pause() {
+    this._stopped = true;
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
