@@ -166,7 +166,7 @@ export class LibraryView {
       const ext = f.name.includes('.') ? f.name.split('.').pop().toLowerCase() : '';
       if (ext === 'pdf' || f.type === 'application/pdf') {
         pdfs.push(f);
-      } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip' || f.type === 'application/octet-stream') {
+      } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip') {
         bundles.push(f);
       } else {
         alert(`„${f.name}" ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.`);
