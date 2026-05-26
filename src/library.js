@@ -157,6 +157,8 @@ export class LibraryView {
 
   async handleImport(fileList) {
     const files = Array.from(fileList || []);
+    const importInput = this.root.querySelector('.import-input');
+    if (importInput) importInput.value = '';
     if (files.length === 0) return;
     const pdfs = [];
     const bundles = [];
@@ -164,16 +166,14 @@ export class LibraryView {
       const ext = f.name.split('.').pop().toLowerCase();
       if (ext === 'pdf' || f.type === 'application/pdf') {
         pdfs.push(f);
-      } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip') {
+      } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip' || f.type === 'application/octet-stream') {
         bundles.push(f);
       } else {
-        bundles.push(f);
+        alert(`„${f.name}" ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.`);
       }
     }
     if (pdfs.length > 0) await this.handleFiles(pdfs);
     for (const bundle of bundles) await this.handleBundle([bundle]);
-    const importInput = this.root.querySelector('.import-input');
-    if (importInput) importInput.value = '';
   }
 
   async handleBundle(fileList) {
