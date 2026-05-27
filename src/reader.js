@@ -114,6 +114,23 @@ export class ReaderView {
       this.hideEnd();
     });
 
+    const indicator = reader.querySelector('.reader-page-indicator');
+    indicator.setAttribute('role', 'button');
+    indicator.setAttribute('tabindex', '0');
+    indicator.addEventListener('click', () => this.openPageJump());
+    indicator.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.openPageJump();
+      }
+    });
+    indicator.addEventListener('pointerdown', (e) => {
+      const input = indicator.querySelector('.page-jump-input');
+      if (input && e.target !== input) {
+        e.preventDefault();
+      }
+    });
+
     reader.addEventListener('mousemove', () => this.showChrome());
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
@@ -249,7 +266,74 @@ export class ReaderView {
 
   updateIndicator() {
     const ind = this.root.querySelector('.reader-page-indicator');
+    if (ind.querySelector('.page-jump-input')) return;
     ind.textContent = `Seite ${this.currentPage} / ${this.totalPages}`;
+  }
+
+  openPageJump() {
+    const ind = this.root.querySelector('.reader-page-indicator');
+    if (ind.querySelector('.page-jump-input')) return;
+
+    clearTimeout(this.hideTimer);
+    this.showChrome = () => {
+      const reader = this.root.querySelector('.reader');
+      if (reader) reader.classList.remove('chrome-hidden');
+      clearTimeout(this.hideTimer);
+    };
+
+    ind.removeAttribute('role');
+    ind.removeAttribute('tabindex');
+    ind.textContent = '';
+    const input = document.createElement('input');
+    input.className = 'page-jump-input';
+    input.style.width = `${this.totalPages.toString().length + 1}ch`;
+    input.type = 'number';
+    input.min = 1;
+    input.max = this.totalPages;
+    input.value = this.currentPage;
+    input.setAttribute('aria-label', 'Gehe zu Seite');
+    ind.appendChild(input);
+
+    const suffix = document.createElement('span');
+    suffix.className = 'page-jump-suffix';
+    suffix.textContent = ` / ${this.totalPages}`;
+    ind.appendChild(suffix);
+
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      const val = parseInt(input.value, 10);
+      const page = isNaN(val) ? this.currentPage : Math.min(Math.max(val, 1), this.totalPages);
+      this.closePageJump(page, true);
+      this.goToPage(page);
+    };
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') commit();
+      else if (e.key === 'Escape') this.closePageJump(undefined, true);
+    });
+    input.addEventListener('blur', () => this.closePageJump());
+  }
+
+  closePageJump(page, shouldFocus = false) {
+    const ind = this.root.querySelector('.reader-page-indicator');
+    if (!ind.querySelector('.page-jump-input')) return;
+    delete this.showChrome;
+    ind.setAttribute('role', 'button');
+    ind.setAttribute('tabindex', '0');
+    const displayPage = page !== undefined ? page : this.currentPage;
+    ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
+    this.showChrome();
+    if (shouldFocus) ind.focus();
+  }
+
+  async goToPage(page) {
+    if (page === this.currentPage) return;
+    this.currentPage = page;
+    await this.renderCurrent();
+    if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
   }
 
   showChrome() {
