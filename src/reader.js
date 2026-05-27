@@ -115,8 +115,16 @@ export class ReaderView {
     });
 
     const indicator = reader.querySelector('.reader-page-indicator');
+    indicator.setAttribute('role', 'button');
+    indicator.setAttribute('tabindex', '0');
     indicator.addEventListener('click', () => this.openPageJump());
-    indicator.addEventListener('mousedown', (e) => {
+    indicator.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.openPageJump();
+      }
+    });
+    indicator.addEventListener('pointerdown', (e) => {
       if (indicator.querySelector('.page-jump-input') && e.target !== indicator.querySelector('.page-jump-input')) {
         e.preventDefault();
       }
@@ -310,6 +318,7 @@ export class ReaderView {
     const displayPage = page !== undefined ? page : this.currentPage;
     ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
     this.showChrome();
+    ind.focus();
   }
 
   async goToPage(page) {

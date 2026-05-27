@@ -287,14 +287,13 @@ button {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   cursor: pointer;
-  pointer-events: auto;
 }
 
 .page-jump-input {
   width: 3em;
   background: transparent;
   border: none;
-  border-bottom: 1.5px solid var(--fg-dim);
+  border-bottom: 1px solid var(--fg-dim);
   color: inherit;
   font: inherit;
   font-variant-numeric: tabular-nums;
