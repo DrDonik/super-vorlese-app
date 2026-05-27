@@ -165,10 +165,12 @@ export class ReaderView {
         this.syncStop();
         alert('Der Raum wurde geschlossen.');
       };
+      this.syncSession = session;
       const code = await session.reconnect().catch(() => null);
-      if (code) {
-        this.syncSession = session;
+      if (code && session.roomCode) {
         this.showSyncActive(code);
+      } else {
+        this.syncSession = null;
       }
     }
   }

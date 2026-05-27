@@ -19,16 +19,23 @@ function loadSavedRooms() {
   }
 }
 
-function saveRoomForBook(bookId, roomCode) {
+function saveRoomForBook(bookId, roomCode, isCreator) {
   const rooms = loadSavedRooms();
-  rooms[bookId] = roomCode;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+  rooms[bookId] = { code: roomCode, isCreator };
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms)); } catch {}
 }
 
 function removeRoomForBook(bookId) {
   const rooms = loadSavedRooms();
   delete rooms[bookId];
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms)); } catch {}
+}
+
+function getSavedRoom(bookId) {
+  const entry = loadSavedRooms()[bookId];
+  if (!entry) return null;
+  if (typeof entry === 'string') return { code: entry, isCreator: false };
+  return entry;
 }
 
 let firebasePromise = null;
@@ -64,7 +71,7 @@ function generateRoomCode() {
 const activeSessions = new Map();
 
 export function getSavedRoomCode(bookId) {
-  return loadSavedRooms()[bookId] || null;
+  return getSavedRoom(bookId)?.code || null;
 }
 
 export function getSessionForBook(bookId) {
@@ -107,7 +114,7 @@ export class SyncSession {
     this.roomCode = code;
     this.isCreator = true;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, code);
+    saveRoomForBook(this.bookId, code, true);
     this.listen();
     return code;
   }
@@ -131,7 +138,7 @@ export class SyncSession {
     this.roomCode = normalizedCode;
     this.isCreator = false;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, normalizedCode);
+    saveRoomForBook(this.bookId, normalizedCode, false);
     this.listen();
     return normalizedCode;
   }
@@ -167,10 +174,10 @@ export class SyncSession {
   }
 
   async reconnect() {
-    const code = getSavedRoomCode(this.bookId);
-    if (!code) return null;
+    const saved = getSavedRoom(this.bookId);
+    if (!saved) return null;
     this.fb = await loadFirebase();
-    const r = this.fb.ref(this.fb.db, `rooms/${code}`);
+    const r = this.fb.ref(this.fb.db, `rooms/${saved.code}`);
     const snapshot = await this.fb.get(r);
     if (!snapshot.exists()) {
       removeRoomForBook(this.bookId);
@@ -182,10 +189,11 @@ export class SyncSession {
       removeRoomForBook(this.bookId);
       return null;
     }
-    this.roomCode = code;
+    this.roomCode = saved.code;
+    this.isCreator = saved.isCreator;
     activeSessions.set(this.bookId, this);
     this.listen();
-    return code;
+    return saved.code;
   }
 
   detach() {
@@ -212,7 +220,7 @@ export class SyncSession {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    if (this.roomCode && this.fb) {
+    if (this.roomCode && this.fb && this.isCreator) {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
       this.fb.remove(r).catch(() => {});
     }
