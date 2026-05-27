@@ -8,6 +8,29 @@ const firebaseConfig = {
   appId: "1:759114747696:web:d2c1718b08bf68d83282f5"
 };
 
+const ROOM_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const STORAGE_KEY = 'sync-rooms';
+
+function loadSavedRooms() {
+  try {
+    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveRoomForBook(bookId, roomCode) {
+  const rooms = loadSavedRooms();
+  rooms[bookId] = roomCode;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+}
+
+function removeRoomForBook(bookId) {
+  const rooms = loadSavedRooms();
+  delete rooms[bookId];
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms));
+}
+
 let firebasePromise = null;
 
 async function loadFirebase() {
@@ -38,8 +61,25 @@ function generateRoomCode() {
   return code;
 }
 
+const activeSessions = new Map();
+
+export function getSavedRoomCode(bookId) {
+  return loadSavedRooms()[bookId] || null;
+}
+
+export function getSessionForBook(bookId) {
+  return activeSessions.get(bookId) || null;
+}
+
+export function closeSyncForBook(bookId) {
+  const session = activeSessions.get(bookId);
+  if (session) session.stop();
+  removeRoomForBook(bookId);
+}
+
 export class SyncSession {
-  constructor() {
+  constructor(bookId) {
+    this.bookId = bookId;
     this.roomCode = null;
     this.unsubscribe = null;
     this.onRemotePageChange = null;
@@ -64,9 +104,10 @@ export class SyncSession {
       senderId: this.clientId,
       updatedAt: this.fb.serverTimestamp(),
     });
-    await this.fb.onDisconnect(r).remove();
     this.roomCode = code;
     this.isCreator = true;
+    activeSessions.set(this.bookId, this);
+    saveRoomForBook(this.bookId, code);
     this.listen();
     return code;
   }
@@ -82,8 +123,15 @@ export class SyncSession {
     if (!snapshot.exists()) {
       throw new Error('Raum existiert nicht');
     }
+    const data = snapshot.val();
+    if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+      this.fb.remove(r).catch(() => {});
+      throw new Error('Raum existiert nicht');
+    }
     this.roomCode = normalizedCode;
     this.isCreator = false;
+    activeSessions.set(this.bookId, this);
+    saveRoomForBook(this.bookId, normalizedCode);
     this.listen();
     return normalizedCode;
   }
@@ -118,6 +166,37 @@ export class SyncSession {
     }
   }
 
+  async reconnect() {
+    const code = getSavedRoomCode(this.bookId);
+    if (!code) return null;
+    this.fb = await loadFirebase();
+    const r = this.fb.ref(this.fb.db, `rooms/${code}`);
+    const snapshot = await this.fb.get(r);
+    if (!snapshot.exists()) {
+      removeRoomForBook(this.bookId);
+      return null;
+    }
+    const data = snapshot.val();
+    if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+      this.fb.remove(r).catch(() => {});
+      removeRoomForBook(this.bookId);
+      return null;
+    }
+    this.roomCode = code;
+    activeSessions.set(this.bookId, this);
+    this.listen();
+    return code;
+  }
+
+  detach() {
+    if (this.unsubscribe) {
+      this.unsubscribe();
+      this.unsubscribe = null;
+    }
+    this.onRemotePageChange = null;
+    this.onRoomDeleted = null;
+  }
+
   async sendPage(page) {
     if (!this.roomCode || !this.fb) return;
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
@@ -133,11 +212,12 @@ export class SyncSession {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    if (this.roomCode && this.fb && this.isCreator) {
+    if (this.roomCode && this.fb) {
       const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
-      this.fb.onDisconnect(r).cancel().catch(() => {});
       this.fb.remove(r).catch(() => {});
     }
+    activeSessions.delete(this.bookId);
+    removeRoomForBook(this.bookId);
     this.roomCode = null;
     this.isCreator = false;
   }

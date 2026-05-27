@@ -1,6 +1,7 @@
 import { getBookFile, getMeta, getPhotoPage, updateLastPage } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
+import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 
@@ -146,6 +147,30 @@ export class ReaderView {
     await this.renderCurrent();
     reader.querySelector('.reader-loading')?.remove();
     this.showChrome();
+
+    const existing = getSessionForBook(this.bookId);
+    if (existing) {
+      this.syncSession = existing;
+      existing.onRemotePageChange = (page) => this.onRemotePage(page);
+      existing.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
+      existing.listen();
+      this.showSyncActive(existing.roomCode);
+    } else {
+      const session = new SyncSession(this.bookId);
+      session.onRemotePageChange = (page) => this.onRemotePage(page);
+      session.onRoomDeleted = () => {
+        this.syncStop();
+        alert('Der Raum wurde geschlossen.');
+      };
+      const code = await session.reconnect().catch(() => null);
+      if (code) {
+        this.syncSession = session;
+        this.showSyncActive(code);
+      }
+    }
   }
 
   attachSwipe(el) {
@@ -279,8 +304,7 @@ export class ReaderView {
     this.isSyncing = true;
     this.syncStop();
     try {
-      const { SyncSession } = await import('./sync.js');
-      const session = new SyncSession();
+      const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
@@ -314,8 +338,7 @@ export class ReaderView {
     this.isSyncing = true;
     this.syncStop();
     try {
-      const { SyncSession } = await import('./sync.js');
-      const session = new SyncSession();
+      const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
@@ -338,10 +361,8 @@ export class ReaderView {
   }
 
   syncStop() {
-    if (this.syncSession) {
-      this.syncSession.stop();
-      this.syncSession = null;
-    }
+    closeSyncForBook(this.bookId);
+    this.syncSession = null;
     this.showSyncInactive();
     this.root.querySelector('.reader-sync-btn').classList.remove('sync-active');
   }
@@ -389,7 +410,7 @@ export class ReaderView {
     clearTimeout(this.hideTimer);
     clearTimeout(this._resizeT);
     if (this.syncSession) {
-      this.syncSession.stop();
+      this.syncSession.detach();
       this.syncSession = null;
     }
     if (this.source) {
