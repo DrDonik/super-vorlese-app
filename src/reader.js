@@ -280,6 +280,8 @@ export class ReaderView {
       clearTimeout(this.hideTimer);
     };
 
+    ind.removeAttribute('role');
+    ind.removeAttribute('tabindex');
     ind.textContent = '';
     const input = document.createElement('input');
     input.className = 'page-jump-input';
@@ -298,7 +300,8 @@ export class ReaderView {
     input.select();
 
     const commit = () => {
-      const page = Math.min(Math.max(parseInt(input.value, 10) || this.currentPage, 1), this.totalPages);
+      const val = parseInt(input.value, 10);
+      const page = isNaN(val) ? this.currentPage : Math.min(Math.max(val, 1), this.totalPages);
       this.closePageJump(page);
       this.goToPage(page);
     };
@@ -315,6 +318,8 @@ export class ReaderView {
     const ind = this.root.querySelector('.reader-page-indicator');
     if (!ind.querySelector('.page-jump-input')) return;
     delete this.showChrome;
+    ind.setAttribute('role', 'button');
+    ind.setAttribute('tabindex', '0');
     const displayPage = page !== undefined ? page : this.currentPage;
     ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
     this.showChrome();
