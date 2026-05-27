@@ -14,7 +14,7 @@
     "fflate": "^0.8.3",
     "firebase": "^12.13.0",
     "idb-keyval": "^6.2.1",
-    "pdfjs-dist": "^4.7.76"
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
     "sharp": "^0.34.5",
