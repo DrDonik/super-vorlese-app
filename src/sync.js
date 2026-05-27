@@ -189,7 +189,8 @@ export class SyncSession {
       removeRoomForBook(this.bookId);
       return null;
     }
-    if (activeSessions.has(this.bookId)) {
+    const currentSaved = getSavedRoom(this.bookId);
+    if (!currentSaved || currentSaved.code !== saved.code || activeSessions.has(this.bookId)) {
       return null;
     }
     this.roomCode = saved.code;
