@@ -260,6 +260,11 @@ export class ReaderView {
     if (ind.querySelector('.page-jump-input')) return;
 
     clearTimeout(this.hideTimer);
+    this.showChrome = () => {
+      const reader = this.root.querySelector('.reader');
+      if (reader) reader.classList.remove('chrome-hidden');
+      clearTimeout(this.hideTimer);
+    };
 
     ind.textContent = '';
     const input = document.createElement('input');
@@ -280,7 +285,7 @@ export class ReaderView {
 
     const commit = () => {
       const page = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), this.totalPages);
-      this.closePageJump();
+      this.closePageJump(page);
       this.goToPage(page);
     };
 
@@ -292,10 +297,12 @@ export class ReaderView {
     input.addEventListener('blur', () => this.closePageJump());
   }
 
-  closePageJump() {
+  closePageJump(page) {
     const ind = this.root.querySelector('.reader-page-indicator');
     if (!ind.querySelector('.page-jump-input')) return;
-    ind.textContent = `Seite ${this.currentPage} / ${this.totalPages}`;
+    delete this.showChrome;
+    const displayPage = page !== undefined ? page : this.currentPage;
+    ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
     this.showChrome();
   }
 
