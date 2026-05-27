@@ -300,6 +300,8 @@ button {
   font-variant-numeric: tabular-nums;
   text-align: center;
   outline: none;
+  padding: 0;
+  margin: 0;
   -moz-appearance: textfield;
 }
 .page-jump-input::-webkit-inner-spin-button,

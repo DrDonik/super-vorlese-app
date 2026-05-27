@@ -114,7 +114,13 @@ export class ReaderView {
       this.hideEnd();
     });
 
-    reader.querySelector('.reader-page-indicator').addEventListener('click', () => this.openPageJump());
+    const indicator = reader.querySelector('.reader-page-indicator');
+    indicator.addEventListener('click', () => this.openPageJump());
+    indicator.addEventListener('mousedown', (e) => {
+      if (indicator.querySelector('.page-jump-input') && e.target !== indicator.querySelector('.page-jump-input')) {
+        e.preventDefault();
+      }
+    });
 
     reader.addEventListener('mousemove', () => this.showChrome());
     reader.addEventListener('touchstart', (e) => {
@@ -284,7 +290,7 @@ export class ReaderView {
     input.select();
 
     const commit = () => {
-      const page = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), this.totalPages);
+      const page = Math.min(Math.max(parseInt(input.value, 10) || this.currentPage, 1), this.totalPages);
       this.closePageJump(page);
       this.goToPage(page);
     };
