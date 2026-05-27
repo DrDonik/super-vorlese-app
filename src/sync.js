@@ -80,8 +80,18 @@ export function getSessionForBook(bookId) {
 
 export function closeSyncForBook(bookId) {
   const session = activeSessions.get(bookId);
-  if (session) session.stop();
-  removeRoomForBook(bookId);
+  if (session) {
+    session.stop();
+  } else {
+    const saved = getSavedRoom(bookId);
+    if (saved && saved.isCreator) {
+      loadFirebase().then((fb) => {
+        const r = fb.ref(fb.db, `rooms/${saved.code}`);
+        fb.remove(r).catch(() => {});
+      }).catch(() => {});
+    }
+    removeRoomForBook(bookId);
+  }
 }
 
 export class SyncSession {
