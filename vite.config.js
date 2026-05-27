@@ -9,8 +9,8 @@ export default defineConfig(({ command }) => ({
       includeAssets: ['favicon.svg'],
       manifest: {
         name: 'Super Vorlese-App',
-        short_name: 'Vorlese',
-        description: 'Kinderbücher gemeinsam über FaceTime vorlesen',
+        short_name: 'Vorlesen',
+        description: 'Kinderbücher gemeinsam über Videoanrufe vorlesen',
         theme_color: '#111111',
         background_color: '#111111',
         display: 'standalone',
