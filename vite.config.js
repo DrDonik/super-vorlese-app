@@ -14,7 +14,7 @@ export default defineConfig(({ command }) => ({
         theme_color: '#111111',
         background_color: '#111111',
         display: 'standalone',
-        orientation: 'landscape',
+        orientation: 'portrait',
         icons: [
           {
             src: 'icon-192.png',
