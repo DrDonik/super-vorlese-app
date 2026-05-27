@@ -289,6 +289,7 @@ export class ReaderView {
     input.min = 1;
     input.max = this.totalPages;
     input.value = this.currentPage;
+    input.setAttribute('aria-label', 'Gehe zu Seite');
     ind.appendChild(input);
 
     const suffix = document.createElement('span');
@@ -302,19 +303,19 @@ export class ReaderView {
     const commit = () => {
       const val = parseInt(input.value, 10);
       const page = isNaN(val) ? this.currentPage : Math.min(Math.max(val, 1), this.totalPages);
-      this.closePageJump(page);
+      this.closePageJump(page, true);
       this.goToPage(page);
     };
 
     input.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') commit();
-      else if (e.key === 'Escape') this.closePageJump();
+      else if (e.key === 'Escape') this.closePageJump(undefined, true);
     });
     input.addEventListener('blur', () => this.closePageJump());
   }
 
-  closePageJump(page) {
+  closePageJump(page, shouldFocus = false) {
     const ind = this.root.querySelector('.reader-page-indicator');
     if (!ind.querySelector('.page-jump-input')) return;
     delete this.showChrome;
@@ -323,7 +324,7 @@ export class ReaderView {
     const displayPage = page !== undefined ? page : this.currentPage;
     ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
     this.showChrome();
-    ind.focus();
+    if (shouldFocus) ind.focus();
   }
 
   async goToPage(page) {
