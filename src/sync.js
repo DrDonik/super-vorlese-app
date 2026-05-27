@@ -189,6 +189,9 @@ export class SyncSession {
       removeRoomForBook(this.bookId);
       return null;
     }
+    if (activeSessions.has(this.bookId)) {
+      return null;
+    }
     this.roomCode = saved.code;
     this.isCreator = saved.isCreator;
     activeSessions.set(this.bookId, this);
