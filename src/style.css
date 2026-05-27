@@ -286,6 +286,30 @@ button {
   border-radius: 8px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.page-jump-input {
+  width: 3em;
+  background: transparent;
+  border: none;
+  border-bottom: 1.5px solid var(--fg-dim);
+  color: inherit;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.page-jump-input::-webkit-inner-spin-button,
+.page-jump-input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.page-jump-suffix {
+  color: var(--fg-dim);
 }
 
 .reader-stage {

@@ -114,6 +114,8 @@ export class ReaderView {
       this.hideEnd();
     });
 
+    reader.querySelector('.reader-page-indicator').addEventListener('click', () => this.openPageJump());
+
     reader.addEventListener('mousemove', () => this.showChrome());
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
@@ -249,7 +251,59 @@ export class ReaderView {
 
   updateIndicator() {
     const ind = this.root.querySelector('.reader-page-indicator');
+    if (ind.querySelector('.page-jump-input')) return;
     ind.textContent = `Seite ${this.currentPage} / ${this.totalPages}`;
+  }
+
+  openPageJump() {
+    const ind = this.root.querySelector('.reader-page-indicator');
+    if (ind.querySelector('.page-jump-input')) return;
+
+    clearTimeout(this.hideTimer);
+
+    ind.textContent = '';
+    const input = document.createElement('input');
+    input.className = 'page-jump-input';
+    input.type = 'number';
+    input.min = 1;
+    input.max = this.totalPages;
+    input.value = this.currentPage;
+    ind.appendChild(input);
+
+    const suffix = document.createElement('span');
+    suffix.className = 'page-jump-suffix';
+    suffix.textContent = ` / ${this.totalPages}`;
+    ind.appendChild(suffix);
+
+    input.focus();
+    input.select();
+
+    const commit = () => {
+      const page = Math.min(Math.max(parseInt(input.value, 10) || 1, 1), this.totalPages);
+      this.closePageJump();
+      this.goToPage(page);
+    };
+
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') commit();
+      else if (e.key === 'Escape') this.closePageJump();
+    });
+    input.addEventListener('blur', () => this.closePageJump());
+  }
+
+  closePageJump() {
+    const ind = this.root.querySelector('.reader-page-indicator');
+    if (!ind.querySelector('.page-jump-input')) return;
+    ind.textContent = `Seite ${this.currentPage} / ${this.totalPages}`;
+    this.showChrome();
+  }
+
+  async goToPage(page) {
+    if (page === this.currentPage) return;
+    this.currentPage = page;
+    await this.renderCurrent();
+    if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
   }
 
   showChrome() {
