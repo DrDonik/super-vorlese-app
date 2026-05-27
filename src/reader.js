@@ -125,7 +125,8 @@ export class ReaderView {
       }
     });
     indicator.addEventListener('pointerdown', (e) => {
-      if (indicator.querySelector('.page-jump-input') && e.target !== indicator.querySelector('.page-jump-input')) {
+      const input = indicator.querySelector('.page-jump-input');
+      if (input && e.target !== input) {
         e.preventDefault();
       }
     });
@@ -285,6 +286,7 @@ export class ReaderView {
     ind.textContent = '';
     const input = document.createElement('input');
     input.className = 'page-jump-input';
+    input.style.width = `${this.totalPages.toString().length + 1}ch`;
     input.type = 'number';
     input.min = 1;
     input.max = this.totalPages;
