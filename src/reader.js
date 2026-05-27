@@ -167,6 +167,10 @@ export class ReaderView {
       };
       this.syncSession = session;
       const code = await session.reconnect().catch(() => null);
+      if (this.syncSession !== session) {
+        session.detach();
+        return;
+      }
       if (code && session.roomCode) {
         this.showSyncActive(code);
       } else {
