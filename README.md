@@ -13,7 +13,7 @@ in einer anderen Stadt — kann es jetzt tun, als sässe man nebeneinander.
 Die App ist bewusst so einfach gehalten, dass ein sechsjähriges Kind und
 seine Grosseltern sie gemeinsam ohne fremde Hilfe bedienen können.
 
-**Live ausprobieren:** https://drdonik.github.io/super-vorlese-app
+**Live ausprobieren:** [drdonik.github.io/super-vorlese-app](https://drdonik.github.io/super-vorlese-app)
 
 ### So funktioniert's
 
@@ -32,7 +32,7 @@ seine Grosseltern sie gemeinsam ohne fremde Hilfe bedienen können.
 ### Technisches
 
 Web-App auf Basis von Vite, Firebase Realtime Database, pdf.js und
-PWA-Unterstützung. Veröffentlicht unter The Unlicense (gemeinfrei).
+PWA-Unterstützung. Veröffentlicht unter [The Unlicense](https://unlicense.org/) (gemeinfrei).
 
 ---
 
@@ -49,7 +49,7 @@ distance can do so as if sitting side by side.
 The app is deliberately simple enough that a six-year-old and their
 grandparents can use it together without anyone's help.
 
-**Try it:** https://drdonik.github.io/super-vorlese-app
+**Try it:** [drdonik.github.io/super-vorlese-app](https://drdonik.github.io/super-vorlese-app)
 
 ### How it works
 
@@ -68,4 +68,4 @@ grandparents can use it together without anyone's help.
 ### Tech
 
 A web app built with Vite, Firebase Realtime Database, pdf.js, and PWA
-support. Released under The Unlicense (public domain).
+support. Released under [The Unlicense](https://unlicense.org/) (public domain).
