@@ -148,7 +148,7 @@ export async function shareOrDownload({ blob, filename }) {
   const file = new File([blob], filename, { type: blob.type });
   if (navigator.canShare?.({ files: [file] }) && navigator.share) {
     try {
-      await navigator.share({ files: [file], title: filename });
+      await navigator.share({ files: [file] });
       return 'shared';
     } catch (err) {
       if (err?.name === 'AbortError') return 'cancelled';
