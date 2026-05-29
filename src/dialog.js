@@ -1,0 +1,186 @@
+// In-app replacements for the browser's native alert / confirm / prompt.
+//
+// Why these exist: native dialogs are unstyled, clash with the app's custom
+// modals (sync panel, end-of-book card), and prompt() is unreliable inside iOS
+// standalone PWAs. These promise-based helpers keep the call sites almost as
+// terse as the natives they replace while staying on-brand and reliable.
+//
+// Dialogs are serialized through a queue so two can never stack, preserving the
+// blocking feel of the natives (the reader can raise a "room closed" dialog
+// unprompted while another is already open).
+
+let queue = Promise.resolve();
+
+function enqueue(factory) {
+  const run = queue.then(factory);
+  // Keep the chain alive even if a dialog somehow rejects.
+  queue = run.catch(() => {});
+  return run;
+}
+
+let dialogSeq = 0;
+
+function openDialog({ title, message, input, buttons, cancelValue }) {
+  return enqueue(() => new Promise((resolve) => {
+    const previouslyFocused = document.activeElement;
+
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'dialog-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+
+    if (title) {
+      const titleEl = document.createElement('div');
+      titleEl.className = 'dialog-title';
+      titleEl.id = `dialog-title-${++dialogSeq}`;
+      titleEl.textContent = title;
+      card.setAttribute('aria-labelledby', titleEl.id);
+      card.appendChild(titleEl);
+    } else if (message) {
+      card.setAttribute('aria-label', message);
+    }
+
+    if (message) {
+      const msgEl = document.createElement('div');
+      msgEl.className = 'dialog-message';
+      msgEl.textContent = message;
+      card.appendChild(msgEl);
+    }
+
+    let inputEl = null;
+    if (input) {
+      inputEl = document.createElement('input');
+      inputEl.className = 'dialog-input';
+      inputEl.type = 'text';
+      inputEl.value = input.value ?? '';
+      if (input.placeholder) inputEl.placeholder = input.placeholder;
+      inputEl.setAttribute('aria-label', title || 'Eingabe');
+      inputEl.autocomplete = 'off';
+      card.appendChild(inputEl);
+    }
+
+    let cleaned = false;
+    const cleanup = (value) => {
+      if (cleaned) return;
+      cleaned = true;
+      overlay.remove();
+      if (previouslyFocused && previouslyFocused.isConnected) {
+        previouslyFocused.focus();
+      }
+      resolve(value);
+    };
+
+    const row = document.createElement('div');
+    row.className = 'dialog-buttons';
+    let primaryBtn = null;
+    for (const btn of buttons) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = btn.primary ? 'dialog-btn dialog-btn-primary' : 'dialog-btn';
+      el.textContent = btn.label;
+      el.addEventListener('click', () => {
+        cleanup(inputEl && btn.primary ? inputEl.value : btn.value);
+      });
+      if (btn.primary) primaryBtn = el;
+      row.appendChild(el);
+    }
+    card.appendChild(row);
+
+    // Prevent confirming an empty required field (gray out, rule 5).
+    if (inputEl && primaryBtn && !input.allowEmpty) {
+      const sync = () => { primaryBtn.disabled = inputEl.value.trim() === ''; };
+      inputEl.addEventListener('input', sync);
+      sync();
+    }
+
+    overlay.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        cleanup(cancelValue);
+      } else if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
+        if (!primaryBtn.disabled) {
+          e.preventDefault();
+          cleanup(inputEl.value);
+        }
+      } else if (e.key === 'Tab') {
+        trapFocus(e, card);
+      }
+      // Keep keys from reaching the reader's window-level page/Escape handlers.
+      e.stopPropagation();
+    });
+
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) cleanup(cancelValue);
+    });
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    if (inputEl) {
+      inputEl.focus();
+      inputEl.select();
+    } else if (primaryBtn) {
+      primaryBtn.focus();
+    }
+  }));
+}
+
+function trapFocus(e, card) {
+  const focusable = card.querySelectorAll('button:not([disabled]), input');
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (e.shiftKey && document.activeElement === first) {
+    e.preventDefault();
+    last.focus();
+  } else if (!e.shiftKey && document.activeElement === last) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+export function showAlert({ title, message, confirmLabel = 'OK' } = {}) {
+  return openDialog({
+    title,
+    message,
+    buttons: [{ label: confirmLabel, value: undefined, primary: true }],
+    cancelValue: undefined,
+  });
+}
+
+export function showConfirm({ title, message, confirmLabel = 'OK', cancelLabel = 'Abbrechen' } = {}) {
+  return openDialog({
+    title,
+    message,
+    buttons: [
+      { label: cancelLabel, value: false },
+      { label: confirmLabel, value: true, primary: true },
+    ],
+    cancelValue: false,
+  });
+}
+
+// Resolves with the entered string, or null if cancelled.
+export function showPrompt({
+  title,
+  message,
+  value = '',
+  placeholder = '',
+  confirmLabel = 'OK',
+  cancelLabel = 'Abbrechen',
+  allowEmpty = false,
+} = {}) {
+  return openDialog({
+    title,
+    message,
+    input: { value, placeholder, allowEmpty },
+    buttons: [
+      { label: cancelLabel, value: null },
+      { label: confirmLabel, primary: true },
+    ],
+    cancelValue: null,
+  });
+}

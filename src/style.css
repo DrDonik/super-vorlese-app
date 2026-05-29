@@ -822,3 +822,91 @@ button {
   color: var(--fg-dim);
   cursor: not-allowed;
 }
+
+/* ============ DIALOG ============ */
+
+.dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.dialog-card {
+  background: var(--bg-elev);
+  padding: 28px 32px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 280px;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.dialog-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.dialog-message {
+  font-size: 14px;
+  color: var(--fg-dim);
+  line-height: 1.5;
+}
+
+.dialog-input {
+  background: #2c2c2e;
+  border: 1px solid #3a3a3c;
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--fg);
+  font-size: 16px;
+  width: 100%;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dialog-buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dialog-btn {
+  flex: 1;
+  background: transparent;
+  color: var(--fg-dim);
+  padding: 12px 18px;
+  border: none;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.dialog-btn:hover {
+  color: var(--fg);
+}
+
+.dialog-btn-primary {
+  background: var(--accent);
+  color: #111;
+}
+
+.dialog-btn-primary:disabled {
+  background: #2c2c2e;
+  color: var(--fg-dim);
+  cursor: not-allowed;
+}

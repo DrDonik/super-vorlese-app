@@ -2,6 +2,7 @@ import { getBookFile, getMeta, getPhotoPage, updateLastPage } from './storage.js
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
+import { showAlert } from './dialog.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 
@@ -147,7 +148,7 @@ export class ReaderView {
 
     const meta = await getMeta(this.bookId);
     if (!meta) {
-      alert('Buch nicht gefunden.');
+      await showAlert({ message: 'Buch nicht gefunden.' });
       this.close();
       return;
     }
@@ -155,7 +156,7 @@ export class ReaderView {
 
     this.source = await createSource(meta);
     if (!this.source) {
-      alert('Buch nicht gefunden.');
+      await showAlert({ message: 'Buch nicht gefunden.' });
       this.close();
       return;
     }
@@ -172,7 +173,7 @@ export class ReaderView {
       existing.onRemotePageChange = (page) => this.onRemotePage(page);
       existing.onRoomDeleted = () => {
         this.syncStop();
-        alert('Der Raum wurde geschlossen.');
+        showAlert({ message: 'Der Raum wurde geschlossen.' });
       };
       existing.listen();
       this.showSyncActive(existing.roomCode);
@@ -181,7 +182,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        alert('Der Raum wurde geschlossen.');
+        showAlert({ message: 'Der Raum wurde geschlossen.' });
       };
       this.syncSession = session;
       const code = await session.reconnect().catch(() => null);
@@ -385,7 +386,7 @@ export class ReaderView {
 
   async syncCreate() {
     if (!this.source) {
-      alert('Buch wird noch geladen. Bitte warten.');
+      await showAlert({ message: 'Buch wird noch geladen. Bitte warten.' });
       return;
     }
     if (this.isSyncing) return;
@@ -396,7 +397,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        alert('Der Raum wurde geschlossen.');
+        showAlert({ message: 'Der Raum wurde geschlossen.' });
       };
       this.syncSession = session;
       const code = await session.createRoom(this.currentPage);
@@ -408,7 +409,7 @@ export class ReaderView {
       this.showSyncActive(code);
     } catch (err) {
       this.syncStop();
-      if (this.source) alert(err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.');
+      if (this.source) await showAlert({ message: err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.' });
     } finally {
       this.isSyncing = false;
     }
@@ -416,7 +417,7 @@ export class ReaderView {
 
   async syncJoin() {
     if (!this.source) {
-      alert('Buch wird noch geladen. Bitte warten.');
+      await showAlert({ message: 'Buch wird noch geladen. Bitte warten.' });
       return;
     }
     const input = this.root.querySelector('.sync-join-input');
@@ -430,7 +431,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        alert('Der Raum wurde geschlossen.');
+        showAlert({ message: 'Der Raum wurde geschlossen.' });
       };
       this.syncSession = session;
       const normalizedCode = await session.joinRoom(code);
@@ -442,7 +443,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
-      if (this.source) alert(err.message || 'Beitreten fehlgeschlagen.');
+      if (this.source) await showAlert({ message: err.message || 'Beitreten fehlgeschlagen.' });
     } finally {
       this.isSyncing = false;
     }

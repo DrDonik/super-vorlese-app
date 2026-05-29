@@ -1,5 +1,6 @@
 import { savePhotoBook, uid } from './storage.js';
 import { renderImageThumbnail } from './image.js';
+import { showAlert, showConfirm, showPrompt } from './dialog.js';
 
 function defaultTitle() {
   const d = new Date();
@@ -173,7 +174,13 @@ export class CameraView {
     if (this.saving) return;
     const pages = this.livePages();
     if (pages.length === 0) return;
-    const titleInput = prompt('Titel des Buches:', defaultTitle());
+    const titleInput = await showPrompt({
+      title: 'Buch speichern',
+      message: 'Titel des Buches:',
+      value: defaultTitle(),
+      confirmLabel: 'Speichern',
+      allowEmpty: true,
+    });
     if (titleInput === null) return;
     const title = titleInput.trim() || defaultTitle();
     this.saving = true;
@@ -191,16 +198,21 @@ export class CameraView {
       this.onSaved();
     } catch (err) {
       console.error('Speichern fehlgeschlagen', err);
-      alert('Das Buch konnte nicht gespeichert werden.');
+      await showAlert({ message: 'Das Buch konnte nicht gespeichert werden.' });
       this.saving = false;
       this.doneBtn.textContent = 'Fertig';
       this.updateCount();
     }
   }
 
-  cancel() {
+  async cancel() {
     if (this.livePages().length > 0) {
-      if (!confirm('Aufnahme verwerfen? Die Fotos gehen verloren.')) return;
+      const discard = await showConfirm({
+        title: 'Aufnahme verwerfen?',
+        message: 'Die Fotos gehen verloren.',
+        confirmLabel: 'Verwerfen',
+      });
+      if (!discard) return;
     }
     this.stopCamera();
     this.onClose();

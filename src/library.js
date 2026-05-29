@@ -2,6 +2,7 @@ import { listBooks, saveBook, deleteBook, renameBook, getThumbs, uid } from './s
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook } from './sync.js';
+import { showAlert, showConfirm, showPrompt } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
@@ -132,7 +133,11 @@ export class LibraryView {
       const renameBtn = card.querySelector('.book-rename');
       renameBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const newTitle = prompt('Neuer Titel:', book.title);
+        const newTitle = await showPrompt({
+          title: 'Buch umbenennen',
+          value: book.title,
+          confirmLabel: 'Speichern',
+        });
         if (newTitle === null) return;
         const trimmed = newTitle.trim();
         if (!trimmed || trimmed === book.title) return;
@@ -140,7 +145,7 @@ export class LibraryView {
           await renameBook(book.id, trimmed);
         } catch (err) {
           console.error('Fehler beim Umbenennen', err);
-          alert('Das Buch konnte nicht umbenannt werden.');
+          await showAlert({ message: 'Das Buch konnte nicht umbenannt werden.' });
           return;
         }
         book.title = trimmed;
@@ -157,7 +162,7 @@ export class LibraryView {
           await shareOrDownload(bundle);
         } catch (err) {
           console.error('Teilen fehlgeschlagen', err);
-          alert(`Das Buch konnte nicht geteilt werden: ${err.message || err}`);
+          await showAlert({ message: `Das Buch konnte nicht geteilt werden: ${err.message || err}` });
         } finally {
           shareBtn.disabled = false;
         }
@@ -166,7 +171,12 @@ export class LibraryView {
       const delBtn = card.querySelector('.book-delete');
       delBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        if (confirm(`„${book.title}" wirklich löschen?`)) {
+        const confirmed = await showConfirm({
+          title: 'Buch löschen',
+          message: `„${book.title}" wirklich löschen?`,
+          confirmLabel: 'Löschen',
+        });
+        if (confirmed) {
           closeSyncForBook(book.id);
           await deleteBook(book.id);
           await this.renderGrid();
@@ -199,7 +209,7 @@ export class LibraryView {
       } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip') {
         bundles.push(f);
       } else {
-        alert(`„${f.name}" ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.`);
+        await showAlert({ message: `„${f.name}" ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.` });
       }
     }
     if (pdfs.length > 0) await this.handleFiles(pdfs);
@@ -247,7 +257,7 @@ export class LibraryView {
         });
       } catch (err) {
         console.error('Fehler beim Import', file.name, err);
-        alert(`„${file.name}" konnte nicht gelesen werden.`);
+        await showAlert({ message: `„${file.name}" konnte nicht gelesen werden.` });
       }
     }
     status.hidden = true;
