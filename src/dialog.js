@@ -10,12 +10,27 @@
 // unprompted while another is already open).
 
 let queue = Promise.resolve();
+let activeCount = 0;
 
 function enqueue(factory) {
-  const run = queue.then(factory);
-  // Keep the chain alive even if a dialog somehow rejects.
-  queue = run.catch(() => {});
-  return run;
+  if (activeCount === 0) {
+    activeCount++;
+    try {
+      const run = factory();
+      queue = run.catch(() => {}).then(() => { activeCount--; });
+      return run;
+    } catch (err) {
+      activeCount--;
+      return Promise.reject(err);
+    }
+  } else {
+    const run = queue.then(() => {
+      activeCount++;
+      return factory();
+    });
+    queue = run.catch(() => {}).then(() => { activeCount--; });
+    return run;
+  }
 }
 
 let dialogSeq = 0;
