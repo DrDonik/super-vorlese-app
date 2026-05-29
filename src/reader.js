@@ -516,6 +516,7 @@ export class ReaderView {
     clearTimeout(this.hideTimer);
     clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
+    this.readerEl = null;
     if (this.syncSession) {
       this.syncSession.detach();
       this.syncSession = null;

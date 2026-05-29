@@ -250,8 +250,9 @@ button {
   opacity: 0;
 }
 
-.reader.cursor-hidden {
-  cursor: none;
+.reader.cursor-hidden,
+.reader.cursor-hidden * {
+  cursor: none !important;
 }
 
 .reader-back {
