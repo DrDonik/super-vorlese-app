@@ -9,28 +9,15 @@
 // blocking feel of the natives (the reader can raise a "room closed" dialog
 // unprompted while another is already open).
 
-let queue = Promise.resolve();
-let activeCount = 0;
+let queue;
 
 function enqueue(factory) {
-  if (activeCount === 0) {
-    activeCount++;
-    try {
-      const run = factory();
-      queue = run.catch(() => {}).then(() => { activeCount--; });
-      return run;
-    } catch (err) {
-      activeCount--;
-      return Promise.reject(err);
-    }
-  } else {
-    const run = queue.then(() => {
-      activeCount++;
-      return factory();
-    });
-    queue = run.catch(() => {}).then(() => { activeCount--; });
-    return run;
-  }
+  const run = queue ? queue.finally(factory) : factory();
+  const tail = queue = run.catch(() => {});
+  tail.finally(() => {
+    if (queue === tail) queue = undefined;
+  });
+  return run;
 }
 
 let dialogSeq = 0;
@@ -82,7 +69,7 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
     const cleanup = (value) => {
       if (cleaned) return;
       cleaned = true;
-      document.removeEventListener('keydown', onKeyDown, true);
+      document.removeEventListener('keydown', onKeyDown, false);
       overlay.remove();
       if (previouslyFocused && previouslyFocused.isConnected) {
         previouslyFocused.focus();
@@ -135,7 +122,7 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
         trapFocus(e, card);
       }
     };
-    document.addEventListener('keydown', onKeyDown, true);
+    document.addEventListener('keydown', onKeyDown, false);
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) cleanup(cancelValue);
