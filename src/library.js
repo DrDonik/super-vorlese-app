@@ -49,111 +49,119 @@ export class LibraryView {
   }
 
   async renderGrid() {
-    this.cleanupThumbUrls();
-    const grid = this.root.querySelector('.library-grid');
-    const books = await listBooks();
-    if (books.length === 0) {
-      grid.innerHTML = `
-        <div class="empty">
-          <p>Noch keine Bücher.</p>
-          <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
-        </div>
-      `;
-      return;
-    }
-    grid.innerHTML = '';
-    for (const book of books) {
-      const card = document.createElement('div');
-      card.className = 'book-card';
-      card.setAttribute('role', 'button');
-      card.tabIndex = 0;
-      card.setAttribute('aria-label', `${book.title} öffnen`);
-      card.innerHTML = `
-        <div class="book-cover"></div>
-        <div class="book-title"></div>
-        <div class="book-meta"></div>
-        <div class="book-actions">
-          <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
-          <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
-          <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
-        </div>
-      `;
-      const titleEl = card.querySelector('.book-title');
-      titleEl.textContent = book.title;
-      card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
-
-      const cover = card.querySelector('.book-cover');
-      const thumb = await getThumb(book.id);
-      if (thumb) {
-        const url = URL.createObjectURL(thumb);
-        this.thumbUrls.push(url);
-        const img = document.createElement('img');
-        img.src = url;
-        img.alt = '';
-        cover.appendChild(img);
-      } else {
-        cover.classList.add('no-cover');
-        cover.textContent = '📖';
+    // Capture the URLs currently in use and revoke them only after the new
+    // grid is built (in `finally`), so the existing thumbnails stay valid
+    // while this async rebuild is in flight.
+    const oldUrls = this.thumbUrls;
+    this.thumbUrls = [];
+    try {
+      const grid = this.root.querySelector('.library-grid');
+      const books = await listBooks();
+      if (books.length === 0) {
+        grid.innerHTML = `
+          <div class="empty">
+            <p>Noch keine Bücher.</p>
+            <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
+          </div>
+        `;
+        return;
       }
+      grid.innerHTML = '';
+      for (const book of books) {
+        const card = document.createElement('div');
+        card.className = 'book-card';
+        card.setAttribute('role', 'button');
+        card.tabIndex = 0;
+        card.setAttribute('aria-label', `${book.title} öffnen`);
+        card.innerHTML = `
+          <div class="book-cover"></div>
+          <div class="book-title"></div>
+          <div class="book-meta"></div>
+          <div class="book-actions">
+            <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
+            <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
+            <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
+          </div>
+        `;
+        const titleEl = card.querySelector('.book-title');
+        titleEl.textContent = book.title;
+        card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
 
-      const open = () => this.onOpenBook(book.id);
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.book-actions')) return;
-        open();
-      });
-      card.addEventListener('keydown', (e) => {
-        if (e.target !== card) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
+        const cover = card.querySelector('.book-cover');
+        const thumb = await getThumb(book.id);
+        if (thumb) {
+          const url = URL.createObjectURL(thumb);
+          this.thumbUrls.push(url);
+          const img = document.createElement('img');
+          img.src = url;
+          img.alt = '';
+          cover.appendChild(img);
+        } else {
+          cover.classList.add('no-cover');
+          cover.textContent = '📖';
+        }
+
+        const open = () => this.onOpenBook(book.id);
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.book-actions')) return;
           open();
-        }
-      });
+        });
+        card.addEventListener('keydown', (e) => {
+          if (e.target !== card) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            open();
+          }
+        });
 
-      const renameBtn = card.querySelector('.book-rename');
-      renameBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const newTitle = prompt('Neuer Titel:', book.title);
-        if (newTitle === null) return;
-        const trimmed = newTitle.trim();
-        if (!trimmed || trimmed === book.title) return;
-        try {
-          await renameBook(book.id, trimmed);
-        } catch (err) {
-          console.error('Fehler beim Umbenennen', err);
-          alert('Das Buch konnte nicht umbenannt werden.');
-          return;
-        }
-        book.title = trimmed;
-        titleEl.textContent = trimmed;
-        card.setAttribute('aria-label', `${trimmed} öffnen`);
-      });
+        const renameBtn = card.querySelector('.book-rename');
+        renameBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const newTitle = prompt('Neuer Titel:', book.title);
+          if (newTitle === null) return;
+          const trimmed = newTitle.trim();
+          if (!trimmed || trimmed === book.title) return;
+          try {
+            await renameBook(book.id, trimmed);
+          } catch (err) {
+            console.error('Fehler beim Umbenennen', err);
+            alert('Das Buch konnte nicht umbenannt werden.');
+            return;
+          }
+          book.title = trimmed;
+          titleEl.textContent = trimmed;
+          card.setAttribute('aria-label', `${trimmed} öffnen`);
+        });
 
-      const shareBtn = card.querySelector('.book-share');
-      shareBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        shareBtn.disabled = true;
-        try {
-          const bundle = await exportBook(book.id);
-          await shareOrDownload(bundle);
-        } catch (err) {
-          console.error('Teilen fehlgeschlagen', err);
-          alert(`Das Buch konnte nicht geteilt werden: ${err.message || err}`);
-        } finally {
-          shareBtn.disabled = false;
-        }
-      });
+        const shareBtn = card.querySelector('.book-share');
+        shareBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          shareBtn.disabled = true;
+          try {
+            const bundle = await exportBook(book.id);
+            await shareOrDownload(bundle);
+          } catch (err) {
+            console.error('Teilen fehlgeschlagen', err);
+            alert(`Das Buch konnte nicht geteilt werden: ${err.message || err}`);
+          } finally {
+            shareBtn.disabled = false;
+          }
+        });
 
-      const delBtn = card.querySelector('.book-delete');
-      delBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (confirm(`„${book.title}" wirklich löschen?`)) {
-          closeSyncForBook(book.id);
-          await deleteBook(book.id);
-          await this.renderGrid();
-        }
-      });
+        const delBtn = card.querySelector('.book-delete');
+        delBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          if (confirm(`„${book.title}" wirklich löschen?`)) {
+            closeSyncForBook(book.id);
+            await deleteBook(book.id);
+            await this.renderGrid();
+          }
+        });
 
-      grid.appendChild(card);
+        grid.appendChild(card);
+      }
+    } finally {
+      for (const url of oldUrls) URL.revokeObjectURL(url);
     }
   }
 
