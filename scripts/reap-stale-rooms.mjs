@@ -80,12 +80,11 @@ async function main() {
     return;
   }
 
-  let deleted = 0;
-  for (const code of stale) {
-    await client.request({ url: `${DATABASE_URL}/rooms/${code}.json`, method: 'DELETE' });
-    deleted++;
-  }
-  console.log(`Deleted ${deleted} stale room(s).`);
+  // Delete every stale room in a single multi-path update (each code mapped to
+  // null) rather than one round-trip per room.
+  const payload = Object.fromEntries(stale.map((code) => [code, null]));
+  await client.request({ url: `${DATABASE_URL}/rooms.json`, method: 'PATCH', data: payload });
+  console.log(`Deleted ${stale.length} stale room(s).`);
 }
 
 main().catch((err) => {
