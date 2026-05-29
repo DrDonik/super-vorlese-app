@@ -4,3 +4,4 @@ dist-ssr
 .DS_Store
 *.local
 .vite
+.claude/
