@@ -1,0 +1,28 @@
+name: Reap stale sync rooms
+
+on:
+  schedule:
+    # Daily at 03:00 UTC. Abandoned rooms only need eventual cleanup, so the
+    # exact time does not matter; off-peak keeps it out of bedtime hours.
+    - cron: '0 3 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Report stale rooms without deleting them'
+        type: boolean
+        default: false
+
+jobs:
+  reap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Reap stale rooms
+        env:
+          FIREBASE_SA_KEY: ${{ secrets.FIREBASE_SA_KEY }}
+        run: node scripts/reap-stale-rooms.mjs ${{ inputs.dry_run && '--dry-run' || '' }}

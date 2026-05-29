@@ -1,14 +1,15 @@
+import { ROOM_TTL_MS, DATABASE_URL } from './sync-constants.js';
+
 const firebaseConfig = {
   apiKey: "AIzaSyDeI6LYnu-34xlnAx7Onjwa_bI52boW8GM",
   authDomain: "super-vorlese-app.firebaseapp.com",
-  databaseURL: "https://super-vorlese-app-default-rtdb.europe-west1.firebasedatabase.app",
+  databaseURL: DATABASE_URL,
   projectId: "super-vorlese-app",
   storageBucket: "super-vorlese-app.firebasestorage.app",
   messagingSenderId: "759114747696",
   appId: "1:759114747696:web:d2c1718b08bf68d83282f5"
 };
 
-const ROOM_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const STORAGE_KEY = 'sync-rooms';
 
 function loadSavedRooms() {
