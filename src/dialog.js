@@ -63,9 +63,11 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
     }
 
     let cleaned = false;
+    let onKeyDown;
     const cleanup = (value) => {
       if (cleaned) return;
       cleaned = true;
+      document.removeEventListener('keydown', onKeyDown, true);
       overlay.remove();
       if (previouslyFocused && previouslyFocused.isConnected) {
         previouslyFocused.focus();
@@ -96,7 +98,12 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       sync();
     }
 
-    overlay.addEventListener('keydown', (e) => {
+    // Bind to document in the capture phase, not to the overlay: clicking
+    // non-focusable text drops focus to <body>, and keydowns from there bubble
+    // body -> document -> window without ever reaching the overlay. A
+    // document-level capture listener fires regardless of where focus sits, so
+    // Escape, the Tab trap, and propagation-blocking stay reliable.
+    onKeyDown = (e) => {
       if (e.key === 'Escape') {
         e.preventDefault();
         cleanup(cancelValue);
@@ -110,7 +117,8 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       }
       // Keep keys from reaching the reader's window-level page/Escape handlers.
       e.stopPropagation();
-    });
+    };
+    document.addEventListener('keydown', onKeyDown, true);
 
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) cleanup(cancelValue);
