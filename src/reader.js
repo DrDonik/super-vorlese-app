@@ -51,6 +51,7 @@ export class ReaderView {
     this.totalPages = 0;
     this.renderToken = 0;
     this.hideTimer = null;
+    this.pageJumpOpen = false;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
     this.syncSession = null;
@@ -275,11 +276,7 @@ export class ReaderView {
     if (ind.querySelector('.page-jump-input')) return;
 
     clearTimeout(this.hideTimer);
-    this.showChrome = () => {
-      const reader = this.root.querySelector('.reader');
-      if (reader) reader.classList.remove('chrome-hidden');
-      clearTimeout(this.hideTimer);
-    };
+    this.pageJumpOpen = true;
 
     ind.removeAttribute('role');
     ind.removeAttribute('tabindex');
@@ -320,7 +317,7 @@ export class ReaderView {
   closePageJump(page, shouldFocus = false) {
     const ind = this.root.querySelector('.reader-page-indicator');
     if (!ind.querySelector('.page-jump-input')) return;
-    delete this.showChrome;
+    this.pageJumpOpen = false;
     ind.setAttribute('role', 'button');
     ind.setAttribute('tabindex', '0');
     const displayPage = page !== undefined ? page : this.currentPage;
@@ -341,6 +338,7 @@ export class ReaderView {
     if (!reader) return;
     reader.classList.remove('chrome-hidden');
     clearTimeout(this.hideTimer);
+    if (this.pageJumpOpen) return;
     this.hideTimer = setTimeout(() => {
       reader.classList.add('chrome-hidden');
     }, HIDE_CHROME_AFTER_MS);
