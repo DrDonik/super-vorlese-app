@@ -82,6 +82,10 @@ export async function getThumb(id) {
   return get(thumbKey(id));
 }
 
+export async function getThumbs(ids) {
+  return getMany(ids.map(thumbKey));
+}
+
 export async function getMeta(id) {
   return get(metaKey(id));
 }

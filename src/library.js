@@ -1,4 +1,4 @@
-import { listBooks, saveBook, deleteBook, renameBook, getThumb, uid } from './storage.js';
+import { listBooks, saveBook, deleteBook, renameBook, getThumbs, uid } from './storage.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook } from './sync.js';
@@ -19,10 +19,10 @@ export class LibraryView {
     this.onOpenBook = onOpenBook;
     this.onAddPhotos = onAddPhotos;
     this.thumbUrls = [];
+    this.renderId = 0;
   }
 
   async render() {
-    this.cleanupThumbUrls();
     this.root.innerHTML = `
       <header class="library-header">
         <h1>Vorlese-Bibliothek</h1>
@@ -51,7 +51,17 @@ export class LibraryView {
 
   async renderGrid() {
     const grid = this.root.querySelector('.library-grid');
+    if (!grid) return;
+
+    // Tag this run. If a newer renderGrid() starts while we're awaiting, the
+    // stale run bails out at the next checkpoint instead of clobbering the
+    // newer DOM or leaking its object URLs.
+    const renderId = ++this.renderId;
+    const isStale = () => this.renderId !== renderId;
+
     const books = await listBooks();
+    if (isStale()) return;
+
     if (books.length === 0) {
       grid.innerHTML = `
         <div class="empty">
@@ -59,10 +69,20 @@ export class LibraryView {
           <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
         </div>
       `;
+      this.cleanupThumbUrls();
       return;
     }
-    grid.innerHTML = '';
-    for (const book of books) {
+
+    // Fetch all thumbnails in one batch so the build loop below is fully
+    // synchronous: after this last await there is no interleaving point, so
+    // the latest run always completes its DOM swap atomically.
+    const thumbs = await getThumbs(books.map((b) => b.id));
+    if (isStale()) return;
+
+    const newUrls = [];
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < books.length; i++) {
+      const book = books[i];
       const card = document.createElement('div');
       card.className = 'book-card';
       card.setAttribute('role', 'button');
@@ -83,10 +103,10 @@ export class LibraryView {
       card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
 
       const cover = card.querySelector('.book-cover');
-      const thumb = await getThumb(book.id);
+      const thumb = thumbs[i];
       if (thumb) {
         const url = URL.createObjectURL(thumb);
-        this.thumbUrls.push(url);
+        newUrls.push(url);
         const img = document.createElement('img');
         img.src = url;
         img.alt = '';
@@ -153,8 +173,16 @@ export class LibraryView {
         }
       });
 
-      grid.appendChild(card);
+      fragment.appendChild(card);
     }
+
+    // Commit synchronously: replace the grid, then swap in the new URLs and
+    // revoke the batch they replace.
+    grid.innerHTML = '';
+    grid.appendChild(fragment);
+    const oldUrls = this.thumbUrls;
+    this.thumbUrls = newUrls;
+    for (const url of oldUrls) URL.revokeObjectURL(url);
   }
 
   async handleImport(fileList) {
@@ -232,6 +260,9 @@ export class LibraryView {
   }
 
   destroy() {
+    // Invalidate any in-flight renderGrid() run so it bails out instead of
+    // creating URLs into a torn-down view after we have cleaned up.
+    this.renderId++;
     this.cleanupThumbUrls();
   }
 }
