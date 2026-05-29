@@ -260,6 +260,9 @@ export class LibraryView {
   }
 
   destroy() {
+    // Invalidate any in-flight renderGrid() run so it bails out instead of
+    // creating URLs into a torn-down view after we have cleaned up.
+    this.renderId++;
     this.cleanupThumbUrls();
   }
 }
