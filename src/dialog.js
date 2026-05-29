@@ -115,8 +115,8 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
         e.preventDefault();
         cleanup(cancelValue);
       } else if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
+        e.preventDefault();
         if (!primaryBtn.disabled) {
-          e.preventDefault();
           primaryBtn.click();
         }
       } else if (e.key === 'Tab') {
