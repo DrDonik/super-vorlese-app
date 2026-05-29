@@ -1,4 +1,4 @@
-import { listBooks, saveBook, deleteBook, renameBook, getThumb, uid } from './storage.js';
+import { listBooks, saveBook, deleteBook, renameBook, getThumbs, uid } from './storage.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook } from './sync.js';
@@ -66,8 +66,13 @@ export class LibraryView {
         `;
         return;
       }
+      // Fetch all thumbnails in one batch so the build loop below stays
+      // synchronous — no awaits inside the loop means no interleaving if
+      // renderGrid() is triggered again before this run finishes.
+      const thumbs = await getThumbs(books.map((b) => b.id));
       grid.innerHTML = '';
-      for (const book of books) {
+      for (let i = 0; i < books.length; i++) {
+        const book = books[i];
         const card = document.createElement('div');
         card.className = 'book-card';
         card.setAttribute('role', 'button');
@@ -88,7 +93,7 @@ export class LibraryView {
         card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
 
         const cover = card.querySelector('.book-cover');
-        const thumb = await getThumb(book.id);
+        const thumb = thumbs[i];
         if (thumb) {
           const url = URL.createObjectURL(thumb);
           this.thumbUrls.push(url);
