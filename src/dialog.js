@@ -104,6 +104,10 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
     // document-level capture listener fires regardless of where focus sits, so
     // Escape, the Tab trap, and propagation-blocking stay reliable.
     onKeyDown = (e) => {
+      const keysToBlock = ['Escape', 'Enter', 'Tab', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown'];
+      if (keysToBlock.includes(e.key)) {
+        e.stopPropagation();
+      }
       if (e.key === 'Escape') {
         e.preventDefault();
         cleanup(cancelValue);
@@ -115,8 +119,6 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       } else if (e.key === 'Tab') {
         trapFocus(e, card);
       }
-      // Keep keys from reaching the reader's window-level page/Escape handlers.
-      e.stopPropagation();
     };
     document.addEventListener('keydown', onKeyDown, true);
 
