@@ -107,6 +107,7 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
     // phase because stopping propagation during capture would block native
     // keyboard interactions (like cursor movement in inputs or activating buttons).
     onKeyDown = (e) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
       const keysToBlock = ['Escape', 'Enter', 'Tab', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown'];
       if (keysToBlock.includes(e.key)) {
         e.stopPropagation();
