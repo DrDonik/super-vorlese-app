@@ -250,7 +250,7 @@ button {
   opacity: 0;
 }
 
-.reader.chrome-hidden {
+.reader.cursor-hidden {
   cursor: none;
 }
 

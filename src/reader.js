@@ -5,6 +5,8 @@ import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
 import { showAlert } from './dialog.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
+const CHROME_REVEAL_BAND_PX = 80;
+const CURSOR_IDLE_MS = 2500;
 
 class PdfSource {
   constructor(pdf) {
@@ -133,7 +135,12 @@ export class ReaderView {
       }
     });
 
-    reader.addEventListener('mousemove', () => this.showChrome());
+    reader.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      this.showCursor();
+      const rect = reader.getBoundingClientRect();
+      if (e.clientY - rect.top <= CHROME_REVEAL_BAND_PX) this.showChrome();
+    });
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
       this.showChrome();
@@ -345,6 +352,16 @@ export class ReaderView {
     }, HIDE_CHROME_AFTER_MS);
   }
 
+  showCursor() {
+    const reader = this.root.querySelector('.reader');
+    if (!reader) return;
+    reader.classList.remove('cursor-hidden');
+    clearTimeout(this.cursorTimer);
+    this.cursorTimer = setTimeout(() => {
+      reader.classList.add('cursor-hidden');
+    }, CURSOR_IDLE_MS);
+  }
+
   showEnd() {
     const end = this.root.querySelector('.reader-end');
     if (end) end.hidden = false;
@@ -497,6 +514,7 @@ export class ReaderView {
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
     clearTimeout(this.hideTimer);
+    clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
     if (this.syncSession) {
       this.syncSession.detach();
