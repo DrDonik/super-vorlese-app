@@ -50,10 +50,13 @@ export class LibraryView {
 
   async renderGrid() {
     // Capture the URLs currently in use and revoke them only after the new
-    // grid is built (in `finally`), so the existing thumbnails stay valid
-    // while this async rebuild is in flight.
+    // grid is successfully built (in `finally`), so the existing thumbnails
+    // stay valid while this async rebuild is in flight. If the rebuild throws
+    // before replacing the DOM, the old URLs are kept so the visible grid is
+    // not broken.
     const oldUrls = this.thumbUrls;
     this.thumbUrls = [];
+    let success = false;
     try {
       const grid = this.root.querySelector('.library-grid');
       const books = await listBooks();
@@ -64,6 +67,7 @@ export class LibraryView {
             <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
           </div>
         `;
+        success = true;
         return;
       }
       // Fetch all thumbnails in one batch so the build loop below stays
@@ -165,8 +169,17 @@ export class LibraryView {
 
         grid.appendChild(card);
       }
+      success = true;
     } finally {
-      for (const url of oldUrls) URL.revokeObjectURL(url);
+      if (success) {
+        for (const url of oldUrls) URL.revokeObjectURL(url);
+      } else {
+        // Rebuild failed before replacing the grid: drop any partially
+        // created URLs and keep the old ones, which the visible grid is
+        // still using.
+        for (const url of this.thumbUrls) URL.revokeObjectURL(url);
+        this.thumbUrls = oldUrls;
+      }
     }
   }
 
