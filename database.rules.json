@@ -14,7 +14,7 @@
           ".validate": "newData.isString() && newData.val().length <= 40"
         },
         "updatedAt": {
-          ".validate": "newData.isNumber() && newData.val() >= now - 60000 && newData.val() <= now + 60000"
+          ".validate": "newData.isNumber() && newData.val() == now"
         },
         "$other": {
           ".validate": false
