@@ -133,11 +133,17 @@ export class LibraryView {
       const renameBtn = card.querySelector('.book-rename');
       renameBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        const newTitle = await showPrompt({
-          title: 'Buch umbenennen',
-          value: book.title,
-          confirmLabel: 'Speichern',
-        });
+        renameBtn.disabled = true;
+        let newTitle = null;
+        try {
+          newTitle = await showPrompt({
+            title: 'Buch umbenennen',
+            value: book.title,
+            confirmLabel: 'Speichern',
+          });
+        } finally {
+          renameBtn.disabled = false;
+        }
         if (newTitle === null) return;
         const trimmed = newTitle.trim();
         if (!trimmed || trimmed === book.title) return;

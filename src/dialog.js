@@ -12,10 +12,9 @@
 let queue;
 
 function enqueue(factory) {
-  const run = queue ? queue.finally(factory) : factory();
-  const tail = queue = run.catch(() => {});
-  tail.finally(() => {
-    if (queue === tail) queue = undefined;
+  const run = queue ? queue.then(factory, factory) : factory();
+  const p = queue = run.catch(() => {}).then(() => {
+    if (queue === p) queue = undefined;
   });
   return run;
 }
@@ -100,11 +99,11 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       sync();
     }
 
-    // Bind to document in the capture phase, not to the overlay: clicking
-    // non-focusable text drops focus to <body>, and keydowns from there bubble
-    // body -> document -> window without ever reaching the overlay. A
-    // document-level capture listener fires regardless of where focus sits, so
-    // Escape, the Tab trap, and propagation-blocking stay reliable.
+    // Bind to document in the bubbling phase. A document-level listener
+    // fires regardless of where focus sits (even if it drops to <body>),
+    // ensuring Escape and the Tab trap remain reliable. We avoid the capture
+    // phase because stopping propagation during capture would block native
+    // keyboard interactions (like cursor movement in inputs or activating buttons).
     onKeyDown = (e) => {
       const keysToBlock = ['Escape', 'Enter', 'Tab', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown'];
       if (keysToBlock.includes(e.key)) {
