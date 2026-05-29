@@ -133,7 +133,12 @@ function trapFocus(e, card) {
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
-  if (e.shiftKey && document.activeElement === first) {
+  if (!card.contains(document.activeElement)) {
+    // Focus drifted out of the card (e.g. a click on the backdrop or on
+    // non-focusable text); pull it back in instead of letting Tab escape.
+    e.preventDefault();
+    (e.shiftKey ? last : first).focus();
+  } else if (e.shiftKey && document.activeElement === first) {
     e.preventDefault();
     last.focus();
   } else if (!e.shiftKey && document.activeElement === last) {

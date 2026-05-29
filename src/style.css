@@ -905,6 +905,12 @@ button {
   color: #111;
 }
 
+/* Keep dark text on the accent button; the generic .dialog-btn:hover would
+   otherwise win on specificity and wash it out to light-on-yellow. */
+.dialog-btn-primary:not(:disabled):hover {
+  color: #111;
+}
+
 .dialog-btn-primary:disabled {
   background: #2c2c2e;
   color: var(--fg-dim);
