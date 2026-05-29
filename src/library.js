@@ -22,7 +22,6 @@ export class LibraryView {
   }
 
   async render() {
-    this.cleanupThumbUrls();
     this.root.innerHTML = `
       <header class="library-header">
         <h1>Vorlese-Bibliothek</h1>
@@ -50,6 +49,7 @@ export class LibraryView {
   }
 
   async renderGrid() {
+    this.cleanupThumbUrls();
     const grid = this.root.querySelector('.library-grid');
     const books = await listBooks();
     if (books.length === 0) {
