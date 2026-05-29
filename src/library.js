@@ -19,6 +19,7 @@ export class LibraryView {
     this.onOpenBook = onOpenBook;
     this.onAddPhotos = onAddPhotos;
     this.thumbUrls = [];
+    this.renderId = 0;
   }
 
   async render() {
@@ -49,138 +50,139 @@ export class LibraryView {
   }
 
   async renderGrid() {
-    // Capture the URLs currently in use and revoke them only after the new
-    // grid is successfully built (in `finally`), so the existing thumbnails
-    // stay valid while this async rebuild is in flight. If the rebuild throws
-    // before replacing the DOM, the old URLs are kept so the visible grid is
-    // not broken.
-    const oldUrls = this.thumbUrls;
-    this.thumbUrls = [];
-    let success = false;
-    try {
-      const grid = this.root.querySelector('.library-grid');
-      const books = await listBooks();
-      if (books.length === 0) {
-        grid.innerHTML = `
-          <div class="empty">
-            <p>Noch keine Bücher.</p>
-            <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
-          </div>
-        `;
-        success = true;
-        return;
-      }
-      // Fetch all thumbnails in one batch so the build loop below stays
-      // synchronous — no awaits inside the loop means no interleaving if
-      // renderGrid() is triggered again before this run finishes.
-      const thumbs = await getThumbs(books.map((b) => b.id));
-      grid.innerHTML = '';
-      for (let i = 0; i < books.length; i++) {
-        const book = books[i];
-        const card = document.createElement('div');
-        card.className = 'book-card';
-        card.setAttribute('role', 'button');
-        card.tabIndex = 0;
-        card.setAttribute('aria-label', `${book.title} öffnen`);
-        card.innerHTML = `
-          <div class="book-cover"></div>
-          <div class="book-title"></div>
-          <div class="book-meta"></div>
-          <div class="book-actions">
-            <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
-            <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
-            <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
-          </div>
-        `;
-        const titleEl = card.querySelector('.book-title');
-        titleEl.textContent = book.title;
-        card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
+    const grid = this.root.querySelector('.library-grid');
+    if (!grid) return;
 
-        const cover = card.querySelector('.book-cover');
-        const thumb = thumbs[i];
-        if (thumb) {
-          const url = URL.createObjectURL(thumb);
-          this.thumbUrls.push(url);
-          const img = document.createElement('img');
-          img.src = url;
-          img.alt = '';
-          cover.appendChild(img);
-        } else {
-          cover.classList.add('no-cover');
-          cover.textContent = '📖';
-        }
+    // Tag this run. If a newer renderGrid() starts while we're awaiting, the
+    // stale run bails out at the next checkpoint instead of clobbering the
+    // newer DOM or leaking its object URLs.
+    const renderId = ++this.renderId;
+    const isStale = () => this.renderId !== renderId;
 
-        const open = () => this.onOpenBook(book.id);
-        card.addEventListener('click', (e) => {
-          if (e.target.closest('.book-actions')) return;
-          open();
-        });
-        card.addEventListener('keydown', (e) => {
-          if (e.target !== card) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            open();
-          }
-        });
+    const books = await listBooks();
+    if (isStale()) return;
 
-        const renameBtn = card.querySelector('.book-rename');
-        renameBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          const newTitle = prompt('Neuer Titel:', book.title);
-          if (newTitle === null) return;
-          const trimmed = newTitle.trim();
-          if (!trimmed || trimmed === book.title) return;
-          try {
-            await renameBook(book.id, trimmed);
-          } catch (err) {
-            console.error('Fehler beim Umbenennen', err);
-            alert('Das Buch konnte nicht umbenannt werden.');
-            return;
-          }
-          book.title = trimmed;
-          titleEl.textContent = trimmed;
-          card.setAttribute('aria-label', `${trimmed} öffnen`);
-        });
-
-        const shareBtn = card.querySelector('.book-share');
-        shareBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          shareBtn.disabled = true;
-          try {
-            const bundle = await exportBook(book.id);
-            await shareOrDownload(bundle);
-          } catch (err) {
-            console.error('Teilen fehlgeschlagen', err);
-            alert(`Das Buch konnte nicht geteilt werden: ${err.message || err}`);
-          } finally {
-            shareBtn.disabled = false;
-          }
-        });
-
-        const delBtn = card.querySelector('.book-delete');
-        delBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          if (confirm(`„${book.title}" wirklich löschen?`)) {
-            closeSyncForBook(book.id);
-            await deleteBook(book.id);
-            await this.renderGrid();
-          }
-        });
-
-        grid.appendChild(card);
-      }
-      success = true;
-    } finally {
-      if (success) {
-        for (const url of oldUrls) URL.revokeObjectURL(url);
-      } else {
-        // Rebuild failed before replacing the grid: drop any partially
-        // created URLs and keep the old ones, which the visible grid is
-        // still using.
-        for (const url of this.thumbUrls) URL.revokeObjectURL(url);
-        this.thumbUrls = oldUrls;
-      }
+    if (books.length === 0) {
+      grid.innerHTML = `
+        <div class="empty">
+          <p>Noch keine Bücher.</p>
+          <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
+        </div>
+      `;
+      this.cleanupThumbUrls();
+      return;
     }
+
+    // Fetch all thumbnails in one batch so the build loop below is fully
+    // synchronous: after this last await there is no interleaving point, so
+    // the latest run always completes its DOM swap atomically.
+    const thumbs = await getThumbs(books.map((b) => b.id));
+    if (isStale()) return;
+
+    const newUrls = [];
+    const fragment = document.createDocumentFragment();
+    for (let i = 0; i < books.length; i++) {
+      const book = books[i];
+      const card = document.createElement('div');
+      card.className = 'book-card';
+      card.setAttribute('role', 'button');
+      card.tabIndex = 0;
+      card.setAttribute('aria-label', `${book.title} öffnen`);
+      card.innerHTML = `
+        <div class="book-cover"></div>
+        <div class="book-title"></div>
+        <div class="book-meta"></div>
+        <div class="book-actions">
+          <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
+          <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
+          <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
+        </div>
+      `;
+      const titleEl = card.querySelector('.book-title');
+      titleEl.textContent = book.title;
+      card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
+
+      const cover = card.querySelector('.book-cover');
+      const thumb = thumbs[i];
+      if (thumb) {
+        const url = URL.createObjectURL(thumb);
+        newUrls.push(url);
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = '';
+        cover.appendChild(img);
+      } else {
+        cover.classList.add('no-cover');
+        cover.textContent = '📖';
+      }
+
+      const open = () => this.onOpenBook(book.id);
+      card.addEventListener('click', (e) => {
+        if (e.target.closest('.book-actions')) return;
+        open();
+      });
+      card.addEventListener('keydown', (e) => {
+        if (e.target !== card) return;
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          open();
+        }
+      });
+
+      const renameBtn = card.querySelector('.book-rename');
+      renameBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const newTitle = prompt('Neuer Titel:', book.title);
+        if (newTitle === null) return;
+        const trimmed = newTitle.trim();
+        if (!trimmed || trimmed === book.title) return;
+        try {
+          await renameBook(book.id, trimmed);
+        } catch (err) {
+          console.error('Fehler beim Umbenennen', err);
+          alert('Das Buch konnte nicht umbenannt werden.');
+          return;
+        }
+        book.title = trimmed;
+        titleEl.textContent = trimmed;
+        card.setAttribute('aria-label', `${trimmed} öffnen`);
+      });
+
+      const shareBtn = card.querySelector('.book-share');
+      shareBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        shareBtn.disabled = true;
+        try {
+          const bundle = await exportBook(book.id);
+          await shareOrDownload(bundle);
+        } catch (err) {
+          console.error('Teilen fehlgeschlagen', err);
+          alert(`Das Buch konnte nicht geteilt werden: ${err.message || err}`);
+        } finally {
+          shareBtn.disabled = false;
+        }
+      });
+
+      const delBtn = card.querySelector('.book-delete');
+      delBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (confirm(`„${book.title}" wirklich löschen?`)) {
+          closeSyncForBook(book.id);
+          await deleteBook(book.id);
+          await this.renderGrid();
+        }
+      });
+
+      fragment.appendChild(card);
+    }
+
+    // Commit synchronously: replace the grid, then swap in the new URLs and
+    // revoke the batch they replace.
+    grid.innerHTML = '';
+    grid.appendChild(fragment);
+    const oldUrls = this.thumbUrls;
+    this.thumbUrls = newUrls;
+    for (const url of oldUrls) URL.revokeObjectURL(url);
   }
 
   async handleImport(fileList) {
