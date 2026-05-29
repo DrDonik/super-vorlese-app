@@ -211,6 +211,7 @@ export class CameraView {
         title: 'Aufnahme verwerfen?',
         message: 'Die Fotos gehen verloren.',
         confirmLabel: 'Verwerfen',
+        destructive: true,
       });
       if (!discard) return;
     }

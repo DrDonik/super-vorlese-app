@@ -79,6 +79,7 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
     const row = document.createElement('div');
     row.className = 'dialog-buttons';
     let primaryBtn = null;
+    let defaultFocusBtn = null;
     for (const btn of buttons) {
       const el = document.createElement('button');
       el.type = 'button';
@@ -88,6 +89,7 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
         cleanup(inputEl && btn.primary ? inputEl.value : btn.value);
       });
       if (btn.primary) primaryBtn = el;
+      if (btn.defaultFocus) defaultFocusBtn = el;
       row.appendChild(el);
     }
     card.appendChild(row);
@@ -115,7 +117,7 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       } else if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
         if (!primaryBtn.disabled) {
           e.preventDefault();
-          cleanup(inputEl.value);
+          primaryBtn.click();
         }
       } else if (e.key === 'Tab') {
         trapFocus(e, card);
@@ -133,6 +135,8 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
     if (inputEl) {
       inputEl.focus();
       inputEl.select();
+    } else if (defaultFocusBtn) {
+      defaultFocusBtn.focus();
     } else if (primaryBtn) {
       primaryBtn.focus();
     }
@@ -167,12 +171,12 @@ export function showAlert({ title, message, confirmLabel = 'OK' } = {}) {
   });
 }
 
-export function showConfirm({ title, message, confirmLabel = 'OK', cancelLabel = 'Abbrechen' } = {}) {
+export function showConfirm({ title, message, confirmLabel = 'OK', cancelLabel = 'Abbrechen', destructive = false } = {}) {
   return openDialog({
     title,
     message,
     buttons: [
-      { label: cancelLabel, value: false },
+      { label: cancelLabel, value: false, defaultFocus: destructive },
       { label: confirmLabel, value: true, primary: true },
     ],
     cancelValue: false,

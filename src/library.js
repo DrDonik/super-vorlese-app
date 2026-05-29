@@ -181,6 +181,7 @@ export class LibraryView {
           title: 'Buch löschen',
           message: `„${book.title}" wirklich löschen?`,
           confirmLabel: 'Löschen',
+          destructive: true,
         });
         if (confirmed) {
           closeSyncForBook(book.id);
