@@ -139,7 +139,9 @@ export class ReaderView {
     reader.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
       this.showCursor();
-      if (e.clientY <= CHROME_REVEAL_BAND_PX) this.showChrome();
+      const isOverBand = e.clientY <= CHROME_REVEAL_BAND_PX;
+      const isChromeVisible = !reader.classList.contains('chrome-hidden');
+      if (isOverBand || isChromeVisible) this.showChrome();
     });
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
@@ -355,7 +357,9 @@ export class ReaderView {
   showCursor() {
     const reader = this.readerEl;
     if (!reader) return;
-    reader.classList.remove('cursor-hidden');
+    if (reader.classList.contains('cursor-hidden')) {
+      reader.classList.remove('cursor-hidden');
+    }
     clearTimeout(this.cursorTimer);
     this.cursorTimer = setTimeout(() => {
       reader.classList.add('cursor-hidden');
