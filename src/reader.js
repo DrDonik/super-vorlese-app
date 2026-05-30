@@ -139,7 +139,7 @@ export class ReaderView {
     reader.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
       this.showCursor();
-      if (e.clientY <= CHROME_REVEAL_BAND_PX) this.showChrome();
+      if (e.clientY <= CHROME_REVEAL_BAND_PX || e.target.closest('.reader-chrome')) this.showChrome();
     });
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
@@ -358,10 +358,14 @@ export class ReaderView {
     if (reader.classList.contains('cursor-hidden')) {
       reader.classList.remove('cursor-hidden');
     }
-    clearTimeout(this.cursorTimer);
-    this.cursorTimer = setTimeout(() => {
-      reader.classList.add('cursor-hidden');
-    }, CURSOR_IDLE_MS);
+    const now = Date.now();
+    if (!this._lastCursorReset || now - this._lastCursorReset > 250) {
+      this._lastCursorReset = now;
+      clearTimeout(this.cursorTimer);
+      this.cursorTimer = setTimeout(() => {
+        reader.classList.add('cursor-hidden');
+      }, CURSOR_IDLE_MS);
+    }
   }
 
   showEnd() {
