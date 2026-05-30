@@ -5,6 +5,8 @@ import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
 import { showAlert } from './dialog.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
+const CHROME_REVEAL_BAND_PX = 80;
+const CURSOR_IDLE_MS = 2500;
 
 class PdfSource {
   constructor(pdf) {
@@ -106,6 +108,7 @@ export class ReaderView {
     `;
 
     const reader = this.root.querySelector('.reader');
+    this.readerEl = reader;
     reader.querySelector('.reader-back').addEventListener('click', () => this.close());
     reader.querySelector('.reader-zone-prev').addEventListener('click', () => this.goPrev());
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
@@ -133,7 +136,11 @@ export class ReaderView {
       }
     });
 
-    reader.addEventListener('mousemove', () => this.showChrome());
+    reader.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'mouse') return;
+      this.showCursor();
+      if (e.clientY <= CHROME_REVEAL_BAND_PX || e.target.closest('.reader-chrome')) this.showChrome();
+    });
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
       this.showChrome();
@@ -335,7 +342,7 @@ export class ReaderView {
   }
 
   showChrome() {
-    const reader = this.root.querySelector('.reader');
+    const reader = this.readerEl;
     if (!reader) return;
     reader.classList.remove('chrome-hidden');
     clearTimeout(this.hideTimer);
@@ -343,6 +350,22 @@ export class ReaderView {
     this.hideTimer = setTimeout(() => {
       reader.classList.add('chrome-hidden');
     }, HIDE_CHROME_AFTER_MS);
+  }
+
+  showCursor() {
+    const reader = this.readerEl;
+    if (!reader) return;
+    if (reader.classList.contains('cursor-hidden')) {
+      reader.classList.remove('cursor-hidden');
+    }
+    const now = Date.now();
+    if (!this._lastCursorReset || now - this._lastCursorReset > 250) {
+      this._lastCursorReset = now;
+      clearTimeout(this.cursorTimer);
+      this.cursorTimer = setTimeout(() => {
+        reader.classList.add('cursor-hidden');
+      }, CURSOR_IDLE_MS);
+    }
   }
 
   showEnd() {
@@ -497,7 +520,9 @@ export class ReaderView {
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
     clearTimeout(this.hideTimer);
+    clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
+    this.readerEl = null;
     if (this.syncSession) {
       this.syncSession.detach();
       this.syncSession = null;
