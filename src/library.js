@@ -26,7 +26,7 @@ export class LibraryView {
   async render() {
     this.root.innerHTML = `
       <header class="library-header">
-        <h1>Vorlese-Bibliothek</h1>
+        <h1>Bibliothek</h1>
         <div class="library-actions">
           <button class="add-book add-photos" type="button">
             <span>📷 Fotografieren</span>
