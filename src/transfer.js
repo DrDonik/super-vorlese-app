@@ -140,6 +140,9 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
       if (expected) onProgress?.(Math.min(received / expected, 1));
     };
     channel.onerror = () => fail(new Error('channel-error'));
+    // If the holder closes the channel (e.g. it hit an error mid-send), fail
+    // immediately rather than waiting out the idle timeout.
+    channel.onclose = () => fail(new Error('channel-closed'));
 
     // Holder's answer.
     const offAnswer = fb.onValue(signalRef('/answer'), async (snap) => {
@@ -192,23 +195,28 @@ export function serveBook(fb, roomCode, getBundle) {
   }
 
   async function sendBundle(channel) {
-    const { blob } = await getBundle();
-    const bytes = new Uint8Array(await blob.arrayBuffer());
-    channel.send(JSON.stringify({ type: 'meta', size: bytes.byteLength }));
-    let offset = 0;
-    while (offset < bytes.byteLength) {
-      if (channel.bufferedAmount > MAX_BUFFERED) await waitForDrain(channel);
-      if (channel.readyState !== 'open') return;
-      const end = Math.min(offset + CHUNK_SIZE, bytes.byteLength);
-      // Send a freshly sliced ArrayBuffer rather than a subarray view: some
-      // engines transmit a view's entire backing buffer, which would inflate
-      // and corrupt the transfer.
-      channel.send(bytes.buffer.slice(offset, end));
-      offset = end;
+    try {
+      const { blob } = await getBundle();
+      const bytes = new Uint8Array(await blob.arrayBuffer());
+      channel.send(JSON.stringify({ type: 'meta', size: bytes.byteLength }));
+      let offset = 0;
+      while (offset < bytes.byteLength) {
+        if (channel.bufferedAmount > MAX_BUFFERED) await waitForDrain(channel);
+        if (channel.readyState !== 'open') return;
+        const end = Math.min(offset + CHUNK_SIZE, bytes.byteLength);
+        // Send a freshly sliced ArrayBuffer rather than a subarray view: some
+        // engines transmit a view's entire backing buffer, which would inflate
+        // and corrupt the transfer.
+        channel.send(bytes.buffer.slice(offset, end));
+        offset = end;
+      }
+      // The channel is ordered + reliable, so the chunks are delivered before
+      // this marker even if some are still queued locally.
+      channel.send(JSON.stringify({ type: 'done' }));
+    } catch {
+      // Close so the receiver fails fast instead of waiting out its idle timeout.
+      try { channel.close(); } catch {}
     }
-    // The channel is ordered + reliable, so the chunks are delivered before
-    // this marker even if some are still queued locally.
-    channel.send(JSON.stringify({ type: 'done' }));
   }
 
   async function handleOffer(offer) {
@@ -228,7 +236,7 @@ export function serveBook(fb, roomCode, getBundle) {
       const channel = e.channel;
       channel.binaryType = 'arraybuffer';
       channel.bufferedAmountLowThreshold = BUFFER_LOW;
-      channel.onopen = () => sendBundle(channel).catch(() => {});
+      channel.onopen = () => sendBundle(channel);
     };
 
     ctx.offIce = fb.onChildAdded(signalRef('/ice'), (snap) => {
@@ -239,13 +247,19 @@ export function serveBook(fb, roomCode, getBundle) {
       else pc.addIceCandidate(candidate).catch(() => {});
     });
 
-    await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
-    remoteSet = true;
-    for (const c of pendingIce) await pc.addIceCandidate(c).catch(() => {});
-    pendingIce.length = 0;
-    const answer = await pc.createAnswer();
-    await pc.setLocalDescription(answer);
-    await fb.set(signalRef('/answer'), { from: myId, sdp: answer.sdp });
+    try {
+      await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
+      remoteSet = true;
+      for (const c of pendingIce) await pc.addIceCandidate(c).catch(() => {});
+      pendingIce.length = 0;
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await fb.set(signalRef('/answer'), { from: myId, sdp: answer.sdp });
+    } catch {
+      // Negotiation failed: drop the half-built connection and its ICE
+      // listener instead of leaving them dangling.
+      if (active === ctx) closeActive();
+    }
   }
 
   const offOffer = fb.onValue(signalRef('/offer'), (snap) => {
