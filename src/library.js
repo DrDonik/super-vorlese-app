@@ -1,8 +1,12 @@
-import { listBooks, saveBook, deleteBook, renameBook, getThumbs, uid } from './storage.js';
+import {
+  listBooks, saveBook, deleteBook, renameBook, getThumbs, uid,
+  ensureContentHash, findBookByContentHash,
+} from './storage.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
-import { closeSyncForBook } from './sync.js';
-import { showAlert, showConfirm, showPrompt } from './dialog.js';
+import { closeSyncForBook, lookupRoom, getFirebase } from './sync.js';
+import { receiveBook } from './transfer.js';
+import { showAlert, showConfirm, showPrompt, showProgress } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
@@ -15,10 +19,11 @@ function deriveTitle(filename) {
 }
 
 export class LibraryView {
-  constructor(root, { onOpenBook, onAddPhotos }) {
+  constructor(root, { onOpenBook, onAddPhotos, onJoinBook }) {
     this.root = root;
     this.onOpenBook = onOpenBook;
     this.onAddPhotos = onAddPhotos;
+    this.onJoinBook = onJoinBook;
     this.thumbUrls = [];
     this.renderId = 0;
   }
@@ -64,12 +69,15 @@ export class LibraryView {
     if (isStale()) return;
 
     if (books.length === 0) {
-      grid.innerHTML = `
-        <div class="empty">
-          <p>Noch keine Bücher.</p>
-          <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
-        </div>
+      grid.innerHTML = '';
+      grid.appendChild(this.buildConnectTile());
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.innerHTML = `
+        <p>Noch keine Bücher.</p>
+        <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
       `;
+      grid.appendChild(empty);
       this.cleanupThumbUrls();
       return;
     }
@@ -82,6 +90,7 @@ export class LibraryView {
 
     const newUrls = [];
     const fragment = document.createDocumentFragment();
+    fragment.appendChild(this.buildConnectTile());
     for (let i = 0; i < books.length; i++) {
       const book = books[i];
       const card = document.createElement('div');
@@ -200,6 +209,94 @@ export class LibraryView {
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
+  }
+
+  // The permanent first tile in the library: starts a synced reading session
+  // with a partner. Framed around the intent ("read together"), not as a third
+  // way to import a book — joining may fetch the book, or use a copy you have.
+  buildConnectTile() {
+    const tile = document.createElement('div');
+    tile.className = 'book-card connect-card';
+    tile.setAttribute('role', 'button');
+    tile.tabIndex = 0;
+    tile.setAttribute('aria-label', 'Gemeinsam lesen');
+    tile.innerHTML = `
+      <div class="book-cover connect-cover">👥</div>
+      <div class="book-title">Gemeinsam lesen</div>
+      <div class="book-meta">Code eingeben, um euch zu verbinden</div>
+    `;
+    tile.addEventListener('click', () => this.startJoin());
+    tile.addEventListener('keydown', (e) => {
+      if (e.target !== tile) return;
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        this.startJoin();
+      }
+    });
+    return tile;
+  }
+
+  async startJoin() {
+    const entered = await showPrompt({
+      title: 'Gemeinsam lesen',
+      message: 'Gib den Code deines Lesepartners ein.',
+      placeholder: 'Code',
+      confirmLabel: 'Verbinden',
+    });
+    if (entered === null) return;
+
+    let room;
+    try {
+      room = await lookupRoom(entered);
+    } catch (err) {
+      await showAlert({ title: 'Gemeinsam lesen', message: err.message || 'Beitreten fehlgeschlagen.' });
+      return;
+    }
+
+    if (!room.book || !room.book.hash) {
+      await showAlert({
+        title: 'Gemeinsam lesen',
+        message: 'Dieser Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Raum neu erstellen.',
+      });
+      return;
+    }
+
+    // Already have this exact book? Open the local copy and sync — no download.
+    const local = await findBookByContentHash(room.book.hash);
+    if (local) {
+      this.onJoinBook?.(local.id, room.code);
+      return;
+    }
+
+    // Otherwise fetch it from the partner over WebRTC.
+    const progress = showProgress({
+      title: 'Buch wird geladen',
+      message: `„${room.book.title || 'Buch'}" wird von deinem Lesepartner gesendet…`,
+    });
+    let newBookId = null;
+    try {
+      const fb = await getFirebase();
+      const bundleBlob = await receiveBook(fb, room.code, {
+        onProgress: (fraction) => progress.update(fraction),
+      });
+      progress.update(1, 'Buch wird gespeichert…');
+      const { id } = await importBundle(bundleBlob);
+      newBookId = id;
+      const gotHash = await ensureContentHash(id);
+      if (gotHash !== room.book.hash) {
+        throw new Error('integrity');
+      }
+      progress.close();
+      this.onJoinBook?.(id, room.code);
+    } catch (err) {
+      progress.close();
+      if (newBookId) await deleteBook(newBookId).catch(() => {});
+      console.error('Buch-Übertragung fehlgeschlagen', err);
+      await showAlert({
+        title: 'Verbindung nicht möglich',
+        message: 'Dein Lesepartner muss online und im Buch sein, um es zu senden. Bitte versuche es erneut.',
+      });
+    }
   }
 
   async handleImport(fileList) {

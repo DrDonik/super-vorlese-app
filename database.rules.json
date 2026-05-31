@@ -16,6 +16,73 @@
         "updatedAt": {
           ".validate": "newData.isNumber() && newData.val() == now"
         },
+        "book": {
+          ".validate": "newData.hasChildren(['hash', 'type'])",
+          "hash": {
+            ".validate": "newData.isString() && newData.val().length <= 64"
+          },
+          "title": {
+            ".validate": "newData.isString() && newData.val().length <= 200"
+          },
+          "pageCount": {
+            ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 100000"
+          },
+          "type": {
+            ".validate": "newData.isString() && (newData.val() == 'pdf' || newData.val() == 'photos')"
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
+        "signal": {
+          "offer": {
+            ".validate": "newData.hasChildren(['sdp', 'from'])",
+            "sdp": {
+              ".validate": "newData.isString() && newData.val().length <= 100000"
+            },
+            "from": {
+              ".validate": "newData.isString() && newData.val().length <= 40"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "answer": {
+            ".validate": "newData.hasChildren(['sdp', 'from'])",
+            "sdp": {
+              ".validate": "newData.isString() && newData.val().length <= 100000"
+            },
+            "from": {
+              ".validate": "newData.isString() && newData.val().length <= 40"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "ice": {
+            "$candidateId": {
+              ".validate": "newData.hasChildren(['from', 'candidate'])",
+              "from": {
+                ".validate": "newData.isString() && newData.val().length <= 40"
+              },
+              "candidate": {
+                ".validate": "newData.isString() && newData.val().length <= 4000"
+              },
+              "sdpMid": {
+                ".validate": "newData.isString() && newData.val().length <= 40"
+              },
+              "sdpMLineIndex": {
+                ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000"
+              },
+              "$other": {
+                ".validate": false
+              }
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
         "$other": {
           ".validate": false
         }

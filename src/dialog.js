@@ -163,6 +163,59 @@ function trapFocus(e, card) {
   }
 }
 
+// A non-interactive progress overlay for long, unattended operations (e.g.
+// receiving a book over WebRTC). It does not go through the dialog queue: it
+// carries no choice for the user, and the caller closes it explicitly when the
+// operation finishes. Returns a controller with update(fraction, text) and
+// close().
+export function showProgress({ title, message } = {}) {
+  const overlay = document.createElement('div');
+  overlay.className = 'dialog-overlay';
+
+  const card = document.createElement('div');
+  card.className = 'dialog-card';
+  card.setAttribute('role', 'dialog');
+  card.setAttribute('aria-modal', 'true');
+
+  if (title) {
+    const titleEl = document.createElement('div');
+    titleEl.className = 'dialog-title';
+    titleEl.textContent = title;
+    card.appendChild(titleEl);
+  }
+
+  const msgEl = document.createElement('div');
+  msgEl.className = 'dialog-message';
+  msgEl.setAttribute('aria-live', 'polite');
+  msgEl.textContent = message || '';
+  card.appendChild(msgEl);
+
+  const track = document.createElement('div');
+  track.className = 'progress-track';
+  const fill = document.createElement('div');
+  fill.className = 'progress-fill';
+  track.appendChild(fill);
+  card.appendChild(track);
+
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+
+  let closed = false;
+  return {
+    update(fraction, text) {
+      if (typeof fraction === 'number') {
+        fill.style.width = `${Math.round(Math.max(0, Math.min(1, fraction)) * 100)}%`;
+      }
+      if (text != null) msgEl.textContent = text;
+    },
+    close() {
+      if (closed) return;
+      closed = true;
+      overlay.remove();
+    },
+  };
+}
+
 export function showAlert({ title, message, confirmLabel = 'OK' } = {}) {
   return openDialog({
     title,

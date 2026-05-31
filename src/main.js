@@ -16,11 +16,12 @@ function showLibrary() {
   mount(new LibraryView(app, {
     onOpenBook: (id) => showReader(id),
     onAddPhotos: () => showCamera(),
+    onJoinBook: (id, code) => showReader(id, code),
   }));
 }
 
-function showReader(bookId) {
-  mount(new ReaderView(app, { bookId, onClose: () => showLibrary() }));
+function showReader(bookId, joinCode = null) {
+  mount(new ReaderView(app, { bookId, joinCode, onClose: () => showLibrary() }));
 }
 
 function showCamera() {

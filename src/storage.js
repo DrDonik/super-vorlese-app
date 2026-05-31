@@ -25,6 +25,30 @@ export function uid() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+async function sha256Hex(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// A stable, device-independent fingerprint of a book's content. Two people who
+// hold byte-identical copies of the same book share the same hash, which lets
+// the sync layer recognise "you already have this book" and avoid re-sending
+// it over the network.
+async function hashBook({ type, fileBlob, pages }) {
+  if (type === 'photos') {
+    const buffers = await Promise.all(pages.map((p) => p.arrayBuffer()));
+    const total = buffers.reduce((n, b) => n + b.byteLength, 0);
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const b of buffers) {
+      merged.set(new Uint8Array(b), offset);
+      offset += b.byteLength;
+    }
+    return sha256Hex(merged);
+  }
+  return sha256Hex(new Uint8Array(await fileBlob.arrayBuffer()));
+}
+
 export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
@@ -37,6 +61,7 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
     pageCount,
     addedAt: Date.now(),
     lastPage: 1,
+    contentHash: await hashBook({ type: 'pdf', fileBlob }),
   });
 }
 
@@ -52,6 +77,7 @@ export async function savePhotoBook({ id, title, pages, thumbBlob }) {
     pageCount: pages.length,
     addedAt: Date.now(),
     lastPage: 1,
+    contentHash: await hashBook({ type: 'photos', pages }),
   });
 }
 
@@ -88,6 +114,42 @@ export async function getThumbs(ids) {
 
 export async function getMeta(id) {
   return get(metaKey(id));
+}
+
+// Returns the book's content hash, computing and persisting it on first access
+// for books saved before hashing existed (or imported by an older version).
+export async function ensureContentHash(id) {
+  const meta = await get(metaKey(id));
+  if (!meta) return null;
+  if (meta.contentHash) return meta.contentHash;
+  let contentHash;
+  if (meta.type === 'photos') {
+    const pages = await getPhotoPages(id, meta.pageCount);
+    if (pages.some((p) => !p)) return null;
+    contentHash = await hashBook({ type: 'photos', pages });
+  } else {
+    const fileBlob = await get(bookKey(id));
+    if (!fileBlob) return null;
+    contentHash = await hashBook({ type: 'pdf', fileBlob });
+  }
+  meta.contentHash = contentHash;
+  await set(metaKey(id), meta);
+  return contentHash;
+}
+
+// Finds a locally stored book whose content matches the given hash, or null.
+// Backfills missing hashes as it scans so the match works for older books too.
+export async function findBookByContentHash(hash) {
+  if (!hash) return null;
+  const books = await listBooks();
+  for (const book of books) {
+    if (book.contentHash === hash) return book;
+  }
+  for (const book of books) {
+    if (book.contentHash) continue;
+    if ((await ensureContentHash(book.id)) === hash) return getMeta(book.id);
+  }
+  return null;
 }
 
 export async function updateLastPage(id, page) {

@@ -159,6 +159,22 @@ button {
   font-size: 48px;
 }
 
+/* "Gemeinsam lesen" tile: a permanent first cell that starts a synced session.
+   Dashed, action-like styling sets it apart from the solid book cards so it
+   reads as "do something" rather than "another book". */
+.connect-card {
+  background: var(--surface);
+  border: 2px dashed var(--surface-line);
+}
+
+.connect-card:hover {
+  background: var(--surface-line);
+}
+
+.connect-cover {
+  background: transparent;
+}
+
 .book-cover img {
   width: 100%;
   height: 100%;
@@ -923,6 +939,25 @@ button {
   color: var(--fg);
   font-size: 16px;
   width: 100%;
+}
+
+/* Progress bar for unattended flows (book transfer). --accent marks the
+   in-progress completing action, consistent with other flow feedback. */
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.2s ease;
 }
 
 .dialog-input:focus {
