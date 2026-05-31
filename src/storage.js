@@ -42,11 +42,11 @@ async function hashBook({ type, fileBlob, pages }) {
     // on the iPads/phones this app targets.
     const pageHashes = [];
     for (const page of pages) {
-      pageHashes.push(await sha256Hex(new Uint8Array(await page.arrayBuffer())));
+      pageHashes.push(await sha256Hex(await page.arrayBuffer()));
     }
     return sha256Hex(new TextEncoder().encode(pageHashes.join('')));
   }
-  return sha256Hex(new Uint8Array(await fileBlob.arrayBuffer()));
+  return sha256Hex(await fileBlob.arrayBuffer());
 }
 
 export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
@@ -147,7 +147,10 @@ export async function findBookByContentHash(hash) {
   }
   for (const book of books) {
     if (book.contentHash) continue;
-    if ((await ensureContentHash(book.id)) === hash) return getMeta(book.id);
+    if ((await ensureContentHash(book.id)) === hash) {
+      book.contentHash = hash;
+      return book;
+    }
   }
   return null;
 }

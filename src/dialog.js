@@ -200,6 +200,21 @@ export function showProgress({ title, message } = {}) {
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 
+  // The overlay is modal but carries no controls. Park focus on the card and
+  // swallow Tab so keyboard focus can't slip to background actions (library
+  // tiles, book cards) while the transfer runs. We block only Tab, leaving
+  // typing and assistive-technology shortcuts untouched.
+  const previouslyFocused = document.activeElement;
+  card.tabIndex = -1;
+  card.focus();
+  const onKeyDown = (e) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      card.focus();
+    }
+  };
+  document.addEventListener('keydown', onKeyDown, true);
+
   let closed = false;
   return {
     update(fraction, text) {
@@ -211,7 +226,9 @@ export function showProgress({ title, message } = {}) {
     close() {
       if (closed) return;
       closed = true;
+      document.removeEventListener('keydown', onKeyDown, true);
       overlay.remove();
+      if (previouslyFocused && previouslyFocused.isConnected) previouslyFocused.focus();
     },
   };
 }

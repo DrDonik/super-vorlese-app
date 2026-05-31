@@ -200,7 +200,10 @@ export function serveBook(fb, roomCode, getBundle) {
       if (channel.bufferedAmount > MAX_BUFFERED) await waitForDrain(channel);
       if (channel.readyState !== 'open') return;
       const end = Math.min(offset + CHUNK_SIZE, bytes.byteLength);
-      channel.send(bytes.subarray(offset, end));
+      // Send a freshly sliced ArrayBuffer rather than a subarray view: some
+      // engines transmit a view's entire backing buffer, which would inflate
+      // and corrupt the transfer.
+      channel.send(bytes.buffer.slice(offset, end));
       offset = end;
     }
     // The channel is ordered + reliable, so the chunks are delivered before
