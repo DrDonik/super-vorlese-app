@@ -260,7 +260,10 @@ button {
   /* Slide rather than fade: animating opacity isolates the bar into its own
      group, which disables the children's backdrop-filter until opacity hits 1
      and makes the blur pop in abruptly (a visible flicker). A transform keeps
-     the bar fully opaque throughout, so the blur stays live the whole time. */
+     the bar fully opaque throughout, so the blur stays live the whole time.
+     Deliberately no will-change here: promoting the bar to its own compositor
+     layer reintroduces the very isolation that breaks the children's blur. */
+  transform: translateY(0);
   transition: transform 0.4s;
   pointer-events: none;
 }
