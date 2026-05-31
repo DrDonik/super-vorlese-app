@@ -42,7 +42,7 @@ function makeClient() {
   } catch {
     throw new Error('FIREBASE_SA_KEY is not valid JSON.');
   }
-  if (!key.client_email || !key.private_key) {
+  if (!key || typeof key !== 'object' || !key.client_email || !key.private_key) {
     throw new Error('FIREBASE_SA_KEY is missing client_email or private_key.');
   }
   return new JWT({ email: key.client_email, key: key.private_key, scopes: SCOPES });
@@ -71,16 +71,19 @@ async function main() {
     url: `${DATABASE_URL}/.settings/rules.json`,
     method: 'PUT',
     data: rules,
+    // Fail fast rather than letting the CI job hang on an unresponsive endpoint.
+    timeout: 15000,
   });
   console.log('Published database.rules.json to the live database rules.');
 }
 
 main().catch((err) => {
-  console.error('Rules deploy failed:', err?.message || err);
+  // Log the whole error: for a thrown Error this prints the stack trace, and
+  // for a non-Error rejection it prints the value safely.
+  console.error('Rules deploy failed:', err);
   // On a rejected deploy the REST API returns the actual rules
-  // compilation/validation error in the response body, not in err.message
-  // (which is just "Request failed with status code 400"). Surface it so CI
-  // logs show what to fix.
+  // compilation/validation error in the response body, which the error's own
+  // message omits. Surface it so CI logs show what to fix.
   if (err?.response?.data) {
     console.error('Response details:', JSON.stringify(err.response.data, null, 2));
   }
