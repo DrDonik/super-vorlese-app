@@ -197,17 +197,17 @@ export function serveBook(fb, roomCode, getBundle) {
   async function sendBundle(channel) {
     try {
       const { blob } = await getBundle();
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      channel.send(JSON.stringify({ type: 'meta', size: bytes.byteLength }));
+      const buffer = await blob.arrayBuffer();
+      channel.send(JSON.stringify({ type: 'meta', size: buffer.byteLength }));
       let offset = 0;
-      while (offset < bytes.byteLength) {
+      while (offset < buffer.byteLength) {
         if (channel.bufferedAmount > MAX_BUFFERED) await waitForDrain(channel);
         if (channel.readyState !== 'open') return;
-        const end = Math.min(offset + CHUNK_SIZE, bytes.byteLength);
+        const end = Math.min(offset + CHUNK_SIZE, buffer.byteLength);
         // Send a freshly sliced ArrayBuffer rather than a subarray view: some
         // engines transmit a view's entire backing buffer, which would inflate
         // and corrupt the transfer.
-        channel.send(bytes.buffer.slice(offset, end));
+        channel.send(buffer.slice(offset, end));
         offset = end;
       }
       // The channel is ordered + reliable, so the chunks are delivered before

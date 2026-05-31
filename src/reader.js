@@ -505,7 +505,10 @@ export class ReaderView {
     const meta = await getMeta(this.bookId);
     const hash = await ensureContentHash(this.bookId);
     if (!meta || !hash) return null;
-    return { hash, title: meta.title, pageCount: meta.pageCount, type: meta.type || 'pdf' };
+    // Cap the title to the length the room's validation rule permits, so a long
+    // (e.g. filename-derived) title can't make room creation fail.
+    const title = (meta.title || '').slice(0, 200);
+    return { hash, title, pageCount: meta.pageCount, type: meta.type || 'pdf' };
   }
 
   // While we hold an active room as its creator, stand ready to stream the book
