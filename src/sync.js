@@ -75,6 +75,33 @@ export function getSavedRoomCode(bookId) {
   return getSavedRoom(bookId)?.code || null;
 }
 
+// Resolves the raw firebase/database module bundle (db + functions), loading
+// it on first use. Shared with the WebRTC transfer layer in transfer.js.
+export function getFirebase() {
+  return loadFirebase();
+}
+
+// Reads a room without joining it: used by the library "Gemeinsam lesen" flow
+// to discover which book a code is for before deciding whether to fetch it.
+export async function lookupRoom(code) {
+  const fb = await loadFirebase();
+  const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
+  if (normalizedCode.length !== 6) {
+    throw new Error('Code muss 6 Zeichen lang sein');
+  }
+  const r = fb.ref(fb.db, `rooms/${normalizedCode}`);
+  const snapshot = await fb.get(r);
+  if (!snapshot.exists()) {
+    throw new Error('Raum existiert nicht');
+  }
+  const data = snapshot.val();
+  if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+    fb.remove(r).catch(() => {});
+    throw new Error('Raum existiert nicht');
+  }
+  return { code: normalizedCode, book: data.book || null, page: data.page };
+}
+
 export function getSessionForBook(bookId) {
   return activeSessions.get(bookId) || null;
 }
@@ -107,7 +134,7 @@ export class SyncSession {
     this.fb = null;
   }
 
-  async createRoom(initialPage) {
+  async createRoom(initialPage, bookDescriptor = null) {
     this.fb = await loadFirebase();
     let code, r;
     for (let i = 0; i < 5; i++) {
@@ -117,11 +144,15 @@ export class SyncSession {
       if (!snapshot.exists()) break;
       if (i === 4) throw new Error('Kein freier Raum-Code gefunden. Bitte erneut versuchen.');
     }
-    await this.fb.set(r, {
+    const payload = {
       page: initialPage,
       senderId: this.clientId,
       updatedAt: this.fb.serverTimestamp(),
-    });
+    };
+    // The book descriptor lets a partner who joins from the library recognise
+    // the book and fetch it if they don't already have it.
+    if (bookDescriptor) payload.book = bookDescriptor;
+    await this.fb.set(r, payload);
     this.roomCode = code;
     this.isCreator = true;
     activeSessions.set(this.bookId, this);
@@ -223,7 +254,9 @@ export class SyncSession {
   async sendPage(page) {
     if (!this.roomCode || !this.fb) return;
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
-    await this.fb.set(r, {
+    // update (not set) so the page exchange never clobbers the room's book
+    // descriptor or an in-flight WebRTC signalling handshake.
+    await this.fb.update(r, {
       page,
       senderId: this.clientId,
       updatedAt: this.fb.serverTimestamp(),

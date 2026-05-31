@@ -1,7 +1,9 @@
-import { getBookFile, getMeta, getPhotoPage, updateLastPage } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, updateLastPage, ensureContentHash } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook } from './sync.js';
+import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from './sync.js';
+import { serveBook } from './transfer.js';
+import { exportBook } from './bundle.js';
 import { showAlert } from './dialog.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
@@ -45,10 +47,12 @@ async function createSource(meta) {
 }
 
 export class ReaderView {
-  constructor(root, { bookId, onClose }) {
+  constructor(root, { bookId, onClose, joinCode = null }) {
     this.root = root;
     this.bookId = bookId;
     this.onClose = onClose;
+    this.joinCode = joinCode;
+    this.serveStop = null;
     this.source = null;
     this.currentPage = 1;
     this.totalPages = 0;
@@ -184,6 +188,10 @@ export class ReaderView {
       };
       existing.listen();
       this.showSyncActive(existing.roomCode);
+    } else if (this.joinCode) {
+      // Opened from the library "Gemeinsam lesen" flow: join the given room
+      // directly (the book is already in hand, downloaded if it wasn't before).
+      await this.syncJoinCode(this.joinCode);
     } else {
       const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
@@ -423,7 +431,7 @@ export class ReaderView {
         showAlert({ message: 'Der Raum wurde geschlossen.' });
       };
       this.syncSession = session;
-      const code = await session.createRoom(this.currentPage);
+      const code = await session.createRoom(this.currentPage, await this.buildBookDescriptor());
       if (!this.source) {
         session.stop();
         this.syncSession = null;
@@ -472,7 +480,57 @@ export class ReaderView {
     }
   }
 
+  async syncJoinCode(code) {
+    const session = new SyncSession(this.bookId);
+    session.onRemotePageChange = (page) => this.onRemotePage(page);
+    session.onRoomDeleted = () => {
+      this.syncStop();
+      showAlert({ message: 'Der Raum wurde geschlossen.' });
+    };
+    this.syncSession = session;
+    try {
+      const normalizedCode = await session.joinRoom(code);
+      if (this.syncSession !== session) {
+        session.detach();
+        return;
+      }
+      this.showSyncActive(normalizedCode);
+    } catch (err) {
+      if (this.syncSession === session) this.syncSession = null;
+      await showAlert({ message: err.message || 'Beitreten fehlgeschlagen.' });
+    }
+  }
+
+  async buildBookDescriptor() {
+    const meta = await getMeta(this.bookId);
+    const hash = await ensureContentHash(this.bookId);
+    if (!meta || !hash) return null;
+    // Cap the title to the length the room's validation rule permits, so a long
+    // (e.g. filename-derived) title can't make room creation fail.
+    const title = (meta.title || '').slice(0, 200);
+    return { hash, title, pageCount: meta.pageCount, type: meta.type || 'pdf' };
+  }
+
+  // While we hold an active room as its creator, stand ready to stream the book
+  // to a partner who joins from the library without a copy.
+  maybeStartServing() {
+    if (this.serveStop) return;
+    const session = this.syncSession;
+    if (!session?.isCreator || !session.roomCode) return;
+    getFirebase().then((fb) => {
+      if (this.syncSession !== session || this.serveStop) return;
+      this.serveStop = serveBook(fb, session.roomCode, () => exportBook(this.bookId));
+    }).catch(() => {});
+  }
+
+  stopServing() {
+    if (!this.serveStop) return;
+    try { this.serveStop(); } catch {}
+    this.serveStop = null;
+  }
+
   syncStop() {
+    this.stopServing();
     closeSyncForBook(this.bookId);
     this.syncSession = null;
     this.showSyncInactive();
@@ -489,6 +547,7 @@ export class ReaderView {
     active.hidden = false;
     active.querySelector('.sync-code-display').textContent = code;
     this.root.querySelector('.reader-sync-btn').classList.add('sync-active');
+    this.maybeStartServing();
   }
 
   showSyncInactive() {
@@ -523,6 +582,7 @@ export class ReaderView {
     clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
     this.readerEl = null;
+    this.stopServing();
     if (this.syncSession) {
       this.syncSession.detach();
       this.syncSession = null;
