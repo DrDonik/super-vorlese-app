@@ -491,6 +491,12 @@ button {
   color: #111;
 }
 
+/* Equal specificity to .reader-sync-btn:hover, so the active button needs
+   its own hover rule; lighten to match the other chrome buttons. */
+.reader-sync-btn.sync-active:hover {
+  background: color-mix(in srgb, var(--success), white 12%);
+}
+
 .sync-panel {
   position: absolute;
   inset: 0;
