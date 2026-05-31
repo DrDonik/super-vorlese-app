@@ -147,7 +147,9 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
     // Holder's answer.
     const offAnswer = fb.onValue(signalRef('/answer'), async (snap) => {
       const a = snap.val();
-      if (!a || !a.sdp || remoteSet) return;
+      // Guard on signalingState too: a stale answer left in the room would
+      // otherwise be applied while we're still in 'stable' and throw.
+      if (!a || !a.sdp || remoteSet || pc.signalingState !== 'have-local-offer') return;
       remoteSet = true;
       try {
         await pc.setRemoteDescription({ type: 'answer', sdp: a.sdp });
@@ -159,12 +161,13 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
     });
     subscriptions.push(offAnswer);
 
-    // Holder's ICE candidates (ignore our own echoes).
+    // Holder's ICE candidates (ignore our own echoes). Queue until the remote
+    // description is actually applied — addIceCandidate throws before then.
     const offIce = fb.onChildAdded(signalRef('/ice'), (snap) => {
       const v = snap.val();
       if (!v || v.from === myId) return;
       const candidate = fromPayload(v);
-      if (!remoteSet) pendingIce.push(candidate);
+      if (!pc.remoteDescription) pendingIce.push(candidate);
       else pc.addIceCandidate(candidate).catch(() => {});
     });
     subscriptions.push(offIce);
@@ -197,17 +200,17 @@ export function serveBook(fb, roomCode, getBundle) {
   async function sendBundle(channel) {
     try {
       const { blob } = await getBundle();
-      const buffer = await blob.arrayBuffer();
-      channel.send(JSON.stringify({ type: 'meta', size: buffer.byteLength }));
+      channel.send(JSON.stringify({ type: 'meta', size: blob.size }));
       let offset = 0;
-      while (offset < buffer.byteLength) {
+      while (offset < blob.size) {
         if (channel.bufferedAmount > MAX_BUFFERED) await waitForDrain(channel);
         if (channel.readyState !== 'open') return;
-        const end = Math.min(offset + CHUNK_SIZE, buffer.byteLength);
-        // Send a freshly sliced ArrayBuffer rather than a subarray view: some
-        // engines transmit a view's entire backing buffer, which would inflate
-        // and corrupt the transfer.
-        channel.send(buffer.slice(offset, end));
+        const end = Math.min(offset + CHUNK_SIZE, blob.size);
+        // Slice lazily so only one chunk is in memory at a time, instead of
+        // loading the whole bundle into a single ArrayBuffer (OOM risk on the
+        // mobile devices this app targets). Each slice is its own buffer, so no
+        // backing-buffer-inflation worry either.
+        channel.send(await blob.slice(offset, end).arrayBuffer());
         offset = end;
       }
       // The channel is ordered + reliable, so the chunks are delivered before
@@ -224,7 +227,6 @@ export function serveBook(fb, roomCode, getBundle) {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
     const ctx = { pc, offIce: null };
     active = ctx;
-    let remoteSet = false;
     const pendingIce = [];
 
     pc.onicecandidate = (e) => {
@@ -236,20 +238,21 @@ export function serveBook(fb, roomCode, getBundle) {
       const channel = e.channel;
       channel.binaryType = 'arraybuffer';
       channel.bufferedAmountLowThreshold = BUFFER_LOW;
-      channel.onopen = () => sendBundle(channel);
+      // The channel can already be open by the time this fires; don't miss it.
+      if (channel.readyState === 'open') sendBundle(channel);
+      else channel.onopen = () => sendBundle(channel);
     };
 
     ctx.offIce = fb.onChildAdded(signalRef('/ice'), (snap) => {
       const v = snap.val();
       if (!v || v.from === myId) return;
       const candidate = fromPayload(v);
-      if (!remoteSet) pendingIce.push(candidate);
+      if (!pc.remoteDescription) pendingIce.push(candidate);
       else pc.addIceCandidate(candidate).catch(() => {});
     });
 
     try {
       await pc.setRemoteDescription({ type: 'offer', sdp: offer.sdp });
-      remoteSet = true;
       for (const c of pendingIce) await pc.addIceCandidate(c).catch(() => {});
       pendingIce.length = 0;
       const answer = await pc.createAnswer();
