@@ -262,8 +262,10 @@ button {
      and makes the blur pop in abruptly (a visible flicker). A transform keeps
      the bar fully opaque throughout, so the blur stays live the whole time.
      Deliberately no will-change here: promoting the bar to its own compositor
-     layer reintroduces the very isolation that breaks the children's blur. */
-  transform: translateY(0);
+     layer reintroduces the very isolation that breaks the children's blur.
+     The resting state is transform: none (not translateY(0)) so it creates no
+     stacking context at all; none still interpolates with translateY(-100%). */
+  transform: none;
   transition: transform 0.4s;
   pointer-events: none;
 }
@@ -281,7 +283,7 @@ button {
    and slide the bar back into view when one is tabbed to, so focus is never
    trapped on an off-screen control. Mouse/touch users are unaffected. */
 .reader.chrome-hidden .reader-chrome:focus-within {
-  transform: translateY(0);
+  transform: none;
 }
 
 .reader.cursor-hidden,
