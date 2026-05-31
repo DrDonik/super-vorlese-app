@@ -78,12 +78,13 @@ async function main() {
 }
 
 main().catch((err) => {
-  // Log the whole error: for a thrown Error this prints the stack trace, and
-  // for a non-Error rejection it prints the value safely.
-  console.error('Rules deploy failed:', err);
-  // On a rejected deploy the REST API returns the actual rules
-  // compilation/validation error in the response body, which the error's own
-  // message omits. Surface it so CI logs show what to fix.
+  // Log only the message, never the whole error object: a google-auth-library
+  // failure can carry the request config — including the Authorization bearer
+  // token (and sometimes the service-account key) — which must not leak into
+  // CI logs. err?.message stays safe for a non-Error rejection.
+  console.error('Rules deploy failed:', err?.message || err);
+  // The API response body carries the rules compilation/validation error (not
+  // credentials), so it is safe to surface and shows what to fix.
   if (err?.response?.data) {
     console.error('Response details:', JSON.stringify(err.response.data, null, 2));
   }
