@@ -27,6 +27,13 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      # Publish the database rules before the app: a new build may rely on rules
+      # the old ruleset rejects, so the rules must land first. A failure here
+      # aborts the job before the app deploys (see ADR 0006).
+      - name: Deploy database rules
+        env:
+          FIREBASE_SA_KEY: ${{ secrets.FIREBASE_SA_KEY }}
+        run: node scripts/deploy-rules.mjs
       - run: npm run build
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
