@@ -139,7 +139,7 @@ export async function ensureContentHash(id) {
 
 // Finds a locally stored book whose content matches the given hash, or null.
 // Backfills missing hashes as it scans so the match works for older books too.
-export async function findBookByContentHash(hash) {
+export async function findBookByContentHash(hash, { type, pageCount } = {}) {
   if (!hash) return null;
   const books = await listBooks();
   for (const book of books) {
@@ -147,6 +147,10 @@ export async function findBookByContentHash(hash) {
   }
   for (const book of books) {
     if (book.contentHash) continue;
+    // Skip hashing books that can't match anyway — a different type or page
+    // count rules them out without paying the cost of digesting their content.
+    if (type && book.type !== type) continue;
+    if (pageCount && book.pageCount !== pageCount) continue;
     if ((await ensureContentHash(book.id)) === hash) {
       book.contentHash = hash;
       return book;

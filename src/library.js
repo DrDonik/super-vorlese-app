@@ -262,7 +262,10 @@ export class LibraryView {
     }
 
     // Already have this exact book? Open the local copy and sync — no download.
-    const local = await findBookByContentHash(room.book.hash);
+    const local = await findBookByContentHash(room.book.hash, {
+      type: room.book.type,
+      pageCount: room.book.pageCount,
+    });
     if (local) {
       this.onJoinBook?.(local.id, room.code);
       return;
