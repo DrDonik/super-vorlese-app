@@ -20,9 +20,9 @@ function loadSavedRooms() {
   }
 }
 
-function saveRoomForBook(bookId, roomCode, isCreator) {
+function saveRoomForBook(bookId, roomCode, isCreator, memberId) {
   const rooms = loadSavedRooms();
-  rooms[bookId] = { code: roomCode, isCreator };
+  rooms[bookId] = { code: roomCode, isCreator, memberId };
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(rooms)); } catch {}
 }
 
@@ -106,17 +106,35 @@ export function getSessionForBook(bookId) {
   return activeSessions.get(bookId) || null;
 }
 
+// Removes this device's membership from a room and, if that leaves the room
+// empty, deletes the whole room. A room stays alive as long as at least one
+// participant still has the sync set up (issue #50) — only an explicit
+// disconnect (here or via SyncSession.stop) counts towards deletion, never a
+// dropped connection. Abandoned rooms are reaped server-side by the TTL.
+function leaveRoom(fb, code, memberId) {
+  // Legacy rooms saved before presence tracking carry no memberId; there is
+  // nothing of ours to remove, so leave cleanup to the server-side reaper.
+  if (!memberId) return Promise.resolve();
+  const memberRef = fb.ref(fb.db, `rooms/${code}/members/${memberId}`);
+  return fb.remove(memberRef)
+    .then(() => fb.get(fb.ref(fb.db, `rooms/${code}/members`)))
+    .then((snapshot) => {
+      if (!snapshot.exists()) {
+        return fb.remove(fb.ref(fb.db, `rooms/${code}`));
+      }
+    });
+}
+
 export function closeSyncForBook(bookId) {
   const session = activeSessions.get(bookId);
   if (session) {
     session.stop();
   } else {
     const saved = getSavedRoom(bookId);
-    if (saved && saved.isCreator) {
-      loadFirebase().then((fb) => {
-        const r = fb.ref(fb.db, `rooms/${saved.code}`);
-        fb.remove(r).catch(() => {});
-      }).catch(() => {});
+    if (saved) {
+      loadFirebase()
+        .then((fb) => leaveRoom(fb, saved.code, saved.memberId))
+        .catch(() => {});
     }
     removeRoomForBook(bookId);
   }
@@ -156,7 +174,8 @@ export class SyncSession {
     this.roomCode = code;
     this.isCreator = true;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, code, true);
+    saveRoomForBook(this.bookId, code, true, this.clientId);
+    this.enrollMember();
     this.listen();
     return code;
   }
@@ -180,9 +199,20 @@ export class SyncSession {
     this.roomCode = normalizedCode;
     this.isCreator = false;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, normalizedCode, false);
+    saveRoomForBook(this.bookId, normalizedCode, false, this.clientId);
+    this.enrollMember();
     this.listen();
     return normalizedCode;
+  }
+
+  // Registers this device in the room's durable member set. Membership marks
+  // "I still have this sync set up" — it is deliberately NOT tied to the live
+  // connection (no onDisconnect), so closing the app or losing the network
+  // leaves it intact and the sync is still there on the next reconnect.
+  enrollMember() {
+    if (!this.roomCode || !this.fb) return;
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/members/${this.clientId}`);
+    this.fb.set(r, this.fb.serverTimestamp()).catch(() => {});
   }
 
   listen() {
@@ -237,7 +267,13 @@ export class SyncSession {
     }
     this.roomCode = saved.code;
     this.isCreator = saved.isCreator;
+    // Reuse the persisted member id so reconnecting refreshes our existing
+    // membership instead of orphaning it under a fresh id. Legacy saved rooms
+    // have none yet, so we adopt this session's id and persist it now.
+    if (saved.memberId) this.clientId = saved.memberId;
     activeSessions.set(this.bookId, this);
+    saveRoomForBook(this.bookId, saved.code, saved.isCreator, this.clientId);
+    this.enrollMember();
     this.listen();
     return saved.code;
   }
@@ -268,9 +304,9 @@ export class SyncSession {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    if (this.roomCode && this.fb && this.isCreator) {
-      const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
-      this.fb.remove(r).catch(() => {});
+    // Drop our membership; the room is deleted only once nobody is left in it.
+    if (this.roomCode && this.fb) {
+      leaveRoom(this.fb, this.roomCode, this.clientId).catch(() => {});
     }
     activeSessions.delete(this.bookId);
     removeRoomForBook(this.bookId);
