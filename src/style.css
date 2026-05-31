@@ -112,6 +112,7 @@ button {
   padding: 16px 32px 32px;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  align-content: start;
   gap: 20px;
   overflow-y: auto;
   height: calc(100% - 88px);
