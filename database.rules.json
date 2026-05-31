@@ -16,6 +16,11 @@
         "updatedAt": {
           ".validate": "newData.isNumber() && newData.val() == now"
         },
+        "members": {
+          "$memberId": {
+            ".validate": "$memberId.matches(/^[a-z0-9]{1,40}$/) && newData.isNumber() && newData.val() == now"
+          }
+        },
         "book": {
           ".validate": "newData.hasChildren(['hash', 'type'])",
           "hash": {
