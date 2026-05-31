@@ -271,6 +271,12 @@ button {
 
 .reader.chrome-hidden .reader-chrome {
   transform: translateY(-100%);
+  /* Defer until the slide finishes, then hide so the off-screen buttons drop
+     out of the tab order and can't be keyboard-focused while concealed. On
+     reveal the base rule has no visibility transition, so it shows instantly
+     and slides back in. */
+  visibility: hidden;
+  transition: transform 0.4s, visibility 0s 0.4s;
 }
 
 .reader.cursor-hidden,
