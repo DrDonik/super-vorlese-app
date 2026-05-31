@@ -36,15 +36,15 @@ async function sha256Hex(bytes) {
 // it over the network.
 async function hashBook({ type, fileBlob, pages }) {
   if (type === 'photos') {
-    const buffers = await Promise.all(pages.map((p) => p.arrayBuffer()));
-    const total = buffers.reduce((n, b) => n + b.byteLength, 0);
-    const merged = new Uint8Array(total);
-    let offset = 0;
-    for (const b of buffers) {
-      merged.set(new Uint8Array(b), offset);
-      offset += b.byteLength;
+    // Hash pages one at a time (digest of the concatenated per-page digests)
+    // rather than merging every page into one buffer: a 100-page photo book
+    // would otherwise hold ~all pages in memory at once and risk an OOM crash
+    // on the iPads/phones this app targets.
+    const pageHashes = [];
+    for (const page of pages) {
+      pageHashes.push(await sha256Hex(new Uint8Array(await page.arrayBuffer())));
     }
-    return sha256Hex(merged);
+    return sha256Hex(new TextEncoder().encode(pageHashes.join('')));
   }
   return sha256Hex(new Uint8Array(await fileBlob.arrayBuffer()));
 }

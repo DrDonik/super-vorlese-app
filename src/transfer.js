@@ -43,11 +43,21 @@ function fromPayload(v) {
 
 function waitForDrain(channel) {
   return new Promise((resolve) => {
-    const handler = () => {
-      channel.removeEventListener('bufferedamountlow', handler);
+    if (channel.readyState !== 'open' || channel.bufferedAmount <= channel.bufferedAmountLowThreshold) {
+      resolve();
+      return;
+    }
+    const done = () => {
+      channel.removeEventListener('bufferedamountlow', done);
+      channel.removeEventListener('close', done);
+      channel.removeEventListener('error', done);
       resolve();
     };
-    channel.addEventListener('bufferedamountlow', handler);
+    // Resolve on close/error too, so the send loop never hangs waiting for a
+    // drain event that can no longer come (the loop then sees readyState and exits).
+    channel.addEventListener('bufferedamountlow', done);
+    channel.addEventListener('close', done);
+    channel.addEventListener('error', done);
   });
 }
 
@@ -69,7 +79,14 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
     let received = 0;
     const chunks = [];
 
-    const timer = setTimeout(() => fail(new Error('timeout')), TRANSFER_TIMEOUT_MS);
+    // An idle timeout, not a total one: it fires only if nothing happens for
+    // TRANSFER_TIMEOUT_MS, so a large but actively-progressing book is never
+    // cut off, while an offline partner (no data ever arrives) still fails.
+    let timer = setTimeout(() => fail(new Error('timeout')), TRANSFER_TIMEOUT_MS);
+    const pokeTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => fail(new Error('timeout')), TRANSFER_TIMEOUT_MS);
+    };
 
     function teardown() {
       clearTimeout(timer);
@@ -105,6 +122,7 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
     };
 
     channel.onmessage = (e) => {
+      pokeTimer();
       if (typeof e.data === 'string') {
         let msg;
         try { msg = JSON.parse(e.data); } catch { return; }

@@ -292,9 +292,12 @@ export class LibraryView {
       progress.close();
       if (newBookId) await deleteBook(newBookId).catch(() => {});
       console.error('Buch-Übertragung fehlgeschlagen', err);
+      const corrupt = err.message === 'integrity';
       await showAlert({
-        title: 'Verbindung nicht möglich',
-        message: 'Dein Lesepartner muss online und im Buch sein, um es zu senden. Bitte versuche es erneut.',
+        title: corrupt ? 'Übertragung fehlerhaft' : 'Verbindung nicht möglich',
+        message: corrupt
+          ? 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.'
+          : 'Dein Lesepartner muss online und im Buch sein, um es zu senden. Bitte versuche es erneut.',
       });
     }
   }
