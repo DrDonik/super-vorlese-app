@@ -4,8 +4,33 @@
   --bg-elev: #1c1c1e;
   --fg: #f5f5f7;
   --fg-dim: #a1a1a6;
+
+  /* ---- Interactive colour scheme: each colour has exactly one job ----
+     --accent   Completing/confirming action in a modal dialog or flow
+                (dialog confirm, camera "Done", end-of-book "Zur Bibliothek").
+                Never used for plain navigation, state, or focus.
+     --surface  Secondary / equal-weight action on a solid background.
+     --surface-glass  Secondary control layered over photos or book pages
+                (reader & camera chrome); dark so light text stays legible
+                over white pages. --surface-glass-hover on hover.
+     --danger   Destructive action (delete, disconnect).
+     --success  Connected / "on" state (active sync, room code, status).
+     --focus    Keyboard-focus ring on every interactive element, and the
+                focus border on inputs. Reserved for focus only. */
   --accent: #ffb340;
+  --surface: #2c2c2e;
+  --surface-line: #3a3a3c;
+  --surface-glass: rgba(0, 0, 0, 0.5);
+  --surface-glass-hover: rgba(0, 0, 0, 0.65);
   --danger: #ff453a;
+  --success: #30d158;
+  --focus: #0a84ff;
+}
+
+/* Universal focus ring: one consistent treatment everywhere. */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 [hidden] {
@@ -54,9 +79,11 @@ button {
   justify-content: flex-end;
 }
 
+/* Import and Camera are two equal ways to add a book: same secondary style,
+   neither is the primary action of the library. */
 .add-book {
-  background: var(--accent);
-  color: #111;
+  background: var(--surface);
+  color: var(--fg);
   padding: 12px 20px;
   border-radius: 12px;
   font-weight: 600;
@@ -67,13 +94,12 @@ button {
   align-items: center;
 }
 
-.add-book:active {
-  transform: scale(0.97);
+.add-book:hover {
+  background: var(--surface-line);
 }
 
-.add-photos {
-  background: #2c2c2e;
-  color: var(--fg);
+.add-book:active {
+  transform: scale(0.97);
 }
 
 .library-status {
@@ -119,11 +145,6 @@ button {
 
 .book-card:active {
   transform: scale(0.98);
-}
-
-.book-card:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .book-cover {
@@ -195,13 +216,11 @@ button {
   display: block;
 }
 
-.book-rename:hover {
-  background: var(--accent);
-  color: #111;
-}
-
+/* Neutral lighten on hover for non-destructive actions; only delete uses
+   --danger. Keeps yellow and blue reserved for their single jobs. */
+.book-rename:hover,
 .book-share:hover {
-  background: #0a84ff;
+  background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
 
@@ -256,7 +275,7 @@ button {
 }
 
 .reader-back {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--surface-glass);
   border: none;
   padding: 10px 16px;
   border-radius: 10px;
@@ -266,7 +285,7 @@ button {
 }
 
 .reader-back:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--surface-glass-hover);
 }
 
 .reader-title {
@@ -283,15 +302,15 @@ button {
   color: var(--fg-dim);
   font-size: 14px;
   padding: 6px 12px;
-  background: rgba(0, 0, 0, 0.4);
+  background: var(--surface-glass);
   border-radius: 8px;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   cursor: pointer;
 }
-.reader-page-indicator:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+
+.reader-page-indicator:hover {
+  background: var(--surface-glass-hover);
 }
 
 .page-jump-input {
@@ -309,7 +328,7 @@ button {
   transition: border-color 0.15s;
 }
 .page-jump-input:focus {
-  border-bottom-color: var(--accent);
+  border-bottom-color: var(--focus);
 }
 .page-jump-input::-webkit-inner-spin-button,
 .page-jump-input::-webkit-outer-spin-button {
@@ -447,7 +466,7 @@ button {
 /* ============ SYNC ============ */
 
 .reader-sync-btn {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--surface-glass);
   border: none;
   width: 40px;
   height: 40px;
@@ -463,12 +482,20 @@ button {
 }
 
 .reader-sync-btn:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--surface-glass-hover);
 }
 
+/* Active = connected state, not an action: green, matching the room code
+   and "Verbunden" status. */
 .reader-sync-btn.sync-active {
-  background: var(--accent);
+  background: var(--success);
   color: #111;
+}
+
+/* Equal specificity to .reader-sync-btn:hover, so the active button needs
+   its own hover rule; lighten to match the other chrome buttons. */
+.reader-sync-btn.sync-active:hover {
+  background: color-mix(in srgb, var(--success), white 12%);
 }
 
 .sync-panel {
@@ -516,9 +543,11 @@ button {
   color: var(--fg-dim);
 }
 
+/* Create and Join are two equal ways to start a sync: both secondary,
+   neither is the dialog's single primary action. */
 .sync-create-btn {
-  background: var(--accent);
-  color: #111;
+  background: var(--surface);
+  color: var(--fg);
   padding: 12px 18px;
   border: none;
   border-radius: 10px;
@@ -526,6 +555,10 @@ button {
   cursor: pointer;
   width: 100%;
   touch-action: manipulation;
+}
+
+.sync-create-btn:hover {
+  background: var(--surface-line);
 }
 
 .sync-join-section {
@@ -536,8 +569,8 @@ button {
 .sync-join-input {
   flex: 1;
   min-width: 7.5em;
-  background: #2c2c2e;
-  border: 1px solid #3a3a3c;
+  background: var(--surface);
+  border: 1px solid var(--surface-line);
   border-radius: 10px;
   padding: 12px 14px;
   color: var(--fg);
@@ -556,12 +589,12 @@ button {
 
 .sync-join-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus);
 }
 
 .sync-join-btn {
   flex: none;
-  background: #2c2c2e;
+  background: var(--surface);
   color: var(--fg);
   padding: 12px 16px;
   border: none;
@@ -572,7 +605,7 @@ button {
 }
 
 .sync-join-btn:hover {
-  background: #3a3a3c;
+  background: var(--surface-line);
 }
 
 .sync-active-section {
@@ -587,15 +620,15 @@ button {
   font-weight: 700;
   font-family: monospace;
   letter-spacing: 4px;
-  color: var(--accent);
+  color: var(--success);
   padding: 12px 20px;
-  background: rgba(255, 179, 64, 0.1);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
   border-radius: 12px;
 }
 
 .sync-status {
   font-size: 14px;
-  color: #30d158;
+  color: var(--success);
 }
 
 .sync-stop-btn {
@@ -658,7 +691,7 @@ button {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--surface-glass);
   color: #fff;
   border: none;
   font-size: 18px;
@@ -674,7 +707,7 @@ button {
   right: 16px;
   padding: 8px 14px;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--surface-glass);
   color: #fff;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
@@ -819,7 +852,7 @@ button {
 }
 
 .camera-done:disabled {
-  background: #2c2c2e;
+  background: var(--surface);
   color: var(--fg-dim);
   cursor: not-allowed;
 }
@@ -865,8 +898,8 @@ button {
 }
 
 .dialog-input {
-  background: #2c2c2e;
-  border: 1px solid #3a3a3c;
+  background: var(--surface);
+  border: 1px solid var(--surface-line);
   border-radius: 10px;
   padding: 12px 14px;
   color: var(--fg);
@@ -876,7 +909,7 @@ button {
 
 .dialog-input:focus {
   outline: none;
-  border-color: var(--accent);
+  border-color: var(--focus);
 }
 
 .dialog-buttons {
@@ -901,8 +934,9 @@ button {
   color: var(--fg);
 }
 
+/* Inset ring so the full-width buttons aren't clipped by the card edge. */
 .dialog-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: -2px;
 }
 
@@ -918,7 +952,7 @@ button {
 }
 
 .dialog-btn-primary:disabled {
-  background: #2c2c2e;
+  background: var(--surface);
   color: var(--fg-dim);
   cursor: not-allowed;
 }
