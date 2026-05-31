@@ -274,12 +274,14 @@ button {
 
 .reader.chrome-hidden .reader-chrome {
   transform: translateY(-100%);
-  /* Defer until the slide finishes, then hide so the off-screen buttons drop
-     out of the tab order and can't be keyboard-focused while concealed. On
-     reveal the base rule has no visibility transition, so it shows instantly
-     and slides back in. */
-  visibility: hidden;
-  transition: transform 0.4s, visibility 0s 0.4s;
+}
+
+/* The bar is the only way to reach back / page-jump / sync, and there is no
+   keyboard shortcut to summon it. Keep its controls focusable while concealed
+   and slide the bar back into view when one is tabbed to, so focus is never
+   trapped on an off-screen control. Mouse/touch users are unaffected. */
+.reader.chrome-hidden .reader-chrome:focus-within {
+  transform: translateY(0);
 }
 
 .reader.cursor-hidden,
