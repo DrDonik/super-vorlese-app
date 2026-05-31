@@ -10,8 +10,9 @@
                 (dialog confirm, camera "Done", end-of-book "Zur Bibliothek").
                 Never used for plain navigation, state, or focus.
      --surface  Secondary / equal-weight action on a solid background.
-     --surface-glass  Secondary action layered over photos or book pages
-                (reader & camera chrome); --surface-glass-hover on hover.
+     --surface-glass  Secondary control layered over photos or book pages
+                (reader & camera chrome); dark so light text stays legible
+                over white pages. --surface-glass-hover on hover.
      --danger   Destructive action (delete, disconnect).
      --success  Connected / "on" state (active sync, room code, status).
      --focus    Keyboard-focus ring on every interactive element, and the
@@ -19,8 +20,8 @@
   --accent: #ffb340;
   --surface: #2c2c2e;
   --surface-line: #3a3a3c;
-  --surface-glass: rgba(255, 255, 255, 0.15);
-  --surface-glass-hover: rgba(255, 255, 255, 0.25);
+  --surface-glass: rgba(0, 0, 0, 0.5);
+  --surface-glass-hover: rgba(0, 0, 0, 0.65);
   --danger: #ff453a;
   --success: #30d158;
   --focus: #0a84ff;
@@ -690,7 +691,7 @@ button {
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--surface-glass);
   color: #fff;
   border: none;
   font-size: 18px;
@@ -706,7 +707,7 @@ button {
   right: 16px;
   padding: 8px 14px;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.55);
+  background: var(--surface-glass);
   color: #fff;
   font-size: 14px;
   font-variant-numeric: tabular-nums;
