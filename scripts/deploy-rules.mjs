@@ -55,8 +55,10 @@ async function main() {
   let rules;
   try {
     rules = JSON.parse(source);
-  } catch {
-    throw new Error('database.rules.json is not valid JSON.');
+  } catch (err) {
+    // Keep the parser's message — it points at the offending line/column,
+    // which is what you need to fix a broken rules file in CI.
+    throw new Error(`database.rules.json is not valid JSON: ${err.message}`);
   }
 
   if (dryRun) {
@@ -74,12 +76,12 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error('Rules deploy failed:', err.message);
+  console.error('Rules deploy failed:', err?.message || err);
   // On a rejected deploy the REST API returns the actual rules
   // compilation/validation error in the response body, not in err.message
   // (which is just "Request failed with status code 400"). Surface it so CI
   // logs show what to fix.
-  if (err.response?.data) {
+  if (err?.response?.data) {
     console.error('Response details:', JSON.stringify(err.response.data, null, 2));
   }
   process.exit(1);
