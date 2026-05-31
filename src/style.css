@@ -93,6 +93,10 @@ button {
   align-items: center;
 }
 
+.add-book:hover {
+  background: var(--surface-line);
+}
+
 .add-book:active {
   transform: scale(0.97);
 }
@@ -611,7 +615,7 @@ button {
   letter-spacing: 4px;
   color: var(--success);
   padding: 12px 20px;
-  background: rgba(48, 209, 88, 0.12);
+  background: color-mix(in srgb, var(--success) 12%, transparent);
   border-radius: 12px;
 }
 
