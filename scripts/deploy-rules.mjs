@@ -75,5 +75,12 @@ async function main() {
 
 main().catch((err) => {
   console.error('Rules deploy failed:', err.message);
+  // On a rejected deploy the REST API returns the actual rules
+  // compilation/validation error in the response body, not in err.message
+  // (which is just "Request failed with status code 400"). Surface it so CI
+  // logs show what to fix.
+  if (err.response?.data) {
+    console.error('Response details:', JSON.stringify(err.response.data, null, 2));
+  }
   process.exit(1);
 });
