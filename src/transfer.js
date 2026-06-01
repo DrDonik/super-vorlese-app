@@ -6,11 +6,13 @@
 // `signal` node; the book bytes themselves never touch Firebase.
 //
 // The joiner (receiver) initiates: it creates the offer and the data channel,
-// and the room creator (holder), who is sitting in the reader with the book
-// open, answers and streams the .vorlese bundle. Both peers are expected to be
-// online at the same time and in the foreground (see ADR 0005); if the holder
-// is offline or a direct connection can't be made, receiveBook() rejects and
-// the caller surfaces a "partner must be online" message.
+// and any holder sitting in the reader with the book open answers and streams
+// the .vorlese bundle. Signalling is namespaced per joiner under
+// `signal/<peerId>`, so several joiners can pull the book at once without
+// colliding (see ADR 0009). Both peers are expected to be online at the same
+// time and in the foreground (see ADR 0005); if no holder is online or a direct
+// connection can't be made, receiveBook() rejects and the caller surfaces a
+// "partner must be online" message.
 
 // STUN only, by design: no TURN relay. A direct connection works for the
 // common case (both partners on home Wi-Fi); on strict/symmetric NATs it may
@@ -64,7 +66,9 @@ function waitForDrain(channel) {
 // Receiver side. Returns the received .vorlese bundle as a Blob, or rejects.
 export function receiveBook(fb, roomCode, { onProgress } = {}) {
   const myId = randomId();
-  const signalRef = (path) => fb.ref(fb.db, `rooms/${roomCode}/signal${path}`);
+  // Each joiner owns its own subtree, so two children pulling the book at the
+  // same time can't clobber each other's offer/answer/ICE (see ADR 0009).
+  const signalRef = (path) => fb.ref(fb.db, `rooms/${roomCode}/signal/${myId}${path}`);
 
   return new Promise((resolve, reject) => {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
@@ -95,7 +99,8 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
       }
       try { channel.close(); } catch {}
       try { pc.close(); } catch {}
-      // Leave the slate clean for any later attempt in the same room.
+      // Remove only our own subtree, so a sibling joiner's in-flight handshake
+      // in the same room is left untouched.
       fb.remove(signalRef('')).catch(() => {});
     }
 
@@ -183,18 +188,26 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
 }
 
 // Holder side. Listens for join requests and streams the book to each one.
-// Returns a stop() function that tears down the listener and the active peer.
+// Returns a stop() function that tears down the listener and all peers.
+//
+// Each joiner gets its own `signal/<peerId>` subtree and its own
+// RTCPeerConnection, so the holder can serve several joiners at once without
+// their handshakes interfering (see ADR 0009). If more than one holder is
+// present, every holder answers every joiner; the joiner accepts whichever
+// answer arrives first, and the losing holder's connection simply never
+// completes and is cleaned up on stop().
 export function serveBook(fb, roomCode, getBundle) {
   const myId = `h${randomId()}`;
-  const handled = new Set();
+  const peers = new Map();
   const signalRef = (path) => fb.ref(fb.db, `rooms/${roomCode}/signal${path}`);
-  let active = null;
 
-  function closeActive() {
-    if (!active) return;
-    try { active.offIce?.(); } catch {}
-    try { active.pc.close(); } catch {}
-    active = null;
+  function closePeer(peerId) {
+    const ctx = peers.get(peerId);
+    if (!ctx) return;
+    try { ctx.offOffer?.(); } catch {}
+    try { ctx.offIce?.(); } catch {}
+    try { ctx.pc?.close(); } catch {}
+    peers.delete(peerId);
   }
 
   async function sendBundle(channel) {
@@ -222,16 +235,14 @@ export function serveBook(fb, roomCode, getBundle) {
     }
   }
 
-  async function handleOffer(offer) {
-    closeActive();
+  async function handleOffer(peerId, ctx, offer) {
     const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
-    const ctx = { pc, offIce: null };
-    active = ctx;
+    ctx.pc = pc;
     const pendingIce = [];
 
     pc.onicecandidate = (e) => {
       if (!e.candidate) return;
-      fb.push(signalRef('/ice'), toPayload(e.candidate, myId)).catch(() => {});
+      fb.push(signalRef(`/${peerId}/ice`), toPayload(e.candidate, myId)).catch(() => {});
     };
 
     pc.ondatachannel = (e) => {
@@ -243,7 +254,7 @@ export function serveBook(fb, roomCode, getBundle) {
       else channel.onopen = () => sendBundle(channel);
     };
 
-    ctx.offIce = fb.onChildAdded(signalRef('/ice'), (snap) => {
+    ctx.offIce = fb.onChildAdded(signalRef(`/${peerId}/ice`), (snap) => {
       const v = snap.val();
       if (!v || v.from === myId) return;
       const candidate = fromPayload(v);
@@ -257,23 +268,33 @@ export function serveBook(fb, roomCode, getBundle) {
       pendingIce.length = 0;
       const answer = await pc.createAnswer();
       await pc.setLocalDescription(answer);
-      await fb.set(signalRef('/answer'), { from: myId, sdp: answer.sdp });
+      await fb.set(signalRef(`/${peerId}/answer`), { from: myId, sdp: answer.sdp });
     } catch {
-      // Negotiation failed: drop the half-built connection and its ICE
-      // listener instead of leaving them dangling.
-      if (active === ctx) closeActive();
+      // Negotiation failed: drop this joiner's half-built connection and its
+      // ICE listener instead of leaving them dangling.
+      closePeer(peerId);
     }
   }
 
-  const offOffer = fb.onValue(signalRef('/offer'), (snap) => {
-    const offer = snap.val();
-    if (!offer || !offer.sdp || !offer.from || handled.has(offer.from)) return;
-    handled.add(offer.from);
-    handleOffer(offer).catch(() => {});
+  // A new child under `signal/` is a new joiner. Watch its subtree for the
+  // offer (ICE may land first, so we can't assume the child already has it).
+  const offNew = fb.onChildAdded(signalRef(''), (snap) => {
+    const peerId = snap.key;
+    if (peers.has(peerId)) return;
+    const ctx = { pc: null, offOffer: null, offIce: null };
+    peers.set(peerId, ctx);
+    ctx.offOffer = fb.onValue(signalRef(`/${peerId}/offer`), (s) => {
+      const offer = s.val();
+      if (!offer || !offer.sdp || !offer.from || ctx.pc) return;
+      // Stop listening for the offer once we've taken it; one answer per joiner.
+      try { ctx.offOffer?.(); } catch {}
+      ctx.offOffer = null;
+      handleOffer(peerId, ctx, offer).catch(() => {});
+    });
   });
 
   return function stop() {
-    try { offOffer(); } catch {}
-    closeActive();
+    try { offNew(); } catch {}
+    for (const peerId of [...peers.keys()]) closePeer(peerId);
   };
 }
