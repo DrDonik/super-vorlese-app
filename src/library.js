@@ -357,22 +357,28 @@ export class LibraryView {
       status.textContent = `Verarbeite ${i + 1}/${files.length}: ${file.name}…`;
       try {
         const pdf = await loadPdf(file);
-        const pageCount = pdf.numPages;
-        // Re-importing a book the user already has resurfaces the existing copy
-        // (moved to the front) rather than creating a confusing duplicate.
-        const contentHash = await hashBook({ type: 'pdf', fileBlob: file });
-        if (await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount })) {
-          continue;
+        try {
+          const pageCount = pdf.numPages;
+          // Re-importing a book the user already has resurfaces the existing copy
+          // (moved to the front) rather than creating a confusing duplicate.
+          const contentHash = await hashBook({ type: 'pdf', fileBlob: file });
+          if (await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount })) {
+            continue;
+          }
+          const thumbBlob = await renderThumbnail(pdf, 1, 480);
+          await saveBook({
+            id: uid(),
+            title: deriveTitle(file.name),
+            fileBlob: file,
+            thumbBlob,
+            pageCount,
+            contentHash,
+          });
+        } finally {
+          // Release PDF.js document/worker resources on every path (duplicate,
+          // success, or error) to avoid OOM crashes on memory-limited devices.
+          pdf.destroy?.();
         }
-        const thumbBlob = await renderThumbnail(pdf, 1, 480);
-        await saveBook({
-          id: uid(),
-          title: deriveTitle(file.name),
-          fileBlob: file,
-          thumbBlob,
-          pageCount,
-          contentHash,
-        });
       } catch (err) {
         console.error('Fehler beim Import', file.name, err);
         await showAlert({ message: `„${file.name}" konnte nicht gelesen werden.` });
