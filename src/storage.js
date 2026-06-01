@@ -34,7 +34,7 @@ async function sha256Hex(bytes) {
 // hold byte-identical copies of the same book share the same hash, which lets
 // the sync layer recognise "you already have this book" and avoid re-sending
 // it over the network.
-async function hashBook({ type, fileBlob, pages }) {
+export async function hashBook({ type, fileBlob, pages }) {
   if (type === 'photos') {
     // Hash pages one at a time (digest of the concatenated per-page digests)
     // rather than merging every page into one buffer: a 100-page photo book
@@ -49,7 +49,7 @@ async function hashBook({ type, fileBlob, pages }) {
   return sha256Hex(await fileBlob.arrayBuffer());
 }
 
-export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
+export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash }) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
@@ -61,11 +61,11 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount }) {
     pageCount,
     addedAt: Date.now(),
     lastPage: 1,
-    contentHash: await hashBook({ type: 'pdf', fileBlob }),
+    contentHash: contentHash ?? await hashBook({ type: 'pdf', fileBlob }),
   });
 }
 
-export async function savePhotoBook({ id, title, pages, thumbBlob }) {
+export async function savePhotoBook({ id, title, pages, thumbBlob, contentHash }) {
   await setMany(pages.map((page, i) => [pageKey(id, i + 1), page]));
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
@@ -77,8 +77,18 @@ export async function savePhotoBook({ id, title, pages, thumbBlob }) {
     pageCount: pages.length,
     addedAt: Date.now(),
     lastPage: 1,
-    contentHash: await hashBook({ type: 'photos', pages }),
+    contentHash: contentHash ?? await hashBook({ type: 'photos', pages }),
   });
+}
+
+// Moves a book to the front of the library by refreshing its addedAt timestamp
+// (listBooks() orders newest-first). Used when a re-import should resurface the
+// existing copy where the user expects freshly imported books to appear.
+async function touchBook(id) {
+  const meta = await get(metaKey(id));
+  if (!meta) return;
+  meta.addedAt = Date.now();
+  await set(metaKey(id), meta);
 }
 
 export async function listBooks() {
@@ -157,6 +167,17 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
     }
   }
   return null;
+}
+
+// If a book with the given content is already in the library, bump it to the
+// front and return it; otherwise return null. Lets re-imports of an existing
+// book resurface that copy (preserving its reading progress and title) instead
+// of silently creating a duplicate.
+export async function findAndBumpExistingBook(hash, { type, pageCount } = {}) {
+  const existing = await findBookByContentHash(hash, { type, pageCount });
+  if (!existing) return null;
+  await touchBook(existing.id);
+  return existing;
 }
 
 export async function updateLastPage(id, page) {
