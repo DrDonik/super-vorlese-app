@@ -159,7 +159,7 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
     if (book.contentHash) continue;
     // Skip hashing books that can't match anyway — a different type or page
     // count rules them out without paying the cost of digesting their content.
-    if (type && book.type !== type) continue;
+    if (type && (book.type || 'pdf') !== type) continue;
     if (pageCount && book.pageCount !== pageCount) continue;
     if ((await ensureContentHash(book.id)) === hash) {
       book.contentHash = hash;
