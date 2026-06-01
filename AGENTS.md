@@ -9,3 +9,5 @@ This web app's purpose is remote bedtime reading for grandparents and their gran
 5. All new code is reviewed by an expert reviewer. Implement with a goal of a single positive review and no iterations needed.
 
 Significant architecture and product-scope decisions are recorded as ADRs in `doc/adr/`; consult them for context and add a new one when making such a decision.
+
+Do not propose adding automated tests or a linter — see `doc/adr/0006-no-tests-or-linter.md` for the reasoning.
