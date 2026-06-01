@@ -84,8 +84,8 @@ export async function savePhotoBook({ id, title, pages, thumbBlob, contentHash }
 // Moves a book to the front of the library by refreshing its addedAt timestamp
 // (listBooks() orders newest-first). Used when a re-import should resurface the
 // existing copy where the user expects freshly imported books to appear.
-async function touchBook(id) {
-  const meta = await get(metaKey(id));
+async function touchBook(id, existingMeta) {
+  const meta = existingMeta || await get(metaKey(id));
   if (!meta) return;
   meta.addedAt = Date.now();
   await set(metaKey(id), meta);
@@ -176,7 +176,7 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
 export async function findAndBumpExistingBook(hash, { type, pageCount } = {}) {
   const existing = await findBookByContentHash(hash, { type, pageCount });
   if (!existing) return null;
-  await touchBook(existing.id);
+  await touchBook(existing.id, existing);
   return existing;
 }
 
