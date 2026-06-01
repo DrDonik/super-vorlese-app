@@ -245,6 +245,18 @@ export function serveBook(fb, roomCode, getBundle) {
       fb.push(signalRef(`/${peerId}/ice`), toPayload(e.candidate, myId)).catch(() => {});
     };
 
+    // Reap each peer once its connection reaches a terminal state, so nothing
+    // accumulates in the `peers` Map over a session: a finished transfer (the
+    // receiver closes and we go to 'failed'), a losing race when several holders
+    // answered the same joiner, or a joiner that gave up and retried under a new
+    // id. Without this, dead connections and their ICE listeners pile up until
+    // stop().
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+        closePeer(peerId);
+      }
+    };
+
     pc.ondatachannel = (e) => {
       const channel = e.channel;
       channel.binaryType = 'arraybuffer';
@@ -283,14 +295,19 @@ export function serveBook(fb, roomCode, getBundle) {
     if (peers.has(peerId)) return;
     const ctx = { pc: null, offOffer: null, offIce: null };
     peers.set(peerId, ctx);
-    ctx.offOffer = fb.onValue(signalRef(`/${peerId}/offer`), (s) => {
+    // Capture the unsubscribe handle locally: if onValue ever delivers the first
+    // value synchronously, `ctx.offOffer` wouldn't be assigned yet, so unsubscribe
+    // via the closure variable instead.
+    let offOffer;
+    offOffer = fb.onValue(signalRef(`/${peerId}/offer`), (s) => {
       const offer = s.val();
       if (!offer || !offer.sdp || !offer.from || ctx.pc) return;
       // Stop listening for the offer once we've taken it; one answer per joiner.
-      try { ctx.offOffer?.(); } catch {}
-      ctx.offOffer = null;
+      try { offOffer?.(); } catch {}
+      if (ctx.offOffer === offOffer) ctx.offOffer = null;
       handleOffer(peerId, ctx, offer).catch(() => {});
     });
+    ctx.offOffer = offOffer;
   });
 
   return function stop() {
