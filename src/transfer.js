@@ -295,19 +295,19 @@ export function serveBook(fb, roomCode, getBundle) {
     if (peers.has(peerId)) return;
     const ctx = { pc: null, offOffer: null, offIce: null };
     peers.set(peerId, ctx);
-    // Capture the unsubscribe handle locally: if onValue ever delivers the first
-    // value synchronously, `ctx.offOffer` wouldn't be assigned yet, so unsubscribe
-    // via the closure variable instead.
-    let offOffer;
-    offOffer = fb.onValue(signalRef(`/${peerId}/offer`), (s) => {
+    // One answer per joiner: stop listening once we've taken the offer. A flag
+    // rather than the unsubscribe handle, because if onValue ever delivers the
+    // first value synchronously the handle isn't assigned yet inside the
+    // callback; we then unsubscribe right after onValue returns.
+    let taken = false;
+    ctx.offOffer = fb.onValue(signalRef(`/${peerId}/offer`), (s) => {
       const offer = s.val();
-      if (!offer || !offer.sdp || !offer.from || ctx.pc) return;
-      // Stop listening for the offer once we've taken it; one answer per joiner.
-      try { offOffer?.(); } catch {}
-      if (ctx.offOffer === offOffer) ctx.offOffer = null;
+      if (!offer || !offer.sdp || !offer.from || ctx.pc || taken) return;
+      taken = true;
+      if (ctx.offOffer) { try { ctx.offOffer(); } catch {} ctx.offOffer = null; }
       handleOffer(peerId, ctx, offer).catch(() => {});
     });
-    ctx.offOffer = offOffer;
+    if (taken && ctx.offOffer) { try { ctx.offOffer(); } catch {} ctx.offOffer = null; }
   });
 
   return function stop() {
