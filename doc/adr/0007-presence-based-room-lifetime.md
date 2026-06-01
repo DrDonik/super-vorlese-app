@@ -1,4 +1,4 @@
-# 6. Keep a sync room alive as long as anyone has it set up
+# 7. Keep a sync room alive as long as anyone has it set up
 
 Date: 2026-05-31
 

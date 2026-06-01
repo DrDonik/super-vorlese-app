@@ -1,4 +1,4 @@
-# 6. No automated tests or linter
+# 8. No automated tests or linter
 
 Date: 2026-06-01
 
