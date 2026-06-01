@@ -1,7 +1,7 @@
 import { zip, unzip } from 'fflate';
 import {
   getMeta, getPhotoPages, getBookFile, getThumb,
-  savePhotoBook, saveBook, uid,
+  savePhotoBook, saveBook, uid, hashBook, findAndBumpExistingBook,
 } from './storage.js';
 import { loadPdf } from './pdf.js';
 
@@ -79,7 +79,11 @@ export async function exportBook(id) {
 
 const MAX_PAGE_COUNT = 1000;
 
-export async function importBundle(file) {
+// `dedupe` makes a re-import of a book the user already has resurface the
+// existing copy (moved to the front) instead of creating a duplicate. It is
+// opt-in because the WebRTC receive path relies on always getting a fresh book
+// id that it can verify and delete on an integrity failure.
+export async function importBundle(file, { dedupe = false } = {}) {
   const data = new Uint8Array(await file.arrayBuffer());
   let entries;
   try {
@@ -118,7 +122,12 @@ export async function importBundle(file) {
       if (!pageBytes) throw new Error(`Seite ${i} fehlt im Bundle.`);
       pages.push(new Blob([pageBytes], { type: 'image/jpeg' }));
     }
-    await savePhotoBook({ id, title, pages, thumbBlob });
+    const contentHash = await hashBook({ type: 'photos', pages });
+    if (dedupe) {
+      const existing = await findAndBumpExistingBook(contentHash, { type: 'photos', pageCount });
+      if (existing) return { id: existing.id, title: existing.title };
+    }
+    await savePhotoBook({ id, title, pages, thumbBlob, contentHash });
   } else if (manifest.type === 'pdf') {
     const pdfBytes = entries['book.pdf'];
     if (!pdfBytes) throw new Error('PDF fehlt im Bundle.');
@@ -131,12 +140,18 @@ export async function importBundle(file) {
     } catch {
       throw new Error('PDF im Bundle ist beschädigt.');
     }
+    const contentHash = await hashBook({ type: 'pdf', fileBlob });
+    if (dedupe) {
+      const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount: actualPageCount });
+      if (existing) return { id: existing.id, title: existing.title };
+    }
     await saveBook({
       id,
       title,
       fileBlob,
       thumbBlob,
       pageCount: actualPageCount,
+      contentHash,
     });
   } else {
     throw new Error(`Unbekannter Buch-Typ: ${manifest.type}`);

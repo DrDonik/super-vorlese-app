@@ -1,6 +1,6 @@
 import {
   listBooks, saveBook, deleteBook, renameBook, getThumbs, uid,
-  ensureContentHash, findBookByContentHash,
+  ensureContentHash, findBookByContentHash, findAndBumpExistingBook, hashBook,
 } from './storage.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
@@ -333,7 +333,7 @@ export class LibraryView {
     status.hidden = false;
     status.textContent = `Importiere ${files[0].name}…`;
     try {
-      const { title } = await importBundle(files[0]);
+      const { title } = await importBundle(files[0], { dedupe: true });
       status.textContent = `„${title}" importiert.`;
     } catch (err) {
       console.error('Import fehlgeschlagen', err);
@@ -357,14 +357,28 @@ export class LibraryView {
       status.textContent = `Verarbeite ${i + 1}/${files.length}: ${file.name}…`;
       try {
         const pdf = await loadPdf(file);
-        const thumbBlob = await renderThumbnail(pdf, 1, 480);
-        await saveBook({
-          id: uid(),
-          title: deriveTitle(file.name),
-          fileBlob: file,
-          thumbBlob,
-          pageCount: pdf.numPages,
-        });
+        try {
+          const pageCount = pdf.numPages;
+          // Re-importing a book the user already has resurfaces the existing copy
+          // (moved to the front) rather than creating a confusing duplicate.
+          const contentHash = await hashBook({ type: 'pdf', fileBlob: file });
+          if (await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount })) {
+            continue;
+          }
+          const thumbBlob = await renderThumbnail(pdf, 1, 480);
+          await saveBook({
+            id: uid(),
+            title: deriveTitle(file.name),
+            fileBlob: file,
+            thumbBlob,
+            pageCount,
+            contentHash,
+          });
+        } finally {
+          // Release PDF.js document/worker resources on every path (duplicate,
+          // success, or error) to avoid OOM crashes on memory-limited devices.
+          pdf.destroy?.();
+        }
       } catch (err) {
         console.error('Fehler beim Import', file.name, err);
         await showAlert({ message: `„${file.name}" konnte nicht gelesen werden.` });
