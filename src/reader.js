@@ -516,7 +516,7 @@ export class ReaderView {
   maybeStartServing() {
     if (this.serveStop) return;
     const session = this.syncSession;
-    if (!session?.isCreator || !session.roomCode) return;
+    if (!session?.roomCode) return;
     getFirebase().then((fb) => {
       if (this.syncSession !== session || this.serveStop) return;
       this.serveStop = serveBook(fb, session.roomCode, () => exportBook(this.bookId));
