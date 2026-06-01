@@ -54,12 +54,15 @@ Make the handshake **per joiner** instead of per room. Each joiner owns a subtre
   each new joiner, then watches that joiner's `offer` and replies under the same
   subtree. It keeps a `Map` of `RTCPeerConnection`s keyed by `peerId` — one per
   joiner — instead of a single `active` connection, so several transfers run in
-  parallel. `stop()` tears down every peer.
+  parallel. Each peer is closed (and its ICE listener dropped) when its connection
+  reaches a terminal `failed`/`closed` state, so the Map doesn't grow over a
+  session; `stop()` tears down whatever remains.
 - **Multiple holders still race, harmlessly.** When A and B both hold the book and
   C joins, both answer under `signal/<C>` (last write wins on the answer node) and
   both push ICE. C accepts the first answer and ignores the rest; the losing
-  holder's connection never completes and is closed on `stop()`. A and B can even
-  end up serving different joiners — a small, welcome load-spreading effect.
+  holder's connection never completes and is reaped when it reaches `failed`. A and
+  B can even end up serving different joiners — a small, welcome load-spreading
+  effect.
 - **Database rules.** `signal` now validates a `$peerId` wildcard level
   (`/^[a-z0-9]{1,40}$/`) with the existing `offer`/`answer`/`ice` shape nested
   beneath it.
@@ -74,10 +77,15 @@ The public API of `receiveBook` / `serveBook` is unchanged, so the callers in
 - The holder now maintains one peer connection per concurrent joiner. For the
   small groups this targets that is cheap; if the holder's uplink is the
   bottleneck, concurrent transfers just take longer rather than failing.
-- A losing holder (when several hold the book) leaves a peer connection that never
-  completes until `stop()`. Harmless at small N, but it is the first thing that
-  would need attention before pushing toward larger groups: a holder could concede
-  proactively once it sees another holder's answer was accepted.
+- Holder-side connections are reaped on terminal state, not just on `stop()`.
+  `serveBook` closes a peer (and drops its ICE listener) once the connection
+  reaches `failed`/`closed` — so a finished transfer, a losing holder's
+  never-completing connection when several hold the book, or a joiner that gave up
+  and retried under a new id all clean themselves up rather than accumulating in
+  the `peers` Map for the life of the session. Pushing toward larger groups would
+  still benefit from holders conceding *proactively* (closing as soon as they see
+  another holder's answer was accepted, instead of waiting for ICE to fail), but
+  that is an optimisation, not a leak.
 - Large groups (e.g. a classroom of 20) remain unsupported by design and need a
   different transfer model; this ADR deliberately does not address them.
 - Page-turn control is unchanged: anyone in the room can still turn the page. Fine
