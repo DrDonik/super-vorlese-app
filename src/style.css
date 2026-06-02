@@ -381,6 +381,9 @@ button {
   align-items: center;
   justify-content: center;
   overflow: hidden;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .reader-canvas {
