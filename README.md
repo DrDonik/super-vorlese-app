@@ -22,6 +22,8 @@ seine Grosseltern sie gemeinsam ohne fremde Hilfe bedienen können.
 2. Alle öffnen dasselbe Buch (PDF) in der App und koppeln sich einmalig
    mit einem sechsstelligen Code.
 3. Wer eine Seite umblättert, blättert für alle mit.
+4. Mit einem langen Fingerdruck auf die Seite zeigst du den anderen,
+   wo du gerade liest — der Punkt erscheint auch auf ihren Geräten.
 
 ### Was du brauchst
 
@@ -58,6 +60,8 @@ grandparents can use it together without anyone's help.
 2. Everyone opens the same book (PDF) in the app and pairs once with a
    six-character code.
 3. Whoever turns a page turns it for everyone.
+4. Press and hold a spot on the page to show the others where you are
+   reading — the marker appears on their devices too.
 
 ### What you need
 
