@@ -459,6 +459,7 @@ export class ReaderView {
   // adds newcomers (chevrons fly in), moves existing ones as a unit, and fades
   // out those that were released.
   renderRemotePointers(others) {
+    if (!this.readerEl) return; // a late sync callback after the view is gone
     for (const [id, pos] of Object.entries(others)) {
       let el = this.pointerEls.get(id);
       if (el && el.dataset.leaving) { el.remove(); el = null; }
