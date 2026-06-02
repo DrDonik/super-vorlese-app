@@ -150,6 +150,8 @@ export class SyncSession {
     this.isCreator = false;
     this.clientId = Math.random().toString(36).substring(2, 9);
     this.fb = null;
+    this.pointersUnsub = null;
+    this.pointerDisconnect = null;
   }
 
   async createRoom(initialPage, bookDescriptor = null) {
@@ -279,6 +281,7 @@ export class SyncSession {
   }
 
   detach() {
+    this.stopListeningPointers();
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
@@ -299,7 +302,64 @@ export class SyncSession {
     });
   }
 
+  // --- Pointer ("point at the page") presence ----------------------------
+  // A pointer lives at rooms/{code}/pointers/{clientId} = { x, y } where x and
+  // y are fractions (0..1) of the reader stage. It exists only while a finger
+  // is held down, so unlike room membership it IS tied to the live connection:
+  // an onDisconnect handler removes it if the device drops mid-gesture.
+
+  async sendPointer(x, y) {
+    if (!this.roomCode || !this.fb) return;
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers/${this.clientId}`);
+    if (!this.pointerDisconnect) {
+      this.pointerDisconnect = this.fb.onDisconnect(r);
+      this.pointerDisconnect.remove().catch(() => {});
+    }
+    await this.fb.set(r, { x, y });
+  }
+
+  async clearPointer() {
+    if (this.pointerDisconnect) {
+      this.pointerDisconnect.cancel().catch(() => {});
+      this.pointerDisconnect = null;
+    }
+    if (!this.roomCode || !this.fb) return;
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers/${this.clientId}`);
+    await this.fb.remove(r);
+  }
+
+  // Streams the other participants' pointers (our own slot is filtered out, as
+  // the pointing device shows its own pointer locally with no round-trip). The
+  // callback receives a map of senderId -> { x, y }.
+  listenPointers(cb) {
+    if (!this.roomCode || !this.fb) return;
+    this.stopListeningPointers();
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers`);
+    this.pointersUnsub = this.fb.onValue(r, (snapshot) => {
+      const data = snapshot.val();
+      const others = {};
+      if (data && typeof data === 'object') {
+        for (const [id, val] of Object.entries(data)) {
+          if (id === this.clientId) continue;
+          if (val && typeof val.x === 'number' && typeof val.y === 'number') {
+            others[id] = { x: val.x, y: val.y };
+          }
+        }
+      }
+      cb(others);
+    });
+  }
+
+  stopListeningPointers() {
+    if (this.pointersUnsub) {
+      this.pointersUnsub();
+      this.pointersUnsub = null;
+    }
+  }
+
   stop() {
+    this.stopListeningPointers();
+    this.clearPointer().catch(() => {});
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;

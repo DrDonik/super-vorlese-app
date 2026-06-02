@@ -414,6 +414,94 @@ button {
   background: linear-gradient(to left, rgba(255,255,255,0.05), transparent);
 }
 
+/* "Point at the page" overlay: a peer's long press paints four chevrons that
+   converge on the touched spot, with a pulsing dot at the centre. Never blocks
+   taps/swipes/page turns underneath. Sits below the chrome (z-index 10). */
+.pointer-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.pointer {
+  position: absolute;
+  width: 0;
+  height: 0;
+  --pc: #fff;
+}
+
+.pointer-chevron {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  margin: -10px 0 0 -10px;
+  border: 4px solid transparent;
+  border-radius: 3px;
+  /* fly in from the diagonal with a slight overshoot ("snap") */
+  animation: pointer-arrive 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Each chevron is an L-bracket whose two lit edges form an arrowhead aimed at
+   the centre; its resting offset sits just outside the glow dot. */
+.pointer-chevron-tl { border-right-color: var(--pc); border-bottom-color: var(--pc); --rest: translate(-13px, -13px); --out: translate(-62px, -62px); }
+.pointer-chevron-tr { border-left-color: var(--pc);  border-bottom-color: var(--pc); --rest: translate(13px, -13px);  --out: translate(62px, -62px); }
+.pointer-chevron-bl { border-right-color: var(--pc); border-top-color: var(--pc);    --rest: translate(-13px, 13px);  --out: translate(-62px, 62px); }
+.pointer-chevron-br { border-left-color: var(--pc);  border-top-color: var(--pc);    --rest: translate(13px, 13px);   --out: translate(62px, 62px); }
+
+@keyframes pointer-arrive {
+  from { transform: var(--out);  opacity: 0; }
+  to   { transform: var(--rest); opacity: 1; }
+}
+
+@keyframes pointer-leave {
+  from { transform: var(--rest); opacity: 1; }
+  to   { transform: var(--out);  opacity: 0; }
+}
+
+.pointer-leaving .pointer-chevron {
+  animation: pointer-leave 280ms ease-in both;
+}
+
+.pointer-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  margin: -7px 0 0 -7px;
+  border-radius: 50%;
+  background: var(--pc);
+  box-shadow: 0 0 14px 3px var(--pc);
+  animation: pointer-pulse 1.2s ease-in-out infinite;
+}
+
+.pointer-leaving .pointer-dot {
+  animation: pointer-dot-leave 280ms ease-in both;
+}
+
+@keyframes pointer-pulse {
+  0%, 100% { transform: scale(0.7); opacity: 0.65; }
+  50%      { transform: scale(1.15); opacity: 1; }
+}
+
+@keyframes pointer-dot-leave {
+  to { transform: scale(0.4); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pointer-chevron,
+  .pointer-leaving .pointer-chevron,
+  .pointer-dot,
+  .pointer-leaving .pointer-dot {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}
+
 .reader-loading {
   position: absolute;
   inset: 0;

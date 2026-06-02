@@ -10,6 +10,19 @@ const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
 const CURSOR_IDLE_MS = 2500;
 
+// Distinct, high-contrast colours for "point at the page" overlays so several
+// participants pointing at once stay visually separable.
+const POINTER_COLORS = ['#ff3b6b', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4'];
+
+// Maps a participant id to a stable colour. Both the pointing device and every
+// receiver derive the colour from the same id, so no colour data needs to be
+// sent over the wire and a peer keeps the same colour for the whole session.
+function pointerColor(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return POINTER_COLORS[h % POINTER_COLORS.length];
+}
+
 class PdfSource {
   constructor(pdf) {
     this.pdf = pdf;
@@ -63,6 +76,16 @@ export class ReaderView {
     this.boundResize = this.scheduleRender.bind(this);
     this.syncSession = null;
     this.isSyncing = false;
+    // Remote/local "point at the page" overlays, keyed by senderId ('local'
+    // for this device's own pointer). See attachStageGestures + the pointer
+    // helpers below.
+    this.pointerEls = new Map();
+    this.localPointerActive = false;
+    this.lastRenderedPage = 0;
+    this.pointerSendTimer = null;
+    this.lastPointerSend = 0;
+    this.pendingPointer = null;
+    this.longPressTimer = null;
   }
 
   async render() {
@@ -98,6 +121,7 @@ export class ReaderView {
           <canvas class="reader-canvas"></canvas>
           <button class="reader-zone reader-zone-prev" type="button" aria-label="Zurück"></button>
           <button class="reader-zone reader-zone-next" type="button" aria-label="Vor"></button>
+          <div class="pointer-layer" aria-hidden="true"></div>
         </div>
         <div class="reader-end" hidden>
           <div class="reader-end-card">
@@ -147,12 +171,15 @@ export class ReaderView {
     });
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
+      // The stage runs its own gesture recogniser (tap vs. long-press-to-point
+      // vs. swipe); let it decide whether a touch there reveals the chrome.
+      if (e.target.closest('.reader-stage')) return;
       this.showChrome();
     }, { passive: true });
 
     this.setupSync(reader);
 
-    this.attachSwipe(reader.querySelector('.reader-stage'));
+    this.attachStageGestures(reader.querySelector('.reader-stage'));
 
     window.addEventListener('keydown', this.boundKeys);
     window.addEventListener('resize', this.boundResize);
@@ -213,20 +240,262 @@ export class ReaderView {
     }
   }
 
-  attachSwipe(el) {
+  // Unified touch recogniser for the reading stage. It distinguishes three
+  // gestures so they never collide:
+  //   • quick tap            → reveal the chrome (but not over a page-turn zone,
+  //                            which turns the page via its own click handler)
+  //   • long press (≥700ms)  → "point at the page": four chevrons converge on
+  //                            the finger and follow it until release; the
+  //                            chrome stays hidden so pointing is unobstructed
+  //   • horizontal swipe     → turn the page
+  attachStageGestures(stage) {
+    const LONG_PRESS_MS = 700;
+    const MOVE_CANCEL_PX = 10; // movement before activation aborts the long press
+    const TAP_MAX_MS = 600;
+    const TAP_MAX_PX = 15;
+    const SWIPE_PX = 40;
+
     let startX = null;
-    el.addEventListener('touchstart', (e) => {
-      if (e.touches.length === 1) startX = e.touches[0].clientX;
+    let startY = null;
+    let startTime = 0;
+    let onZone = false;
+    let aborted = false; // multi-touch (e.g. pinch) cancels the gesture
+
+    // Instance property (not a closure local) so destroy() can clear a press
+    // still pending in its 700ms window and it never fires on a torn-down view.
+    const clearTimer = () => {
+      if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; }
+    };
+
+    const finishPointer = () => {
+      if (this.localPointerActive) this.endLocalPointer();
+    };
+
+    stage.addEventListener('touchstart', (e) => {
+      if (e.touches.length !== 1) {
+        clearTimer();
+        finishPointer();
+        aborted = true;
+        return;
+      }
+      const t = e.touches[0];
+      startX = t.clientX;
+      startY = t.clientY;
+      startTime = Date.now();
+      onZone = !!e.target.closest('.reader-zone');
+      aborted = false;
+      clearTimer();
+      this.longPressTimer = setTimeout(() => {
+        this.longPressTimer = null;
+        const pos = this.stageFraction(stage, startX, startY);
+        this.beginLocalPointer(pos.x, pos.y);
+      }, LONG_PRESS_MS);
     }, { passive: true });
-    el.addEventListener('touchend', (e) => {
-      if (startX == null) return;
-      const dx = (e.changedTouches[0]?.clientX ?? startX) - startX;
-      startX = null;
-      if (Math.abs(dx) > 40) {
+
+    stage.addEventListener('touchmove', (e) => {
+      if (aborted || startX == null) return;
+      const t = e.touches[0];
+      if (!t) return;
+      if (this.localPointerActive) {
+        // Suppress scroll / rubber-band / history-swipe so dragging the pointer
+        // (e.g. circling the bunny) is smooth. Only while pointing — normal
+        // reading scroll/swipe stays untouched, hence the non-passive listener.
+        if (e.cancelable) e.preventDefault();
+        const pos = this.stageFraction(stage, t.clientX, t.clientY);
+        this.moveLocalPointer(pos.x, pos.y);
+        return;
+      }
+      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX ||
+          Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
+        clearTimer(); // moved too far to be a long press (likely a swipe)
+      }
+    }, { passive: false });
+
+    stage.addEventListener('touchend', (e) => {
+      clearTimer();
+      if (this.localPointerActive) {
+        finishPointer();
+        startX = startY = null;
+        // Suppress the synthetic click the browser would otherwise fire on the
+        // page-turn zone underneath, so pointing near an edge and releasing
+        // doesn't accidentally turn the page.
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      if (aborted || startX == null) {
+        if (e.touches.length === 0) { startX = startY = null; aborted = false; }
+        return;
+      }
+      const dt = Date.now() - startTime;
+      const end = e.changedTouches[0];
+      const dx = end ? end.clientX - startX : 0;
+      const dy = end ? end.clientY - startY : 0;
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      if (absX > SWIPE_PX && absX > absY) {
         if (dx < 0) this.goNext();
         else this.goPrev();
+      } else if (dt < TAP_MAX_MS && absX < TAP_MAX_PX && absY < TAP_MAX_PX && !onZone) {
+        this.showChrome();
       }
+      startX = startY = null;
+    }, { passive: false });
+
+    stage.addEventListener('touchcancel', () => {
+      clearTimer();
+      finishPointer();
+      startX = startY = null;
+      aborted = false;
     });
+  }
+
+  // Position of a viewport point as a fraction (0..1) of the reader stage, so a
+  // pointer lands on the same spot of the page on every device regardless of
+  // screen size. Clamped, because a finger may drift past the stage edge.
+  // `stage` is passed in (attachStageGestures already holds it), so this runs
+  // on every touchmove during a drag without a DOM query or a cached element
+  // that could go stale.
+  stageFraction(stage, clientX, clientY) {
+    if (!stage) return { x: 0, y: 0 };
+    const r = stage.getBoundingClientRect();
+    const x = r.width ? (clientX - r.left) / r.width : 0;
+    const y = r.height ? (clientY - r.top) / r.height : 0;
+    return {
+      x: Math.min(1, Math.max(0, x)),
+      y: Math.min(1, Math.max(0, y)),
+    };
+  }
+
+  // Builds the four-chevron + glow-dot overlay for one pointer at fraction
+  // (x, y). `colorSeed` keeps a given participant's colour stable across the
+  // session; reused for both the local echo and each remote peer.
+  createPointerEl(colorSeed, x, y) {
+    const el = document.createElement('div');
+    el.className = 'pointer';
+    el.style.setProperty('--pc', pointerColor(colorSeed));
+    el.style.left = `${x * 100}%`;
+    el.style.top = `${y * 100}%`;
+    for (const corner of ['tl', 'tr', 'bl', 'br']) {
+      const chevron = document.createElement('span');
+      chevron.className = `pointer-chevron pointer-chevron-${corner}`;
+      el.appendChild(chevron);
+    }
+    const dot = document.createElement('span');
+    dot.className = 'pointer-dot';
+    el.appendChild(dot);
+    this.root.querySelector('.pointer-layer')?.appendChild(el);
+    return el;
+  }
+
+  setPointerPosition(el, x, y) {
+    el.style.left = `${x * 100}%`;
+    el.style.top = `${y * 100}%`;
+  }
+
+  // Fades a pointer out (chevrons fly back out) and removes it once the leave
+  // animation ends. `immediate` skips the animation — used on a page turn, so
+  // a stale pointer never lingers onto the new page.
+  removePointerEl(el, immediate = false) {
+    if (!el || el.dataset.leaving) return;
+    if (immediate) { el.remove(); return; }
+    el.dataset.leaving = '1';
+    el.classList.add('pointer-leaving');
+    const done = () => el.remove();
+    el.addEventListener('animationend', done, { once: true });
+    setTimeout(done, 500); // safety net if animationend never fires
+  }
+
+  beginLocalPointer(x, y) {
+    const session = this.syncSession;
+    if (!session || !session.roomCode) return; // nothing to point at without a partner
+    this.localPointerActive = true;
+    this.pendingPointer = null;
+    const existing = this.pointerEls.get('local');
+    if (existing) existing.remove();
+    const el = this.createPointerEl(session.clientId, x, y);
+    this.pointerEls.set('local', el);
+    this.lastPointerSend = Date.now();
+    session.sendPointer(x, y).catch(() => {});
+  }
+
+  moveLocalPointer(x, y) {
+    const el = this.pointerEls.get('local');
+    if (el) this.setPointerPosition(el, x, y);
+    // Throttle the network writes to ~12/s but always flush the final position
+    // (trailing edge), so the remote pointer settles exactly where the finger
+    // came to rest rather than at the last throttled sample.
+    this.pendingPointer = { x, y };
+    if (this.pointerSendTimer) return;
+    const wait = Math.max(0, 80 - (Date.now() - this.lastPointerSend));
+    this.pointerSendTimer = setTimeout(() => {
+      this.pointerSendTimer = null;
+      const p = this.pendingPointer;
+      this.pendingPointer = null;
+      if (!p || !this.localPointerActive) return;
+      this.lastPointerSend = Date.now();
+      this.syncSession?.sendPointer(p.x, p.y).catch(() => {});
+    }, wait);
+  }
+
+  endLocalPointer() {
+    this.localPointerActive = false;
+    this.pendingPointer = null;
+    if (this.pointerSendTimer) {
+      clearTimeout(this.pointerSendTimer);
+      this.pointerSendTimer = null;
+    }
+    const el = this.pointerEls.get('local');
+    if (el) {
+      this.pointerEls.delete('local');
+      this.removePointerEl(el);
+    }
+    this.syncSession?.clearPointer().catch(() => {});
+  }
+
+  // Reconciles the remote peers' pointers against what is currently on screen:
+  // adds newcomers (chevrons fly in), moves existing ones as a unit, and fades
+  // out those that were released.
+  renderRemotePointers(others) {
+    if (!this.readerEl) return; // a late sync callback after the view is gone
+    for (const [id, pos] of Object.entries(others)) {
+      let el = this.pointerEls.get(id);
+      if (el && el.dataset.leaving) { el.remove(); el = null; }
+      if (!el) {
+        el = this.createPointerEl(id, pos.x, pos.y);
+        this.pointerEls.set(id, el);
+      } else {
+        this.setPointerPosition(el, pos.x, pos.y);
+      }
+    }
+    for (const [id, el] of this.pointerEls) {
+      if (id === 'local') continue;
+      if (!(id in others)) {
+        this.pointerEls.delete(id);
+        this.removePointerEl(el);
+      }
+    }
+  }
+
+  // Wipes every pointer (local + remote) instantly. Called on a page turn so
+  // pointers never bleed across pages.
+  clearAllPointers() {
+    if (this.localPointerActive) {
+      this.localPointerActive = false;
+      this.pendingPointer = null;
+      if (this.pointerSendTimer) {
+        clearTimeout(this.pointerSendTimer);
+        this.pointerSendTimer = null;
+      }
+      this.syncSession?.clearPointer().catch(() => {});
+    }
+    // Wipe the layer wholesale rather than looping this.pointerEls: a remote
+    // pointer that was just released is mid-fade-out — already gone from the
+    // map but still animating in the DOM — and must not linger onto the new
+    // page. removePointerEl's safety-timeout remove() on these now-detached
+    // nodes is a harmless no-op.
+    const layer = this.root.querySelector('.pointer-layer');
+    if (layer) layer.replaceChildren();
+    this.pointerEls.clear();
   }
 
   handleKey(e) {
@@ -277,6 +546,12 @@ export class ReaderView {
       console.error('Render-Fehler', err);
     }
     if (token !== this.renderToken) return;
+    // Clear pointers only when the page actually changes, not on a re-render
+    // from a resize, so a pointer survives an orientation change mid-gesture.
+    if (this.lastRenderedPage !== this.currentPage) {
+      this.clearAllPointers();
+      this.lastRenderedPage = this.currentPage;
+    }
     this.updateIndicator();
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
   }
@@ -531,6 +806,8 @@ export class ReaderView {
 
   syncStop() {
     this.stopServing();
+    if (this.syncSession) this.syncSession.stopListeningPointers();
+    this.clearAllPointers();
     closeSyncForBook(this.bookId);
     this.syncSession = null;
     this.showSyncInactive();
@@ -548,6 +825,9 @@ export class ReaderView {
     active.querySelector('.sync-code-display').textContent = code;
     this.root.querySelector('.reader-sync-btn').classList.add('sync-active');
     this.maybeStartServing();
+    if (this.syncSession) {
+      this.syncSession.listenPointers((others) => this.renderRemotePointers(others));
+    }
   }
 
   showSyncInactive() {
@@ -581,6 +861,9 @@ export class ReaderView {
     clearTimeout(this.hideTimer);
     clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
+    clearTimeout(this.pointerSendTimer);
+    clearTimeout(this.longPressTimer);
+    this.clearAllPointers();
     this.readerEl = null;
     this.stopServing();
     if (this.syncSession) {
