@@ -474,7 +474,13 @@ export class ReaderView {
       }
       this.syncSession?.clearPointer().catch(() => {});
     }
-    for (const [, el] of this.pointerEls) this.removePointerEl(el, true);
+    // Wipe the layer wholesale rather than looping this.pointerEls: a remote
+    // pointer that was just released is mid-fade-out — already gone from the
+    // map but still animating in the DOM — and must not linger onto the new
+    // page. removePointerEl's safety-timeout remove() on these now-detached
+    // nodes is a harmless no-op.
+    const layer = this.root.querySelector('.pointer-layer');
+    if (layer) layer.replaceChildren();
     this.pointerEls.clear();
   }
 
