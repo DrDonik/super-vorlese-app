@@ -316,6 +316,10 @@ export class ReaderView {
       if (this.localPointerActive) {
         finishPointer();
         startX = startY = null;
+        // Suppress the synthetic click the browser would otherwise fire on the
+        // page-turn zone underneath, so pointing near an edge and releasing
+        // doesn't accidentally turn the page.
+        if (e.cancelable) e.preventDefault();
         return;
       }
       if (aborted || startX == null) {
@@ -335,7 +339,7 @@ export class ReaderView {
         this.showChrome();
       }
       startX = startY = null;
-    });
+    }, { passive: false });
 
     stage.addEventListener('touchcancel', () => {
       clearTimer();
