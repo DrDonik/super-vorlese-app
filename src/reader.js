@@ -86,6 +86,7 @@ export class ReaderView {
     this.lastPointerSend = 0;
     this.pendingPointer = null;
     this.longPressTimer = null;
+    this.stageEl = null;
   }
 
   async render() {
@@ -353,7 +354,11 @@ export class ReaderView {
   // pointer lands on the same spot of the page on every device regardless of
   // screen size. Clamped, because a finger may drift past the stage edge.
   stageFraction(clientX, clientY) {
-    const stage = this.root.querySelector('.reader-stage');
+    // Cached: this runs on every touchmove (up to ~120/s) during a drag, and
+    // the stage element is stable for the view's lifetime. A detached cache
+    // (after teardown) yields a zero-size rect, which falls through to {0,0}.
+    if (!this.stageEl) this.stageEl = this.root.querySelector('.reader-stage');
+    const stage = this.stageEl;
     if (!stage) return { x: 0, y: 0 };
     const r = stage.getBoundingClientRect();
     const x = r.width ? (clientX - r.left) / r.width : 0;

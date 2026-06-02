@@ -336,12 +336,14 @@ export class SyncSession {
     this.stopListeningPointers();
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers`);
     this.pointersUnsub = this.fb.onValue(r, (snapshot) => {
-      const data = snapshot.val() || {};
+      const data = snapshot.val();
       const others = {};
-      for (const [id, val] of Object.entries(data)) {
-        if (id === this.clientId) continue;
-        if (val && typeof val.x === 'number' && typeof val.y === 'number') {
-          others[id] = { x: val.x, y: val.y };
+      if (data && typeof data === 'object') {
+        for (const [id, val] of Object.entries(data)) {
+          if (id === this.clientId) continue;
+          if (val && typeof val.x === 'number' && typeof val.y === 'number') {
+            others[id] = { x: val.x, y: val.y };
+          }
         }
       }
       cb(others);
