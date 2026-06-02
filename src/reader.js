@@ -297,6 +297,10 @@ export class ReaderView {
       const t = e.touches[0];
       if (!t) return;
       if (this.localPointerActive) {
+        // Suppress scroll / rubber-band / history-swipe so dragging the pointer
+        // (e.g. circling the bunny) is smooth. Only while pointing — normal
+        // reading scroll/swipe stays untouched, hence the non-passive listener.
+        if (e.cancelable) e.preventDefault();
         const pos = this.stageFraction(t.clientX, t.clientY);
         this.moveLocalPointer(pos.x, pos.y);
         return;
@@ -305,7 +309,7 @@ export class ReaderView {
           Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
         clearTimer(); // moved too far to be a long press (likely a swipe)
       }
-    }, { passive: true });
+    }, { passive: false });
 
     stage.addEventListener('touchend', (e) => {
       clearTimer();
