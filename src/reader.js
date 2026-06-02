@@ -85,6 +85,7 @@ export class ReaderView {
     this.pointerSendTimer = null;
     this.lastPointerSend = 0;
     this.pendingPointer = null;
+    this.longPressTimer = null;
   }
 
   async render() {
@@ -259,10 +260,11 @@ export class ReaderView {
     let startTime = 0;
     let onZone = false;
     let aborted = false; // multi-touch (e.g. pinch) cancels the gesture
-    let timer = null;
 
+    // Instance property (not a closure local) so destroy() can clear a press
+    // still pending in its 700ms window and it never fires on a torn-down view.
     const clearTimer = () => {
-      if (timer) { clearTimeout(timer); timer = null; }
+      if (this.longPressTimer) { clearTimeout(this.longPressTimer); this.longPressTimer = null; }
     };
 
     const finishPointer = () => {
@@ -283,8 +285,8 @@ export class ReaderView {
       onZone = !!e.target.closest('.reader-zone');
       aborted = false;
       clearTimer();
-      timer = setTimeout(() => {
-        timer = null;
+      this.longPressTimer = setTimeout(() => {
+        this.longPressTimer = null;
         const pos = this.stageFraction(startX, startY);
         this.beginLocalPointer(pos.x, pos.y);
       }, LONG_PRESS_MS);
@@ -344,6 +346,7 @@ export class ReaderView {
   // screen size. Clamped, because a finger may drift past the stage edge.
   stageFraction(clientX, clientY) {
     const stage = this.root.querySelector('.reader-stage');
+    if (!stage) return { x: 0, y: 0 };
     const r = stage.getBoundingClientRect();
     const x = r.width ? (clientX - r.left) / r.width : 0;
     const y = r.height ? (clientY - r.top) / r.height : 0;
@@ -848,6 +851,7 @@ export class ReaderView {
     clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
     clearTimeout(this.pointerSendTimer);
+    clearTimeout(this.longPressTimer);
     this.clearAllPointers();
     this.readerEl = null;
     this.stopServing();
