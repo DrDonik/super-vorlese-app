@@ -409,14 +409,6 @@ button {
 .reader-zone-prev { left: 0; }
 .reader-zone-next { right: 0; }
 
-.reader-zone:hover {
-  background: linear-gradient(to right, rgba(255,255,255,0.05), transparent);
-}
-
-.reader-zone-next:hover {
-  background: linear-gradient(to left, rgba(255,255,255,0.05), transparent);
-}
-
 /* "Point at the page" overlay: a peer's long press paints four chevrons that
    converge on the touched spot, with a pulsing dot at the centre. Never blocks
    taps/swipes/page turns underneath. Sits below the chrome (z-index 10). */
