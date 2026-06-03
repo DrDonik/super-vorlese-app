@@ -404,6 +404,11 @@ button {
   cursor: pointer;
   z-index: 5;
   touch-action: manipulation;
+  /* The zones are deliberately invisible. iOS paints a default tap highlight
+     on buttons, and in a standalone PWA it latches on and lingers after the
+     tap (Safari only flashes it briefly), leaving a grey overlay on the turned
+     side. Suppress it so a tap turns the page with no visual residue. */
+  -webkit-tap-highlight-color: transparent;
 }
 
 .reader-zone-prev { left: 0; }
