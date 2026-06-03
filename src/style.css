@@ -428,6 +428,15 @@ button {
   overflow: hidden;
 }
 
+/* The pointer coordinate space, sized (in JS) to overlay the page image exactly
+   so percentage-positioned pointers map to the page, not the letterboxed stage.
+   Overflow is visible so a chevron near a page edge can fly in from just outside
+   it; the parent .pointer-layer still clips anything past the stage edge. */
+.pointer-page {
+  position: absolute;
+  overflow: visible;
+}
+
 .pointer {
   position: absolute;
   width: 0;
