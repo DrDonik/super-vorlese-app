@@ -121,7 +121,7 @@ export class ReaderView {
           <canvas class="reader-canvas"></canvas>
           <button class="reader-zone reader-zone-prev" type="button" aria-label="Zurück"></button>
           <button class="reader-zone reader-zone-next" type="button" aria-label="Vor"></button>
-          <div class="pointer-layer" aria-hidden="true"></div>
+          <div class="pointer-layer" aria-hidden="true"><div class="pointer-page"></div></div>
         </div>
         <div class="reader-end" hidden>
           <div class="reader-end-card">
@@ -249,6 +249,9 @@ export class ReaderView {
   //                            chrome stays hidden so pointing is unobstructed
   //   • horizontal swipe     → turn the page
   attachStageGestures(stage) {
+    // Captured once: the canvas element is reused across page renders, so a
+    // pointer can be measured against the page without a per-touchmove DOM query.
+    const canvas = stage.querySelector('.reader-canvas');
     const LONG_PRESS_MS = 700;
     const MOVE_CANCEL_PX = 10; // movement before activation aborts the long press
     const TAP_MAX_MS = 600;
@@ -287,7 +290,7 @@ export class ReaderView {
       clearTimer();
       this.longPressTimer = setTimeout(() => {
         this.longPressTimer = null;
-        const pos = this.stageFraction(stage, startX, startY);
+        const pos = this.pageFraction(canvas, startX, startY);
         this.beginLocalPointer(pos.x, pos.y);
       }, LONG_PRESS_MS);
     }, { passive: true });
@@ -301,7 +304,7 @@ export class ReaderView {
         // (e.g. circling the bunny) is smooth. Only while pointing — normal
         // reading scroll/swipe stays untouched, hence the non-passive listener.
         if (e.cancelable) e.preventDefault();
-        const pos = this.stageFraction(stage, t.clientX, t.clientY);
+        const pos = this.pageFraction(canvas, t.clientX, t.clientY);
         this.moveLocalPointer(pos.x, pos.y);
         return;
       }
@@ -349,21 +352,41 @@ export class ReaderView {
     });
   }
 
-  // Position of a viewport point as a fraction (0..1) of the reader stage, so a
+  // Position of a viewport point as a fraction (0..1) of the page image, so a
   // pointer lands on the same spot of the page on every device regardless of
-  // screen size. Clamped, because a finger may drift past the stage edge.
-  // `stage` is passed in (attachStageGestures already holds it), so this runs
+  // screen size or aspect ratio. Measured against the canvas (the page), not the
+  // stage: the page is letterboxed inside the stage, so a stage-relative fraction
+  // would drift between devices whose viewports have different shapes. Clamped,
+  // because a finger may drift past the page edge into the letterbox bar.
+  // `canvas` is passed in (attachStageGestures already holds it), so this runs
   // on every touchmove during a drag without a DOM query or a cached element
   // that could go stale.
-  stageFraction(stage, clientX, clientY) {
-    if (!stage) return { x: 0, y: 0 };
-    const r = stage.getBoundingClientRect();
+  pageFraction(canvas, clientX, clientY) {
+    if (!canvas) return { x: 0, y: 0 };
+    const r = canvas.getBoundingClientRect();
     const x = r.width ? (clientX - r.left) / r.width : 0;
     const y = r.height ? (clientY - r.top) / r.height : 0;
     return {
       x: Math.min(1, Math.max(0, x)),
       y: Math.min(1, Math.max(0, y)),
     };
+  }
+
+  // Overlays the pointer coordinate space (.pointer-page) exactly onto the page
+  // image, so the percentage-positioned pointers map to the page rather than to
+  // the whole stage. Refreshed after every render and on resize, so a pointer
+  // held through an orientation change stays glued to its spot on the page.
+  syncPointerPageGeometry() {
+    const page = this.root.querySelector('.pointer-page');
+    const canvas = this.root.querySelector('.reader-canvas');
+    const stage = this.root.querySelector('.reader-stage');
+    if (!page || !canvas || !stage) return;
+    const s = stage.getBoundingClientRect();
+    const c = canvas.getBoundingClientRect();
+    page.style.left = `${c.left - s.left}px`;
+    page.style.top = `${c.top - s.top}px`;
+    page.style.width = `${c.width}px`;
+    page.style.height = `${c.height}px`;
   }
 
   // Builds the four-chevron + glow-dot overlay for one pointer at fraction
@@ -383,7 +406,7 @@ export class ReaderView {
     const dot = document.createElement('span');
     dot.className = 'pointer-dot';
     el.appendChild(dot);
-    this.root.querySelector('.pointer-layer')?.appendChild(el);
+    this.root.querySelector('.pointer-page')?.appendChild(el);
     return el;
   }
 
@@ -493,8 +516,8 @@ export class ReaderView {
     // map but still animating in the DOM — and must not linger onto the new
     // page. removePointerEl's safety-timeout remove() on these now-detached
     // nodes is a harmless no-op.
-    const layer = this.root.querySelector('.pointer-layer');
-    if (layer) layer.replaceChildren();
+    const page = this.root.querySelector('.pointer-page');
+    if (page) page.replaceChildren();
     this.pointerEls.clear();
   }
 
@@ -546,6 +569,9 @@ export class ReaderView {
       console.error('Render-Fehler', err);
     }
     if (token !== this.renderToken) return;
+    // Re-overlay the pointer space onto the (possibly resized) page before any
+    // pointer is placed, so positions are page-relative on this render too.
+    this.syncPointerPageGeometry();
     // Clear pointers only when the page actually changes, not on a re-render
     // from a resize, so a pointer survives an orientation change mid-gesture.
     if (this.lastRenderedPage !== this.currentPage) {
