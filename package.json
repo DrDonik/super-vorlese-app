@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "icons": "node scripts/generate-icons.js",
-    "prebuild": "node scripts/generate-icons.js",
+    "icons": "node scripts/generate-icons.js && node scripts/generate-mood-icons.js",
+    "prebuild": "node scripts/generate-icons.js && node scripts/generate-mood-icons.js",
     "build": "vite build",
     "preview": "vite preview"
   },

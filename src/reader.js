@@ -1,10 +1,11 @@
-import { getBookFile, getMeta, getPhotoPage, updateLastPage, ensureContentHash } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from './sync.js';
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert } from './dialog.js';
+import { MOODS, moodIconUrl, evaluateLock, MOOD_PICK_COUNT, MOOD_MIN_OVERLAP } from './moods.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
@@ -86,6 +87,13 @@ export class ReaderView {
     this.lastPointerSend = 0;
     this.pendingPointer = null;
     this.longPressTimer = null;
+    // Shared reading memory (issue #65). The mood overlay is built on demand;
+    // mySelection is this device's authoritative picks, moodPartnerPicks mirrors
+    // the other participants' picks from Firebase, keyed by clientId.
+    this.moodOpen = false;
+    this.mySelection = new Set();
+    this.moodPartnerPicks = {};
+    this.moodLockHandled = false;
   }
 
   async render() {
@@ -123,6 +131,10 @@ export class ReaderView {
           <button class="reader-zone reader-zone-next" type="button" aria-label="Vor"></button>
           <div class="pointer-layer" aria-hidden="true"></div>
         </div>
+        <button class="reader-finish-cue" type="button" hidden>
+          <span class="reader-finish-cue-icon" aria-hidden="true">📖</span>
+          Fertig? Gefühle teilen
+        </button>
         <div class="reader-end" hidden>
           <div class="reader-end-card">
             <div class="reader-end-title">Ende des Buches</div>
@@ -140,8 +152,9 @@ export class ReaderView {
     reader.querySelector('.reader-back').addEventListener('click', () => this.close());
     reader.querySelector('.reader-zone-prev').addEventListener('click', () => this.goPrev());
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
-    reader.querySelector('.reader-end-library').addEventListener('click', () => this.close());
+    reader.querySelector('.reader-end-library').addEventListener('click', () => this.closeToFirstPage());
     reader.querySelector('.reader-end-stay').addEventListener('click', () => this.hideEnd());
+    reader.querySelector('.reader-finish-cue').addEventListener('click', () => this.openMood(true));
     reader.querySelector('.reader-end').addEventListener('click', (e) => {
       if (e.target.closest('.reader-end-card')) return;
       this.hideEnd();
@@ -515,6 +528,11 @@ export class ReaderView {
       this.currentPage++;
       await this.renderCurrent();
       if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
+    } else if (this.syncSession?.roomCode) {
+      // Finishing a book together opens the shared mood ritual instead of the
+      // solo end-of-book card; turning forward past the last page is one of its
+      // two triggers (the persistent finish cue on the last page is the other).
+      this.openMood(true);
     } else {
       this.showEnd();
     }
@@ -553,6 +571,7 @@ export class ReaderView {
       this.lastRenderedPage = this.currentPage;
     }
     this.updateIndicator();
+    this.updateMoodCue();
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
   }
 
@@ -659,6 +678,240 @@ export class ReaderView {
   hideEnd() {
     const end = this.root.querySelector('.reader-end');
     if (end) end.hidden = true;
+  }
+
+  // --- Shared reading memory ("mood ritual", issue #65) -------------------
+
+  // The persistent invitation on the last page. It only appears for a synced
+  // pair sitting on the final page with no overlay already up, so a solo reader
+  // never sees it and it can't compete with the open mood screen.
+  updateMoodCue() {
+    const cue = this.root.querySelector('.reader-finish-cue');
+    if (!cue) return;
+    const show = !!this.syncSession?.roomCode
+      && this.currentPage === this.totalPages
+      && this.totalPages > 0
+      && !this.moodOpen;
+    cue.hidden = !show;
+  }
+
+  // Entry point for both triggers (finish cue, forward-turn). `initiate` is true
+  // for the device that started the ritual: it flags the room so the partner's
+  // mood listener opens the screen too. A device opening in response to that
+  // flag passes false and must not re-flag (which would wipe picks already in).
+  openMood(initiate) {
+    if (this.moodOpen) return;
+    const session = this.syncSession;
+    if (!session?.roomCode) { this.showEnd(); return; }
+    this.moodOpen = true;
+    this.moodLockHandled = false;
+    this.mySelection = new Set();
+    this.moodPartnerPicks = {};
+    this.updateMoodCue();
+    this.renderMoodOverlay();
+    if (initiate) {
+      session.startMood().catch(() => {});
+    }
+  }
+
+  renderMoodOverlay() {
+    const overlay = document.createElement('div');
+    overlay.className = 'mood-overlay';
+    overlay.innerHTML = `
+      <div class="mood-card">
+        <button class="mood-cancel" type="button" aria-label="Abbrechen">✕</button>
+        <div class="mood-title">Wie war das Buch?</div>
+        <div class="mood-instructions"></div>
+        <div class="mood-grid"></div>
+      </div>
+    `;
+    const grid = overlay.querySelector('.mood-grid');
+    for (const mood of MOODS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mood-icon';
+      btn.dataset.id = mood.id;
+      btn.setAttribute('aria-pressed', 'false');
+      // The illustration carries the meaning; the label is kept only as the
+      // accessible name (no visible caption), per the screen's design.
+      btn.setAttribute('aria-label', mood.label);
+      btn.innerHTML = `
+        <span class="mood-image-wrap">
+          <img src="${moodIconUrl(mood.slug)}" alt="" draggable="false" />
+          <span class="mood-partner-badge" aria-hidden="true" hidden></span>
+        </span>
+      `;
+      btn.addEventListener('click', () => this.toggleMoodIcon(mood.id));
+      grid.appendChild(btn);
+    }
+    overlay.querySelector('.mood-cancel').addEventListener('click', () => this.cancelMood());
+    this.readerEl?.appendChild(overlay);
+    this.moodOverlay = overlay;
+    this.renderMoodSelections();
+  }
+
+  toggleMoodIcon(id) {
+    if (this.moodLockHandled) return;
+    if (this.mySelection.has(id)) {
+      this.mySelection.delete(id);
+    } else if (this.mySelection.size < MOOD_PICK_COUNT) {
+      this.mySelection.add(id);
+    } else {
+      return; // already at the cap; a swap means deselecting one first
+    }
+    this.renderMoodSelections();
+    this.syncSession?.setMoodPicks([...this.mySelection]).catch(() => {});
+    this.maybeLockMood();
+  }
+
+  // Reflects both sides' current picks onto the grid: this device's selections
+  // get the "mine" state, and any icon a partner has chosen carries a small
+  // badge so each reader can watch the other's choices arrive in real time.
+  renderMoodSelections() {
+    const overlay = this.moodOverlay;
+    if (!overlay) return;
+    const partnerIds = new Set();
+    for (const ids of Object.values(this.moodPartnerPicks)) {
+      for (const id of ids) partnerIds.add(id);
+    }
+    for (const btn of overlay.querySelectorAll('.mood-icon')) {
+      const id = Number(btn.dataset.id);
+      const mine = this.mySelection.has(id);
+      btn.classList.toggle('mood-selected', mine);
+      btn.setAttribute('aria-pressed', mine ? 'true' : 'false');
+      const badge = btn.querySelector('.mood-partner-badge');
+      badge.hidden = !partnerIds.has(id);
+    }
+    const instructions = overlay.querySelector('.mood-instructions');
+    if (instructions && !this.moodLockHandled) {
+      // Two live counters: how many more this reader still picks, and how many
+      // more of their picks must match the partner's to reach the shared total.
+      const remaining = MOOD_PICK_COUNT - this.mySelection.size;
+      const overlap = [...this.mySelection].filter((id) => partnerIds.has(id)).length;
+      const needed = Math.max(0, MOOD_MIN_OVERLAP - overlap);
+      let text;
+      if (remaining > 0 && needed > 0) text = `Wähle noch ${remaining}. Einigt Euch auf ${needed}.`;
+      else if (remaining > 0) text = `Wähle noch ${remaining}.`;
+      else if (needed > 0) text = `Einigt Euch auf ${needed}.`;
+      else text = 'Wartet, bis ihr fertig seid …';
+      instructions.textContent = text;
+    }
+  }
+
+  // After either side's picks change, see whether this device and a partner now
+  // satisfy the lock rule. We only request the lock here; the actual recording
+  // happens when the resulting lock node echoes back through handleMood, so both
+  // devices act on the one canonical record (identical moods and timestamp).
+  maybeLockMood() {
+    if (this.moodLockHandled || !this.moodOpen) return;
+    const mine = [...this.mySelection];
+    for (const partnerIds of Object.values(this.moodPartnerPicks)) {
+      const record = evaluateLock(mine, partnerIds);
+      if (record) {
+        this.syncSession?.lockMood(record).catch(() => {});
+        return;
+      }
+    }
+  }
+
+  handleMood(data) {
+    if (!this.moodOpen) {
+      // The partner opened the ritual: follow them in, without re-flagging.
+      if (data && data.open && !data.lock) this.openMood(false);
+      else if (data && data.lock) { this.openMood(false); this.handleMoodLock(data.lock); }
+      return;
+    }
+    if (!data) {
+      // The whole node was removed. While still selecting that means the other
+      // party cancelled, so close too; once we've locked and are showing the
+      // result, it just means a participant finished tidying up — leave our
+      // celebration on screen until this reader dismisses it.
+      if (!this.moodLockHandled) this.closeMoodUI();
+      return;
+    }
+    if (data.lock) {
+      this.handleMoodLock(data.lock);
+      return;
+    }
+    this.moodPartnerPicks = {};
+    for (const [clientId, ids] of Object.entries(data.picks)) {
+      if (clientId === this.syncSession?.clientId) continue;
+      this.moodPartnerPicks[clientId] = ids;
+    }
+    this.renderMoodSelections();
+    this.maybeLockMood();
+  }
+
+  // The agreed completion arrived. Persist the identical record locally on both
+  // devices (guarded so a re-fired listener can't store it twice, and so a
+  // bystander who never picked doesn't record someone else's finish), then show
+  // the satisfying locked result.
+  handleMoodLock(lock) {
+    if (this.moodLockHandled) return;
+    this.moodLockHandled = true;
+    if (this.mySelection.size === MOOD_PICK_COUNT) {
+      addCompletion(this.bookId, {
+        id: uid(),
+        completedAt: lock.at,
+        shared: lock.shared,
+        personal: lock.personal,
+      }).catch(() => {});
+    }
+    this.showMoodResult(lock);
+  }
+
+  showMoodResult(lock) {
+    const overlay = this.moodOverlay;
+    if (!overlay) return;
+    const card = overlay.querySelector('.mood-card');
+    overlay.classList.add('mood-locked');
+    const icons = [...lock.shared, ...lock.personal];
+    const tiles = icons.map((id) => {
+      const mood = MOODS.find((m) => m.id === id);
+      if (!mood) return '';
+      const personal = lock.personal.includes(id);
+      return `
+        <div class="mood-result-icon${personal ? ' mood-result-personal' : ''}">
+          <img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" />
+        </div>`;
+    }).join('');
+    card.innerHTML = `
+      <div class="mood-result-title">Euer gemeinsames Gefühl</div>
+      <div class="mood-result-icons">${tiles}</div>
+      <button class="mood-result-done" type="button">Fertig</button>
+    `;
+    card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
+  }
+
+  // The ritual is done and acknowledged: tear it down, then leave the finished
+  // book and rewind it to the start.
+  concludeMood() {
+    this.closeMoodUI();
+    this.closeToFirstPage();
+  }
+
+  cancelMood() {
+    // Clearing the shared node makes the partner's listener close their screen
+    // too. Safe after a lock as well: the record is already stored locally.
+    this.syncSession?.clearMood().catch(() => {});
+    this.closeMoodUI();
+  }
+
+  closeMoodUI() {
+    // A concluded ritual leaves its node behind; clear it so a re-read starts
+    // clean and re-entering the book doesn't replay the celebration. The record
+    // is already stored locally on both devices by the time anyone closes, and
+    // clearing is idempotent, so both sides closing is harmless. (A cancel
+    // before locking clears via cancelMood instead.)
+    if (this.moodLockHandled) this.syncSession?.clearMood().catch(() => {});
+    this.moodOpen = false;
+    this.mySelection = new Set();
+    this.moodPartnerPicks = {};
+    if (this.moodOverlay) {
+      this.moodOverlay.remove();
+      this.moodOverlay = null;
+    }
+    this.updateMoodCue();
   }
 
   setupSync(reader) {
@@ -806,11 +1059,18 @@ export class ReaderView {
 
   syncStop() {
     this.stopServing();
-    if (this.syncSession) this.syncSession.stopListeningPointers();
+    if (this.syncSession) {
+      this.syncSession.stopListeningPointers();
+      this.syncSession.stopListeningMood();
+    }
     this.clearAllPointers();
+    // A finish without a partner has no meaning; tear the ritual down with the
+    // session rather than leaving an orphaned overlay or cue on screen.
+    if (this.moodOpen) this.closeMoodUI();
     closeSyncForBook(this.bookId);
     this.syncSession = null;
     this.showSyncInactive();
+    this.updateMoodCue();
     this.root.querySelector('.reader-sync-btn').classList.remove('sync-active');
   }
 
@@ -827,7 +1087,9 @@ export class ReaderView {
     this.maybeStartServing();
     if (this.syncSession) {
       this.syncSession.listenPointers((others) => this.renderRemotePointers(others));
+      this.syncSession.listenMood((data) => this.handleMood(data));
     }
+    this.updateMoodCue();
   }
 
   showSyncInactive() {
@@ -853,6 +1115,19 @@ export class ReaderView {
   close() {
     this.destroy();
     this.onClose();
+  }
+
+  // Leaves the reader and rewinds the book to its first page, so reopening it
+  // begins a fresh read (and, when synced, a fresh chance at the mood ritual).
+  // Used when a book is "finished" — the mood ritual concluding and the solo
+  // end-of-book card's "Zur Bibliothek" — but deliberately NOT by the chrome
+  // back button, which leaves the book wherever the reader paused. When synced,
+  // the room's shared page is reset too so the partner reopens at the start.
+  closeToFirstPage() {
+    this.currentPage = 1;
+    updateLastPage(this.bookId, 1).catch(() => {});
+    if (this.syncSession) this.syncSession.sendPage(1).catch(() => {});
+    this.close();
   }
 
   destroy() {

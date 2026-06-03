@@ -1,7 +1,9 @@
 import {
   listBooks, saveBook, deleteBook, renameBook, getThumbs, uid,
   ensureContentHash, findBookByContentHash, findAndBumpExistingBook, hashBook,
+  getCompletionsMany,
 } from './storage.js';
+import { MOODS, moodIconUrl } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook, lookupRoom, getFirebase } from './sync.js';
@@ -85,7 +87,10 @@ export class LibraryView {
     // Fetch all thumbnails in one batch so the build loop below is fully
     // synchronous: after this last await there is no interleaving point, so
     // the latest run always completes its DOM swap atomically.
-    const thumbs = await getThumbs(books.map((b) => b.id));
+    const [thumbs, completionsLists] = await Promise.all([
+      getThumbs(books.map((b) => b.id)),
+      getCompletionsMany(books.map((b) => b.id)),
+    ]);
     if (isStale()) return;
 
     const newUrls = [];
@@ -124,6 +129,32 @@ export class LibraryView {
       } else {
         cover.classList.add('no-cover');
         cover.textContent = '📖';
+      }
+
+      // The most recent shared-reading completion surfaces as a strip of mood
+      // miniatures along the bottom of the cover; tapping it opens the full
+      // history rather than the book, so the cover tap still goes straight to
+      // reading (issue #65).
+      const completions = completionsLists[i];
+      if (completions.length > 0) {
+        const latest = completions[completions.length - 1];
+        const strip = document.createElement('button');
+        strip.type = 'button';
+        strip.className = 'book-mood-strip';
+        strip.setAttribute('aria-label', `Gefühle zu „${book.title}" ansehen`);
+        for (const id of [...latest.shared, ...latest.personal]) {
+          const mood = MOODS.find((m) => m.id === id);
+          if (!mood) continue;
+          const img = document.createElement('img');
+          img.src = moodIconUrl(mood.slug);
+          img.alt = '';
+          strip.appendChild(img);
+        }
+        strip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.openMoodHistory(book, completions);
+        });
+        cover.appendChild(strip);
       }
 
       const open = () => this.onOpenBook(book.id);
@@ -209,6 +240,66 @@ export class LibraryView {
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
+  }
+
+  // Shows every time this book was finished together, newest first: the date
+  // plus that read's agreed (shared) and divergent (personal) moods. Reuses the
+  // dialog overlay styling for consistency with the app's other modals.
+  openMoodHistory(book, completions) {
+    const previouslyFocused = document.activeElement;
+    const overlay = document.createElement('div');
+    overlay.className = 'dialog-overlay';
+
+    const card = document.createElement('div');
+    card.className = 'dialog-card mood-history-card';
+    card.setAttribute('role', 'dialog');
+    card.setAttribute('aria-modal', 'true');
+    card.setAttribute('aria-label', `Gefühle zu „${book.title}"`);
+
+    const fmtDate = (ts) =>
+      new Date(ts).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' });
+
+    const moodTile = (id, personal) => {
+      const mood = MOODS.find((m) => m.id === id);
+      if (!mood) return '';
+      return `
+        <div class="mood-history-icon${personal ? ' mood-result-personal' : ''}" title="${mood.label}">
+          <img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" />
+        </div>`;
+    };
+
+    const entries = [...completions].reverse().map((c) => `
+      <li class="mood-history-entry">
+        <div class="mood-history-date">${fmtDate(c.completedAt)}</div>
+        <div class="mood-history-icons">
+          ${c.shared.map((id) => moodTile(id, false)).join('')}
+          ${c.personal.map((id) => moodTile(id, true)).join('')}
+        </div>
+      </li>`).join('');
+
+    card.innerHTML = `
+      <div class="dialog-title">${book.title}</div>
+      <ul class="mood-history-list">${entries}</ul>
+      <div class="dialog-buttons">
+        <button class="dialog-btn dialog-btn-primary mood-history-close" type="button">Schliessen</button>
+      </div>
+    `;
+
+    const close = () => {
+      document.removeEventListener('keydown', onKeyDown, false);
+      overlay.remove();
+      if (previouslyFocused && previouslyFocused.isConnected) previouslyFocused.focus();
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
+    };
+    document.addEventListener('keydown', onKeyDown, false);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
+    card.querySelector('.mood-history-close').addEventListener('click', close);
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+    card.querySelector('.mood-history-close').focus();
   }
 
   // The permanent first tile in the library: starts a synced reading session
