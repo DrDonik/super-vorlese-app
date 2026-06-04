@@ -1362,14 +1362,14 @@ button {
   gap: 4px;
   padding: 5px 6px;
   border: none;
-  background: rgba(0, 0, 0, 0.5);
+  background: var(--surface-glass);
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
   cursor: pointer;
 }
 
 .book-mood-strip:hover {
-  background: rgba(0, 0, 0, 0.65);
+  background: var(--surface-glass-hover);
 }
 
 .book-mood-strip img {
