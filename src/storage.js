@@ -4,6 +4,7 @@ const BOOK_PREFIX = 'book:';
 const META_PREFIX = 'meta:';
 const THUMB_PREFIX = 'thumb:';
 const PAGE_PREFIX = 'page:';
+const COMPLETIONS_PREFIX = 'completions:';
 
 function bookKey(id) {
   return `${BOOK_PREFIX}${id}`;
@@ -19,6 +20,10 @@ function thumbKey(id) {
 
 function pageKey(id, pageNumber) {
   return `${PAGE_PREFIX}${id}:${pageNumber}`;
+}
+
+function completionsKey(id) {
+  return `${COMPLETIONS_PREFIX}${id}`;
 }
 
 export function uid() {
@@ -188,6 +193,35 @@ export async function updateLastPage(id, page) {
   }
 }
 
+// --- Shared reading memory (issue #65) --------------------------------------
+// Each book carries a chronological list of completion records, one per time it
+// was finished together. A record is { id, completedAt, shared:[iconId…],
+// personal:[iconId…] } — the moods both readers agreed on plus each side's one
+// divergent pick. Both devices store the identical record (computed from the
+// same Firebase lock), so there is no per-reader identity to reconcile here.
+
+export async function getCompletions(id) {
+  return (await get(completionsKey(id))) || [];
+}
+
+// Appends a completion, newest last. Ignores a record whose completedAt already
+// exists for this book so a duplicated lock event (e.g. the listener firing
+// twice) can never store the same finish twice.
+export async function addCompletion(id, record) {
+  const list = (await get(completionsKey(id))) || [];
+  if (list.some((c) => c.completedAt === record.completedAt)) return list;
+  list.push(record);
+  await set(completionsKey(id), list);
+  return list;
+}
+
+// Batch-loads completion lists for several books at once, mirroring getThumbs,
+// so the library can render every cover's mood strip without a query per book.
+export async function getCompletionsMany(ids) {
+  const lists = await getMany(ids.map(completionsKey));
+  return lists.map((l) => l || []);
+}
+
 export async function renameBook(id, title) {
   const meta = await get(metaKey(id));
   if (meta) {
@@ -198,7 +232,7 @@ export async function renameBook(id, title) {
 
 export async function deleteBook(id) {
   const meta = await get(metaKey(id));
-  const keysToDelete = [bookKey(id), thumbKey(id), metaKey(id)];
+  const keysToDelete = [bookKey(id), thumbKey(id), metaKey(id), completionsKey(id)];
   if (meta?.type === 'photos') {
     for (let i = 1; i <= meta.pageCount; i++) {
       keysToDelete.push(pageKey(id, i));
