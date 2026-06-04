@@ -278,12 +278,13 @@ export class LibraryView {
       </li>`).join('');
 
     card.innerHTML = `
-      <div class="dialog-title">${book.title}</div>
+      <div class="dialog-title"></div>
       <ul class="mood-history-list">${entries}</ul>
       <div class="dialog-buttons">
         <button class="dialog-btn dialog-btn-primary mood-history-close" type="button">Schliessen</button>
       </div>
     `;
+    card.querySelector('.dialog-title').textContent = book.title;
 
     const close = () => {
       document.removeEventListener('keydown', onKeyDown, false);
