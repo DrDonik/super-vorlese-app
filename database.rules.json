@@ -53,6 +53,41 @@
             ".validate": false
           }
         },
+        "mood": {
+          "open": {
+            ".validate": "newData.isBoolean()"
+          },
+          "picks": {
+            "$clientId": {
+              ".validate": "$clientId.matches(/^[a-z0-9]{1,40}$/)",
+              "$iconId": {
+                ".validate": "$iconId.matches(/^([1-9]|1[0-9]|20)$/) && newData.isBoolean() && newData.val() == true"
+              }
+            }
+          },
+          "lock": {
+            ".validate": "newData.hasChildren(['shared', 'at'])",
+            "shared": {
+              "$iconId": {
+                ".validate": "$iconId.matches(/^([1-9]|1[0-9]|20)$/) && newData.isBoolean() && newData.val() == true"
+              }
+            },
+            "personal": {
+              "$iconId": {
+                ".validate": "$iconId.matches(/^([1-9]|1[0-9]|20)$/) && newData.isBoolean() && newData.val() == true"
+              }
+            },
+            "at": {
+              ".validate": "newData.isNumber()"
+            },
+            "$other": {
+              ".validate": false
+            }
+          },
+          "$other": {
+            ".validate": false
+          }
+        },
         "signal": {
           "$peerId": {
             ".validate": "$peerId.matches(/^[a-z0-9]{1,40}$/)",

@@ -152,6 +152,7 @@ export class SyncSession {
     this.fb = null;
     this.pointersUnsub = null;
     this.pointerDisconnect = null;
+    this.moodUnsub = null;
   }
 
   async createRoom(initialPage, bookDescriptor = null) {
@@ -282,6 +283,7 @@ export class SyncSession {
 
   detach() {
     this.stopListeningPointers();
+    this.stopListeningMood();
     if (this.unsubscribe) {
       this.unsubscribe();
       this.unsubscribe = null;
@@ -357,8 +359,102 @@ export class SyncSession {
     }
   }
 
+  // --- Shared reading memory ("mood ritual", issue #65) -------------------
+  // When a synced pair finishes a book, both devices show a mood-selection
+  // screen and exchange their picks under rooms/{code}/mood. Like the page
+  // exchange and unlike pointers this is durable (no onDisconnect): a reader
+  // who steps away mid-selection leaves the screen open for the other party.
+  //   mood/open            : true once either side opens the screen (the signal
+  //                          the partner's listener uses to open it too)
+  //   mood/picks/{clientId}: { iconId: true } — that side's current selection
+  //   mood/lock            : { shared:{id:true}, personal:{id:true}, at } —
+  //                          written once, via a transaction, when the picks
+  //                          agree; both sides persist the same record from it.
+
+  moodRef(child) {
+    const path = child ? `rooms/${this.roomCode}/mood/${child}` : `rooms/${this.roomCode}/mood`;
+    return this.fb.ref(this.fb.db, path);
+  }
+
+  // Opens the ritual: flags the mood node so the partner's listener shows the
+  // screen. Replacing the whole node in one write also wipes any leftover picks
+  // or lock from an earlier finish in this room (a re-read starts blank, with no
+  // hint of the previous picks) — and, being a single event rather than a
+  // remove-then-set, never flashes an empty node past our own listener.
+  async startMood() {
+    if (!this.roomCode || !this.fb) return;
+    await this.fb.set(this.moodRef(), { open: true });
+  }
+
+  async setMoodPicks(iconIds) {
+    if (!this.roomCode || !this.fb) return;
+    const r = this.moodRef(`picks/${this.clientId}`);
+    if (!iconIds.length) {
+      await this.fb.remove(r);
+      return;
+    }
+    const map = {};
+    for (const id of iconIds) map[id] = true;
+    await this.fb.set(r, map);
+  }
+
+  // Atomically records the agreed completion. The transaction makes a
+  // simultaneous attempt from both devices collapse into one write, so there is
+  // exactly one record (one timestamp) that both sides then read back and store.
+  async lockMood(record) {
+    if (!this.roomCode || !this.fb) return;
+    const lock = { shared: {}, at: Date.now() };
+    for (const id of record.shared) lock.shared[id] = true;
+    if (record.personal.length) {
+      lock.personal = {};
+      for (const id of record.personal) lock.personal[id] = true;
+    }
+    await this.fb.runTransaction(this.moodRef('lock'), (current) => (current ? undefined : lock));
+  }
+
+  async clearMood() {
+    if (!this.roomCode || !this.fb) return;
+    await this.fb.remove(this.moodRef());
+  }
+
+  // Streams the whole mood node, parsed into { open, picks, lock }. `picks` maps
+  // each participant's clientId to its array of selected icon ids (our own slot
+  // included, so the caller can reconcile after a reconnect). `lock` is the
+  // resolved record once it exists, or null.
+  listenMood(cb) {
+    if (!this.roomCode || !this.fb) return;
+    this.stopListeningMood();
+    this.moodUnsub = this.fb.onValue(this.moodRef(), (snapshot) => {
+      const data = snapshot.val();
+      if (!data) { cb(null); return; }
+      const picks = {};
+      if (data.picks && typeof data.picks === 'object') {
+        for (const [id, map] of Object.entries(data.picks)) {
+          picks[id] = Object.keys(map || {}).map(Number);
+        }
+      }
+      let lock = null;
+      if (data.lock && data.lock.shared) {
+        lock = {
+          shared: Object.keys(data.lock.shared).map(Number).sort((a, b) => a - b),
+          personal: Object.keys(data.lock.personal || {}).map(Number).sort((a, b) => a - b),
+          at: data.lock.at,
+        };
+      }
+      cb({ open: !!data.open, picks, lock });
+    });
+  }
+
+  stopListeningMood() {
+    if (this.moodUnsub) {
+      this.moodUnsub();
+      this.moodUnsub = null;
+    }
+  }
+
   stop() {
     this.stopListeningPointers();
+    this.stopListeningMood();
     this.clearPointer().catch(() => {});
     if (this.unsubscribe) {
       this.unsubscribe();

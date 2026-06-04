@@ -7,7 +7,7 @@ export default defineConfig(({ command }) => ({
     VitePWA({
       registerType: 'autoUpdate',
       injectRegister: null,
-      includeAssets: ['favicon.svg'],
+      includeAssets: ['favicon.svg', 'mood-icons/*.webp'],
       manifest: {
         name: 'Super Vorlese-App',
         short_name: 'Vorlesen',
