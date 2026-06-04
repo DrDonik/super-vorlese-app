@@ -1346,6 +1346,10 @@ button {
   touch-action: manipulation;
 }
 
+.mood-result-done:hover {
+  background: color-mix(in srgb, var(--accent), white 12%);
+}
+
 /* Mood strip on a finished book's cover: the most recent read's moods, tappable
    to open the full history. Overlaid along the bottom of the cover. */
 .book-mood-strip {

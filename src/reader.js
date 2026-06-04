@@ -771,6 +771,20 @@ export class ReaderView {
       grid.appendChild(btn);
     }
     overlay.querySelector('.mood-cancel').addEventListener('click', () => this.cancelMood());
+    // Escape would otherwise bubble to the window listener and close the whole
+    // reader. Intercept it on capture so it acts on the ritual instead: conclude
+    // once locked, cancel while still picking — mirroring the on-screen buttons.
+    this._moodKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (this.moodLockHandled) {
+        this.concludeMood();
+      } else {
+        this.cancelMood();
+      }
+    };
+    document.addEventListener('keydown', this._moodKeyDown, true);
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
     this.renderMoodSelections();
@@ -891,11 +905,11 @@ export class ReaderView {
     if (!overlay) return;
     const card = overlay.querySelector('.mood-card');
     overlay.classList.add('mood-locked');
-    const icons = [...lock.shared, ...lock.personal];
+    const icons = [...(lock.shared || []), ...(lock.personal || [])];
     const tiles = icons.map((id) => {
       const mood = MOODS.find((m) => m.id === id);
       if (!mood) return '';
-      const personal = lock.personal.includes(id);
+      const personal = (lock.personal || []).includes(id);
       return `
         <div class="mood-result-icon${personal ? ' mood-result-personal' : ''}">
           <img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" />
@@ -933,6 +947,10 @@ export class ReaderView {
     this.moodOpen = false;
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
+    if (this._moodKeyDown) {
+      document.removeEventListener('keydown', this._moodKeyDown, true);
+      this._moodKeyDown = null;
+    }
     if (this.moodOverlay) {
       this.moodOverlay.remove();
       this.moodOverlay = null;

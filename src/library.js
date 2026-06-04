@@ -142,7 +142,7 @@ export class LibraryView {
         strip.type = 'button';
         strip.className = 'book-mood-strip';
         strip.setAttribute('aria-label', `Gefühle zu „${book.title}" ansehen`);
-        for (const id of [...latest.shared, ...latest.personal]) {
+        for (const id of [...(latest.shared || []), ...(latest.personal || [])]) {
           const mood = MOODS.find((m) => m.id === id);
           if (!mood) continue;
           const img = document.createElement('img');
@@ -272,8 +272,8 @@ export class LibraryView {
       <li class="mood-history-entry">
         <div class="mood-history-date">${fmtDate(c.completedAt)}</div>
         <div class="mood-history-icons">
-          ${c.shared.map((id) => moodTile(id, false)).join('')}
-          ${c.personal.map((id) => moodTile(id, true)).join('')}
+          ${(c.shared || []).map((id) => moodTile(id, false)).join('')}
+          ${(c.personal || []).map((id) => moodTile(id, true)).join('')}
         </div>
       </li>`).join('');
 
