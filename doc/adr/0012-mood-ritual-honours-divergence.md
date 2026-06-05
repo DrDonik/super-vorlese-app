@@ -108,3 +108,49 @@ no longer required and the partner's picks are hidden until the reveal.
   not converted.
 - The ritual remains pair-scoped: in a room of more than two, the reveal pairs
   this device with the first partner who has a full set of picks.
+
+## Amendment (2026-06-05): a warmer close
+
+Living with the ritual surfaced that it carried more intent than it signalled.
+Two jobs are equally intended — **closure** ("we finished this, together") and a
+**conversation starter** for the live call — but the design under-served both:
+the transition from the last page into the feelings grid was abrupt (the
+*accomplishment* of finishing was never marked), and the reveal led with the
+readers' differences. Deliberation (with the Eight Golden Rules, the
+parent–child reminiscing research, and the app's anti-coercion stance) settled
+the following, without changing the ritual's mechanics or stored shape:
+
+- **The ritual opens by closing the book.** Instead of jumping straight to the
+  grid, the just-closed book's cover is held large and centred for a beat — the
+  "we got to the end" thunk — then settles up into the mood card's header, where
+  it stays while the readers pick. This marks the accomplishment of *finishing*
+  (Golden Rule 4) as its own moment, and anchors the feelings to *this* book
+  rather than a free-floating grid. The choreography is pure CSS; under
+  `prefers-reduced-motion` it degrades to a plain crossfade. The board accepts
+  taps only once the cover has settled, so an early tap can't pick a hidden mood.
+
+- **One trigger, which is the book-closing gesture.** The last-page cue is
+  relabelled **„Fertig? Buch schliessen"**: a single reader's tap both starts the
+  close and is the shared decision to finish, playing the same intro on both
+  devices. (Turning forward past the last page remains the second entry point.)
+
+- **The reveal leads with „Wir".** The shared row moves to the top, with „Ich"
+  and „Du" beneath it (row order in `moods.js`'s `REVEAL_ROWS`). For two readers
+  who, by design, may have felt different things, opening on what they share
+  frames the moment warmly; the differences below read as gentle texture rather
+  than a "we saw it differently" tally. The same reordering flows to the library
+  history, which reuses the reveal layout. The cover strip already rendered
+  shared-first, so it is unchanged.
+
+- **„Buch ins Regal stellen" closes the reveal.** The done button is relabelled
+  from „Buch schliessen" to **„Buch ins Regal stellen"**: it returns the book to
+  the library — the shelf — where it now sits wearing its mood strip. This closes
+  the loop the ritual opened (taken from the shelf → read → closed → reflected on
+  → returned, changed) and reads as one continuous gesture with the close. The
+  underlying behaviour is unchanged: it rewinds the book to page 1 and leaves to
+  the library, per device.
+
+- **Solo reading is unchanged, for now.** This amendment keeps the ritual
+  synced-only; a solo finish still gets the plain end-of-book card. Letting solo
+  reads flow into the same ritual (the reader's three picks, no waiting, no „Wir"
+  / „Du" rows) is a worthwhile follow-up tracked separately as issue #79.
