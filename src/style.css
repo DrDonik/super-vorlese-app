@@ -1161,6 +1161,12 @@ button {
   background: rgba(0, 0, 0, 0.6);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  animation: mood-overlay-fade 0.35s ease both;
+}
+
+@keyframes mood-overlay-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
 .mood-card {
@@ -1209,16 +1215,78 @@ button {
   background: var(--surface-line);
 }
 
-.mood-title {
-  font-size: 20px;
-  font-weight: 600;
+/* The book-closing intro. The ritual opens showing the just-closed book's cover
+   held large and low — the "we finished this" beat — then the cover settles up
+   into a compact header while the board rises in beneath it, so the feelings stay
+   anchored to *this* book. A gentle overlay fade carries the whole thing in and is
+   the only motion left under reduced motion (see the media query below). */
+.mood-cover-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
   padding: 0 44px; /* clear the cancel button on both sides */
+  animation: mood-cover-settle 1.4s ease both;
+}
+
+.mood-cover {
+  width: 64px;
+  height: 84px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 34px; /* sizes the 📖 fallback when a book has no cover */
+}
+
+.mood-cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mood-cover-title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+/* Holds the cover big and low — centred over the board area — for the first half,
+   then lets it shrink up into the header. */
+@keyframes mood-cover-settle {
+  0%, 50% { transform: scale(1.5) translateY(26vh); }
+  100%    { transform: none; }
 }
 
 .mood-instructions {
   font-size: 14px;
   color: var(--fg-dim);
   min-height: 20px;
+}
+
+/* The board and its prompt stay hidden through the cover's held beat, then rise
+   in once it starts settling up into the header. Taps are gated separately (the
+   .mood-board-ready class) so an early tap on the still-hidden grid can't pick a
+   mood before the board is shown. */
+.mood-grid,
+.mood-instructions {
+  animation: mood-board-rise 0.5s 1s ease both;
+}
+
+@keyframes mood-board-rise {
+  from { opacity: 0; transform: translateY(14px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.mood-grid {
+  pointer-events: none;
+}
+
+.mood-card.mood-board-ready .mood-grid {
+  pointer-events: auto;
 }
 
 /* Fills the height left under the title. The cells stretch to share the space
@@ -1283,10 +1351,10 @@ button {
   transform: scale(1.04);
 }
 
-/* The reveal: three labelled rows — „Ich" on top, the shared „Wir" celebrated in
-   the middle, „Du" at the bottom. Shared between the post-reading reveal (in
-   .mood-overlay) and the library history (in .dialog-overlay); the base styles
-   are the compact history size, scaled up inside the overlay. */
+/* The reveal: three labelled rows — the shared „Wir" celebrated on top, then
+   „Ich" and „Du". Shared between the post-reading reveal (in .mood-overlay) and
+   the library history (in .dialog-overlay); the base styles are the compact
+   history size, scaled up inside the overlay. */
 .mood-result-title {
   font-size: 20px;
   font-weight: 600;
@@ -1445,4 +1513,9 @@ button {
 @media (prefers-reduced-motion: reduce) {
   .reader-finish-cue { animation: none; }
   .mood-overlay .mood-reveal-tile { animation: none; }
+  /* Drop the closing choreography to a plain crossfade: the cover and board
+     appear in place, carried only by the overlay fade. */
+  .mood-cover-header,
+  .mood-grid,
+  .mood-instructions { animation: none; }
 }

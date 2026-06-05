@@ -87,14 +87,16 @@ export function splitMoods(mine, theirs) {
 }
 
 // The reveal (after both readers picked) and the library history both render the
-// same three labelled rows — „Ich" on top, the celebrated shared „Wir" in the
-// middle, „Du" at the bottom — so the keepsake looks identical wherever it
-// appears. A row is omitted entirely when its zone is empty: no overlap drops
-// the „Wir" row, full agreement drops „Ich" and „Du". `mine`/`theirs` are this
-// device's and the partner's picks, so „Ich" is always the viewer's own.
+// same three labelled rows — the celebrated shared „Wir" on top, then „Ich" and
+// „Du" — so the keepsake looks identical wherever it appears. Leading with „Wir"
+// frames the moment around what the readers share; the differences below read as
+// gentle texture rather than a "we saw it differently" tally. A row is omitted
+// entirely when its zone is empty: no overlap drops the „Wir" row, full agreement
+// drops „Ich" and „Du". `mine`/`theirs` are this device's and the partner's
+// picks, so „Ich" is always the viewer's own.
 const REVEAL_ROWS = [
-  ['mine', 'Ich'],
   ['ours', 'Wir'],
+  ['mine', 'Ich'],
   ['theirs', 'Du'],
 ];
 

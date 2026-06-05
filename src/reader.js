@@ -1,4 +1,4 @@
-import { getBookFile, getMeta, getPhotoPage, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from './sync.js';
@@ -10,6 +10,9 @@ import { moodById, moodIconUrl, moodRevealRowsHTML, pickMoodBoard, MOOD_PICK_COU
 const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
 const CURSOR_IDLE_MS = 2500;
+// How long the book-closing intro runs (cover held, then settling into the
+// header) before the mood board accepts taps. Must match the CSS choreography.
+const MOOD_INTRO_MS = 1500;
 
 // Distinct, high-contrast colours for "point at the page" overlays so several
 // participants pointing at once stay visually separable.
@@ -142,7 +145,7 @@ export class ReaderView {
         </div>
         <button class="reader-finish-cue" type="button" hidden>
           <span class="reader-finish-cue-icon" aria-hidden="true">📖</span>
-          Fertig? Gefühle teilen
+          Fertig? Buch schliessen
         </button>
         <div class="reader-end" hidden>
           <div class="reader-end-card">
@@ -213,6 +216,14 @@ export class ReaderView {
       return;
     }
     reader.querySelector('.reader-title').textContent = meta.title;
+    this.bookTitle = meta.title;
+    // Preloaded here, while the book opens, so the closing ritual can show the
+    // cover (the just-closed book) the instant it begins — no async wait mid-
+    // ritual. Absent thumbnails fall back to an icon; the URL is revoked on
+    // destroy. Stored separately from the library's thumbnail handling.
+    getThumb(this.bookId).then((blob) => {
+      if (blob && this.readerEl) this.coverUrl = URL.createObjectURL(blob);
+    }).catch(() => {});
 
     this.source = await createSource(meta);
     if (!this.source) {
@@ -757,14 +768,26 @@ export class ReaderView {
   renderMoodOverlay() {
     const overlay = document.createElement('div');
     overlay.className = 'mood-overlay';
+    // The ritual opens on the just-closed book: its cover sits large and centred
+    // for a held beat (the "we finished this" thunk), then settles up into the
+    // card's header — so the feelings that follow are visibly about *this* book,
+    // not a free-floating grid. The choreography is pure CSS (see .mood-cover-*);
+    // here we only render the cover and gate taps until it has settled.
+    const cover = this.coverUrl
+      ? `<img src="${this.coverUrl}" alt="" draggable="false" />`
+      : '<span class="mood-cover-fallback" aria-hidden="true">📖</span>';
     overlay.innerHTML = `
       <div class="mood-card">
         <button class="mood-cancel" type="button" aria-label="Abbrechen">✕</button>
-        <div class="mood-title">Wie war das Buch?</div>
+        <div class="mood-cover-header">
+          <div class="mood-cover">${cover}</div>
+          <div class="mood-cover-title"></div>
+        </div>
         <div class="mood-instructions"></div>
         <div class="mood-grid"></div>
       </div>
     `;
+    overlay.querySelector('.mood-cover-title').textContent = this.bookTitle || '';
     this.fillMoodGrid(overlay.querySelector('.mood-grid'));
     overlay.querySelector('.mood-cancel').addEventListener('click', () => this.cancelMood());
     // Escape would otherwise bubble to the window listener and close the whole
@@ -783,6 +806,15 @@ export class ReaderView {
     document.addEventListener('keydown', this._moodKeyDown, true);
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
+    // The board accepts taps only once the cover has settled into the header, so
+    // an early tap on the still-hidden grid can't pick a mood before the board is
+    // shown. Reduced motion skips the choreography, so it's ready at once.
+    const card = overlay.querySelector('.mood-card');
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+      card.classList.add('mood-board-ready');
+    } else {
+      this._moodIntroT = setTimeout(() => card.classList.add('mood-board-ready'), MOOD_INTRO_MS);
+    }
     this.renderMoodSelections();
   }
 
@@ -918,7 +950,7 @@ export class ReaderView {
     card.innerHTML = `
       <div class="mood-result-title">Eure Gefühle</div>
       ${moodRevealRowsHTML(mine, theirs)}
-      <button class="mood-result-done" type="button">Buch schliessen</button>
+      <button class="mood-result-done" type="button">Buch ins Regal stellen</button>
     `;
     card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
   }
@@ -947,6 +979,7 @@ export class ReaderView {
     this.moodOpen = false;
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
+    clearTimeout(this._moodIntroT);
     if (this._moodKeyDown) {
       document.removeEventListener('keydown', this._moodKeyDown, true);
       this._moodKeyDown = null;
@@ -1182,7 +1215,12 @@ export class ReaderView {
     clearTimeout(this._resizeT);
     clearTimeout(this.pointerSendTimer);
     clearTimeout(this.longPressTimer);
+    clearTimeout(this._moodIntroT);
     this.clearAllPointers();
+    if (this.coverUrl) {
+      URL.revokeObjectURL(this.coverUrl);
+      this.coverUrl = null;
+    }
     this.readerEl = null;
     this.stopServing();
     if (this.syncSession) {
