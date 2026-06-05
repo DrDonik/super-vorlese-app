@@ -1181,7 +1181,10 @@ button {
 /* Once revealed, the card switches from a top-aligned grid to a centred result;
    it scrolls if the three rows ever exceed the height. */
 .mood-overlay.mood-revealed .mood-card {
-  justify-content: center;
+  /* `safe` keeps the top rows reachable: if the three rows overflow the card on
+     a short screen, alignment falls back to start instead of clipping above the
+     scroll range. */
+  justify-content: safe center;
   align-items: center;
   gap: 18px;
   overflow-y: auto;
