@@ -7,81 +7,97 @@ no text or labels in the image.
 ---
 
 1. CRASH-AND-STILL-GRINNING
-A small figure sitting in a crumpled heap, hair dishevelled, a smudge on one cheek,
-grinning despite having clearly just tumbled. Triumphant chaos.
+A small figure sitting in a crumpled heap, hair dishevelled, a smudge on one cheek, grinning despite having clearly just tumbled. Triumphant chaos.
 
 2. DETERMINED CHIN-UP
-A face with a firmly set jaw, brow furrowed, chin tilted slightly upward. Stubborn
-resolve. The expression of someone who will try again even after failing.
+A face with a firmly set jaw, brow furrowed, chin tilted slightly upward. Stubborn resolve. The expression of someone who will try again even after failing.
 
 3. TUMMY BUTTERFLIES
-A small figure pressing both hands flat against their middle, eyes wide and a touch
-scared, a nervous half-smile. Something important is about to happen.
+A small figure pressing both hands flat against their middle, eyes wide and a touch scared, a nervous half-smile. Something important is about to happen.
 
 4. MISCHIEF BREWING
-Eyes narrowed to happy crescents, a wide sidelong grin, one finger raised. The face
-of someone who has just had a very good bad idea.
+Eyes narrowed to happy crescents, a wide sidelong grin, one finger raised. The face of someone who has just had a very good bad idea.
 
 5. WIDE-EYED WONDER
-Mouth open in a perfect O, eyes wide as possible, breath clearly held. Something
-magical has just appeared and the body forgot to move.
+Mouth open in a perfect O, eyes wide as possible, breath clearly held. Something magical has just appeared and the body forgot to move.
 
 6. RIGHTEOUS STOMP
-A tiny figure with fists planted on hips, one foot mid-stamp, brow low. Full of
-indignation — not cruel anger, but the hot feeling that something is simply not fair.
+A tiny figure with fists planted on hips, one foot mid-stamp, brow low. Full of indignation — not cruel anger, but the hot feeling that something is simply not fair.
 
 7. SLUMPED LOW
-A figure sitting with knees pulled up, chin resting on them, shoulders curved inward.
-Quiet, private sadness. Not crying, just very still.
+A figure sitting with knees pulled up, chin resting on them, shoulders curved inward. Quiet, private sadness. Not crying, just very still.
 
 8. FIST IN THE AIR
-Standing tall, one arm punched straight up, full-body yes. The moment something
-finally worked.
+Standing tall, one arm punched straight up, full-body yes. The moment something finally worked.
 
 9. SNEAKY AND ALERT
-Body crouched low, eyes darting sideways, one finger pressed to lips. Holding breath,
-trying very hard not to exist.
+Body crouched low, eyes darting sideways, one finger pressed to lips. Holding breath, trying very hard not to exist.
 
 10. COZY PILE
-Two or three small shapes huddled warmly together, overlapping, the suggestion of
-shared warmth and a secret that belongs only to them.
+Two or three small shapes huddled warmly together, overlapping, the suggestion of shared warmth and a secret that belongs only to them.
 
 11. GLORIOUSLY DIZZY
-A small figure with stars orbiting their head, eyes spiraling in opposite directions,
-arms out for balance. Confused in the best possible way.
+A small figure with stars orbiting their head, eyes spiraling in opposite directions, arms out for balance. Confused in the best possible way.
 
 12. QUIET LISTENING
-A figure leaning very slightly toward something unseen, expression open and soft.
-Not waiting — actually hearing.
+A figure leaning very slightly toward something unseen, expression open and soft. Not waiting — actually hearing.
 
 13. FIZZING EXCITEMENT
-A figure shaking with barely-contained energy, slightly blurred at the edges, a grin
-that is too big to be held in any longer.
+A figure shaking with barely-contained energy, slightly blurred at the edges, a grin that is too big to be held in any longer.
 
 14. BRAVE BUT WOBBLY
-Eyes steady and a little afraid at the same time, chin up, fists loosely at sides.
-Scared. Going anyway.
+Eyes steady and a little afraid at the same time, chin up, fists loosely at sides. Scared. Going anyway.
 
 15. PUFFED-CHEEK EXHALE
-Cheeks puffed mid-exhale, eyes scrunched shut, shoulders visibly dropping. The body's
-own sigh of relief after something that had to go right finally did.
+Cheeks puffed mid-exhale, eyes scrunched shut, shoulders visibly dropping. The body's own sigh of relief after something that had to go right finally did.
 
 16. LIP-OUT SULK
-Looking away, lip slightly jutted, brow knotted. Hurt pride that hasn't decided yet
-whether to forgive.
+Looking away, lip slightly jutted, brow knotted. Hurt pride that hasn't decided yet whether to forgive.
 
 17. CONTAINED GLOW
-A quiet, warm smile — the kind you can't quite stop — eyes a little soft. Something
-good happened and it's being held carefully.
+A quiet, warm smile — the kind you can't quite stop — eyes a little soft. Something good happened and it's being held carefully.
 
 18. SILLY SERIOUS
-Something completely absurd occurring (a creature upside-down, something impossibly
-stacked) while the face watches with total deadpan calm.
+Something completely absurd occurring (a creature upside-down, something impossibly stacked) while the face watches with total deadpan calm.
 
 19. WATERY SMILE
-A small smile and shining eyes at the same time. Something precious ending or being
-held in memory.
+A small smile and shining eyes at the same time. Something precious ending or being held in memory.
 
 20. ARMS-WIDE FREE
-A figure with arms thrown open, hair streaming, completely unguarded. The feeling of
-not having to be careful for one moment.
+A figure with arms thrown open, hair streaming, completely unguarded. The feeling of not having to be careful for one moment.
+
+21. LACHKRAMPF
+A small figure tipped sideways, both hands clutching the belly, mouth wide open, eyes squeezed into laughing lines. Helpless, full-body laughter that can't be stopped.
+
+22. PEEKING THROUGH FINGERS
+A figure with both hands over the face but two fingers spread open to peek through, shoulders hunched up. Too thrilling to watch, too thrilling to look away.
+
+23. CLUTCHED-CLOSE FEELING
+A figure hugging an unseen something to the chest with both arms, eyes closed, a soft pang in the expression. A story that landed somewhere tender and is being held there.
+
+24. ONE-MORE-PLEASE
+A figure leaning eagerly forward, both hands reaching out, eyebrows lifted high in hopeful request. The whole body asking for it not to be over yet.
+
+25. MELTING SLEEPY
+A figure half-collapsed and boneless, eyelids drooping, one cheek already sinking toward a cushion, a faint content smile. Lulled all the way down.
+
+26. HMMM, NOT SURE
+A figure with head tilted, one eyebrow up and the mouth pulled to one side, one shoulder shrugged. Honestly unconvinced — it didn't quite land.
+
+27. THAT'S TOO MUCH
+A small figure leaning back and away, both palms raised outward, eyes a little overwhelmed. Not scared exactly — just more than was wanted right now.
+
+28. ON-THE-EDGE LEAN
+A figure perched forward off the seat, whole body angled toward the unseen page, breath held. Pulled bodily into what happens next.
+
+29. SLOW NOD OF GETTING IT
+A figure with a quiet, knowing half-smile and eyes slightly narrowed in recognition, one slow nod implied. The click of something finally making sense.
+
+30. WARM AND FULL
+A figure sitting back with hands resting loosely in the lap, a gentle satisfied smile, shoulders fully relaxed. Pleasantly done — the contented full feeling at the end of a good story.
+
+31. SECRETLY MOVED
+A figure turning the face slightly away, one hand brushing quickly at the corner of an eye, pretending it was nothing. Touched more than they want to admit.
+
+32. AGAIN-FROM-THE-START
+A figure flipping an unseen book back to its beginning with both hands, eager grin, eyebrows raised. Already wanting to live the whole thing over.
