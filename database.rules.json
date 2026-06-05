@@ -57,11 +57,16 @@
           "open": {
             ".validate": "newData.isBoolean()"
           },
+          "order": {
+            "$index": {
+              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 99"
+            }
+          },
           "picks": {
             "$clientId": {
               ".validate": "$clientId.matches(/^[a-z0-9]{1,40}$/)",
               "$iconId": {
-                ".validate": "$iconId.matches(/^([1-9]|1[0-9]|20)$/) && newData.isBoolean() && newData.val() == true"
+                ".validate": "$iconId.matches(/^[1-9][0-9]?$/) && newData.isBoolean() && newData.val() == true"
               }
             }
           },
@@ -69,12 +74,12 @@
             ".validate": "newData.hasChildren(['shared', 'at'])",
             "shared": {
               "$iconId": {
-                ".validate": "$iconId.matches(/^([1-9]|1[0-9]|20)$/) && newData.isBoolean() && newData.val() == true"
+                ".validate": "$iconId.matches(/^[1-9][0-9]?$/) && newData.isBoolean() && newData.val() == true"
               }
             },
             "personal": {
               "$iconId": {
-                ".validate": "$iconId.matches(/^([1-9]|1[0-9]|20)$/) && newData.isBoolean() && newData.val() == true"
+                ".validate": "$iconId.matches(/^[1-9][0-9]?$/) && newData.isBoolean() && newData.val() == true"
               }
             },
             "at": {
