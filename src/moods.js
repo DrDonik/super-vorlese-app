@@ -2,7 +2,10 @@
 // (issue #65). The numeric `id` is what travels over the wire and is stored in
 // completion records, so it must stay stable; the `slug` maps to the shipped
 // asset at public/mood-icons/<slug>.webp (generated from doc/mood-icons/ by
-// scripts/generate-mood-icons.js). The order matches doc/mood-icon-descriptions.txt.
+// scripts/generate-mood-icons.js). The order matches doc/mood-icon-descriptions.txt,
+// which lists more mood *ideas* than are illustrated — the catalogue stops at the
+// last one with a shipped image (currently 31; #32 has no asset yet, so including
+// it would render a broken tile).
 export const MOODS = [
   { id: 1, slug: 'crash-and-still-grinning', label: 'Trotzdem fröhlich' },
   { id: 2, slug: 'determined-chin-up', label: 'Jetzt erst recht' },
