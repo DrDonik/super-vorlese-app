@@ -366,6 +366,9 @@ export class SyncSession {
   // who steps away mid-selection leaves the screen open for the other party.
   //   mood/open            : true once either side opens the screen (the signal
   //                          the partner's listener uses to open it too)
+  //   mood/order           : [iconId…] — the random subset of moods this finish
+  //                          shows, in display order. The initiator rolls it once
+  //                          so both devices render the identical board.
   //   mood/picks/{clientId}: { iconId: true } — that side's current selection
   //   mood/lock            : { shared:{id:true}, personal:{id:true}, at } —
   //                          written once, via a transaction, when the picks
@@ -381,9 +384,9 @@ export class SyncSession {
   // or lock from an earlier finish in this room (a re-read starts blank, with no
   // hint of the previous picks) — and, being a single event rather than a
   // remove-then-set, never flashes an empty node past our own listener.
-  async startMood() {
+  async startMood(order) {
     if (!this.roomCode || !this.fb) return;
-    await this.fb.set(this.moodRef(), { open: true });
+    await this.fb.set(this.moodRef(), { open: true, order });
   }
 
   async setMoodPicks(iconIds) {
@@ -417,10 +420,12 @@ export class SyncSession {
     await this.fb.remove(this.moodRef());
   }
 
-  // Streams the whole mood node, parsed into { open, picks, lock }. `picks` maps
-  // each participant's clientId to its array of selected icon ids (our own slot
-  // included, so the caller can reconcile after a reconnect). `lock` is the
-  // resolved record once it exists, or null.
+  // Streams the whole mood node, parsed into { open, order, picks, lock }.
+  // `order` is the shared board (icon ids in display order), or null before the
+  // initiator has written it. `picks` maps each participant's clientId to its
+  // array of selected icon ids (our own slot included, so the caller can
+  // reconcile after a reconnect). `lock` is the resolved record once it exists,
+  // or null.
   listenMood(cb) {
     if (!this.roomCode || !this.fb) return;
     this.stopListeningMood();
@@ -441,7 +446,8 @@ export class SyncSession {
           at: data.lock.at,
         };
       }
-      cb({ open: !!data.open, picks, lock });
+      const order = Array.isArray(data.order) ? data.order.map(Number) : null;
+      cb({ open: !!data.open, order, picks, lock });
     });
   }
 

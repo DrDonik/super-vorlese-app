@@ -5,7 +5,7 @@ import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from '.
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert } from './dialog.js';
-import { MOODS, moodIconUrl, evaluateLock, MOOD_PICK_COUNT, MOOD_MIN_OVERLAP } from './moods.js';
+import { MOODS, moodById, moodIconUrl, pickMoodBoard, evaluateLock, MOOD_PICK_COUNT, MOOD_MIN_OVERLAP } from './moods.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
@@ -22,6 +22,12 @@ function pointerColor(id) {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
   return POINTER_COLORS[h % POINTER_COLORS.length];
+}
+
+// Two mood boards are the same when their icon ids match in order.
+function sameOrder(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((id, i) => id === b[i]);
 }
 
 class PdfSource {
@@ -91,6 +97,7 @@ export class ReaderView {
     // mySelection is this device's authoritative picks, moodPartnerPicks mirrors
     // the other participants' picks from Firebase, keyed by clientId.
     this.moodOpen = false;
+    this.moodOrder = null; // the shared board (icon ids), agreed via Firebase
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.moodLockHandled = false;
@@ -722,21 +729,26 @@ export class ReaderView {
   }
 
   // Entry point for both triggers (finish cue, forward-turn). `initiate` is true
-  // for the device that started the ritual: it flags the room so the partner's
-  // mood listener opens the screen too. A device opening in response to that
-  // flag passes false and must not re-flag (which would wipe picks already in).
-  openMood(initiate) {
+  // for the device that started the ritual: it rolls the random board, flags the
+  // room, and publishes that board so the partner's listener opens the same one.
+  // A device opening in response to that flag passes false and the partner's
+  // `order`, and must not re-flag (which would wipe picks already in).
+  openMood(initiate, order) {
     if (this.moodOpen) return;
     const session = this.syncSession;
     if (!session?.roomCode) { this.showEnd(); return; }
     this.moodOpen = true;
     this.moodLockHandled = false;
+    // The board is a random subset of the catalogue; both devices must show the
+    // identical one. The initiator rolls it; a follower adopts what arrived (and
+    // falls back to a fresh roll only if it somehow opened without one).
+    this.moodOrder = (order && order.length) ? order : pickMoodBoard();
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.updateMoodCue();
     this.renderMoodOverlay();
     if (initiate) {
-      session.startMood().catch(() => {});
+      session.startMood(this.moodOrder).catch(() => {});
     }
   }
 
@@ -751,25 +763,7 @@ export class ReaderView {
         <div class="mood-grid"></div>
       </div>
     `;
-    const grid = overlay.querySelector('.mood-grid');
-    for (const mood of MOODS) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'mood-icon';
-      btn.dataset.id = mood.id;
-      btn.setAttribute('aria-pressed', 'false');
-      // The illustration carries the meaning; the label is kept only as the
-      // accessible name (no visible caption), per the screen's design.
-      btn.setAttribute('aria-label', mood.label);
-      btn.innerHTML = `
-        <span class="mood-image-wrap">
-          <img src="${moodIconUrl(mood.slug)}" alt="" draggable="false" />
-          <span class="mood-partner-badge" aria-hidden="true" hidden></span>
-        </span>
-      `;
-      btn.addEventListener('click', () => this.toggleMoodIcon(mood.id));
-      grid.appendChild(btn);
-    }
+    this.fillMoodGrid(overlay.querySelector('.mood-grid'));
     overlay.querySelector('.mood-cancel').addEventListener('click', () => this.cancelMood());
     // Escape would otherwise bubble to the window listener and close the whole
     // reader. Intercept it on capture so it acts on the ritual instead: conclude
@@ -788,6 +782,33 @@ export class ReaderView {
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
     this.renderMoodSelections();
+  }
+
+  // Builds the icon buttons for the current shared board (this.moodOrder). Kept
+  // separate from renderMoodOverlay so the board can be rebuilt in place if the
+  // agreed order arrives or changes after the overlay is already on screen.
+  fillMoodGrid(grid) {
+    grid.replaceChildren();
+    for (const id of this.moodOrder || []) {
+      const mood = moodById(id);
+      if (!mood) continue;
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'mood-icon';
+      btn.dataset.id = mood.id;
+      btn.setAttribute('aria-pressed', 'false');
+      // The illustration carries the meaning; the label is kept only as the
+      // accessible name (no visible caption), per the screen's design.
+      btn.setAttribute('aria-label', mood.label);
+      btn.innerHTML = `
+        <span class="mood-image-wrap">
+          <img src="${moodIconUrl(mood.slug)}" alt="" draggable="false" />
+          <span class="mood-partner-badge" aria-hidden="true" hidden></span>
+        </span>
+      `;
+      btn.addEventListener('click', () => this.toggleMoodIcon(mood.id));
+      grid.appendChild(btn);
+    }
   }
 
   toggleMoodIcon(id) {
@@ -856,9 +877,10 @@ export class ReaderView {
 
   handleMood(data) {
     if (!this.moodOpen) {
-      // The partner opened the ritual: follow them in, without re-flagging.
-      if (data && data.open && !data.lock) this.openMood(false);
-      else if (data && data.lock) { this.openMood(false); this.handleMoodLock(data.lock); }
+      // The partner opened the ritual: follow them in on their board, without
+      // re-flagging.
+      if (data && data.open && !data.lock) this.openMood(false, data.order);
+      else if (data && data.lock) { this.openMood(false, data.order); this.handleMoodLock(data.lock); }
       return;
     }
     if (!data) {
@@ -872,6 +894,16 @@ export class ReaderView {
     if (data.lock) {
       this.handleMoodLock(data.lock);
       return;
+    }
+    // If both devices opened at once they each rolled a board; the node's order
+    // is the one that won. Adopt it so both grids match. This only happens in
+    // that opening race, when no picks are in yet, so rebuilding is harmless.
+    if (data.order && data.order.length && !sameOrder(data.order, this.moodOrder)) {
+      this.moodOrder = data.order;
+      this.mySelection = new Set();
+      const grid = this.moodOverlay?.querySelector('.mood-grid');
+      if (grid) this.fillMoodGrid(grid);
+      this.syncSession?.setMoodPicks([]).catch(() => {});
     }
     this.moodPartnerPicks = {};
     for (const [clientId, ids] of Object.entries(data.picks)) {
