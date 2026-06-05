@@ -1348,9 +1348,11 @@ button {
    3 rows ⇒ at most 2 across), so sizing each tile to whichever of width/height
    is tighter keeps every reveal on one screen without scrolling while filling
    the iPad. The 80px floor only bites on a short landscape phone (where the
-   fixed chrome barely fits) — there it falls back and may scroll. */
+   fixed chrome barely fits) — there it falls back and may scroll. svh (not vh)
+   sizes against the chrome-visible viewport, so a mobile browser's URL bar
+   can't push the reveal into a scroll. */
 .mood-overlay .mood-reveal-tile {
-  width: max(80px, min((100vw - 96px) / 3, (100vh - 300px) / 3));
+  width: max(80px, min((100vw - 96px) / 3, (100svh - 300px) / 3));
   animation: mood-pop 0.35s ease-out both;
 }
 
