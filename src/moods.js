@@ -54,8 +54,7 @@ export function moodIconUrl(slug) {
   return `${import.meta.env.BASE_URL}mood-icons/${slug}.webp`;
 }
 
-export const MOOD_PICK_COUNT = 4; // each reader selects exactly this many
-export const MOOD_MIN_OVERLAP = 3; // shared moods needed to auto-lock
+export const MOOD_PICK_COUNT = 3; // each reader selects exactly this many
 export const MOOD_BOARD_COUNT = 20; // icons shown on the board (a random subset)
 
 // Picks `count` mood ids at random, in random order, for one board. The full
@@ -71,18 +70,49 @@ export function pickMoodBoard(count = MOOD_BOARD_COUNT) {
   return ids.slice(0, Math.min(count, ids.length));
 }
 
-// Decides whether two readers' selections lock in a completion. Both must have
-// picked exactly MOOD_PICK_COUNT and share at least MOOD_MIN_OVERLAP of them.
-// Returns the resolved record { shared, personal } (ids sorted ascending) when
-// lockable, or null otherwise. `shared` is the agreed moods; `personal` is each
-// side's divergent pick(s) — empty when every pick matches.
-export function evaluateLock(picksA, picksB) {
-  if (picksA.length !== MOOD_PICK_COUNT || picksB.length !== MOOD_PICK_COUNT) return null;
-  const setB = new Set(picksB);
-  const shared = picksA.filter((id) => setB.has(id));
-  if (shared.length < MOOD_MIN_OVERLAP) return null;
-  const sharedSet = new Set(shared);
-  const personal = [...picksA, ...picksB].filter((id) => !sharedSet.has(id));
-  const dedupe = (arr) => [...new Set(arr)].sort((a, b) => a - b);
-  return { shared: dedupe(shared), personal: dedupe(personal) };
+// Splits a completed pair of selections into the three zones the reveal shows:
+// `ours` are the moods both readers picked, `mineOnly`/`theirsOnly` are each
+// side's own remaining picks. `mine` is always this device's selection, so the
+// split is computed per device — there is no shared/agreed record to reconcile.
+export function splitMoods(mine, theirs) {
+  const mineSet = new Set(mine);
+  const theirsSet = new Set(theirs);
+  const ours = mine.filter((id) => theirsSet.has(id));
+  const oursSet = new Set(ours);
+  return {
+    mineOnly: mine.filter((id) => !oursSet.has(id)),
+    ours,
+    theirsOnly: theirs.filter((id) => !mineSet.has(id)),
+  };
+}
+
+// The reveal (after both readers picked) and the library history both render the
+// same three labelled rows — „Ich" on top, the celebrated shared „Wir" in the
+// middle, „Du" at the bottom — so the keepsake looks identical wherever it
+// appears. A row is omitted entirely when its zone is empty: no overlap drops
+// the „Wir" row, full agreement drops „Ich" and „Du". `mine`/`theirs` are this
+// device's and the partner's picks, so „Ich" is always the viewer's own.
+const REVEAL_ROWS = [
+  ['mine', 'Ich'],
+  ['ours', 'Wir'],
+  ['theirs', 'Du'],
+];
+
+export function moodRevealRowsHTML(mine, theirs) {
+  const { mineOnly, ours, theirsOnly } = splitMoods(mine, theirs);
+  const groups = { mine: mineOnly, ours, theirs: theirsOnly };
+  const tile = (id) => {
+    const mood = moodById(id);
+    if (!mood) return '';
+    return `<div class="mood-reveal-tile"><img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" /></div>`;
+  };
+  const rows = REVEAL_ROWS.map(([key, label]) => {
+    const ids = groups[key];
+    if (!ids.length) return '';
+    return `<div class="mood-reveal-row mood-reveal-${key}">
+        <span class="mood-reveal-label">${label}</span>
+        <div class="mood-reveal-tiles">${ids.map(tile).join('')}</div>
+      </div>`;
+  }).join('');
+  return `<div class="mood-reveal-rows">${rows}</div>`;
 }

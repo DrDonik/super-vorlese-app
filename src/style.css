@@ -1178,10 +1178,16 @@ button {
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
 
-/* Once locked, the card switches from a top-aligned grid to a centred result. */
-.mood-overlay.mood-locked .mood-card {
-  justify-content: center;
+/* Once revealed, the card switches from a top-aligned grid to a centred result;
+   it scrolls if the three rows ever exceed the height. */
+.mood-overlay.mood-revealed .mood-card {
+  /* `safe` keeps the top rows reachable: if the three rows overflow the card on
+     a short screen, alignment falls back to start instead of clipping above the
+     scroll range. */
+  justify-content: safe center;
   align-items: center;
+  gap: 18px;
+  overflow-y: auto;
 }
 
 .mood-cancel {
@@ -1277,57 +1283,74 @@ button {
   transform: scale(1.04);
 }
 
-/* A dot marking that the partner has chosen this mood, so each reader can watch
-   the other's picks land in real time. */
-.mood-partner-badge {
-  position: absolute;
-  top: -5px;
-  right: -5px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: var(--success);
-  border: 2px solid var(--bg-elev);
-}
-
-.mood-partner-badge[hidden] {
-  display: none;
-}
-
-/* Locked result: the agreed moods, with each reader's divergent pick set apart
-   by a dashed ring. */
+/* The reveal: three labelled rows — „Ich" on top, the shared „Wir" celebrated in
+   the middle, „Du" at the bottom. Shared between the post-reading reveal (in
+   .mood-overlay) and the library history (in .dialog-overlay); the base styles
+   are the compact history size, scaled up inside the overlay. */
 .mood-result-title {
   font-size: 20px;
   font-weight: 600;
-  margin-bottom: 18px;
 }
 
-.mood-result-icons {
+.mood-reveal-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+}
+
+.mood-reveal-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mood-reveal-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--fg-dim);
+  text-align: center;
+}
+
+.mood-reveal-ours .mood-reveal-label {
+  color: var(--success);
+}
+
+.mood-reveal-tiles {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: 10px;
 }
 
-.mood-result-icon {
-  width: 92px;
-  border-radius: 12px;
-  border: 2px solid var(--success);
-  padding: 4px;
-  animation: mood-pop 0.35s ease-out both;
+.mood-reveal-tile {
+  width: 48px;
+  border-radius: 10px;
+  border: 2px solid var(--surface-line);
+  padding: 2px;
 }
 
-.mood-result-icon img {
+.mood-reveal-ours .mood-reveal-tile {
+  border-color: var(--success);
+}
+
+.mood-reveal-tile img {
+  display: block;
   width: 100%;
   aspect-ratio: 1 / 1;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 6px;
 }
 
-.mood-result-personal {
-  border-style: dashed;
-  border-color: var(--accent);
+/* In the full-screen reveal the tiles are larger and pop in, and the shared row
+   gets a soft glow to celebrate what both readers felt. */
+.mood-overlay .mood-reveal-tile {
+  width: clamp(64px, 18vw, 120px);
+  animation: mood-pop 0.35s ease-out both;
+}
+
+.mood-overlay .mood-reveal-ours .mood-reveal-tile {
+  box-shadow: 0 0 0 3px var(--success);
 }
 
 @keyframes mood-pop {
@@ -1412,27 +1435,7 @@ button {
   margin-bottom: 8px;
 }
 
-.mood-history-icons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.mood-history-icon {
-  width: 48px;
-  border-radius: 10px;
-  border: 2px solid var(--success);
-  padding: 2px;
-}
-
-.mood-history-icon img {
-  width: 100%;
-  aspect-ratio: 1 / 1;
-  object-fit: contain;
-  border-radius: 6px;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .reader-finish-cue { animation: none; }
-  .mood-result-icon { animation: none; }
+  .mood-overlay .mood-reveal-tile { animation: none; }
 }

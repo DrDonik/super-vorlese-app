@@ -3,7 +3,7 @@ import {
   ensureContentHash, findBookByContentHash, findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
-import { MOODS, moodIconUrl } from './moods.js';
+import { moodById, moodIconUrl, splitMoods, moodRevealRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook, lookupRoom, getFirebase } from './sync.js';
@@ -142,8 +142,11 @@ export class LibraryView {
         strip.type = 'button';
         strip.className = 'book-mood-strip';
         strip.setAttribute('aria-label', `Gefühle zu „${book.title}" ansehen`);
-        for (const id of [...(latest.shared || []), ...(latest.personal || [])]) {
-          const mood = MOODS.find((m) => m.id === id);
+        // A row of every distinct mood from the latest read: the shared ones,
+        // then each reader's own — the cover's at-a-glance memory of the book.
+        const { mineOnly, ours, theirsOnly } = splitMoods(latest.mine || [], latest.theirs || []);
+        for (const id of [...ours, ...mineOnly, ...theirsOnly]) {
+          const mood = moodById(id);
           if (!mood) continue;
           const img = document.createElement('img');
           img.src = moodIconUrl(mood.slug);
@@ -243,8 +246,9 @@ export class LibraryView {
   }
 
   // Shows every time this book was finished together, newest first: the date
-  // plus that read's agreed (shared) and divergent (personal) moods. Reuses the
-  // dialog overlay styling for consistency with the app's other modals.
+  // plus that read's moods in the same „Ich / Wir / Du" layout as the reveal, so
+  // the history is a faithful keepsake of each finish. Reuses the dialog overlay
+  // styling for consistency with the app's other modals.
   openMoodHistory(book, completions) {
     const previouslyFocused = document.activeElement;
     const overlay = document.createElement('div');
@@ -259,22 +263,10 @@ export class LibraryView {
     const fmtDate = (ts) =>
       new Date(ts).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const moodTile = (id, personal) => {
-      const mood = MOODS.find((m) => m.id === id);
-      if (!mood) return '';
-      return `
-        <div class="mood-history-icon${personal ? ' mood-result-personal' : ''}" title="${mood.label}">
-          <img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" />
-        </div>`;
-    };
-
     const entries = [...completions].reverse().map((c) => `
       <li class="mood-history-entry">
         <div class="mood-history-date">${fmtDate(c.completedAt)}</div>
-        <div class="mood-history-icons">
-          ${(c.shared || []).map((id) => moodTile(id, false)).join('')}
-          ${(c.personal || []).map((id) => moodTile(id, true)).join('')}
-        </div>
+        ${moodRevealRowsHTML(c.mine || [], c.theirs || [])}
       </li>`).join('');
 
     card.innerHTML = `

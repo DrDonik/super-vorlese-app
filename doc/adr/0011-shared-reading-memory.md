@@ -4,7 +4,7 @@ Date: 2026-06-03
 
 ## Status
 
-Accepted
+Superseded by [ADR 12](0012-mood-ritual-honours-divergence.md)
 
 ## Context
 
