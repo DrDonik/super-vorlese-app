@@ -806,14 +806,17 @@ export class ReaderView {
     document.addEventListener('keydown', this._moodKeyDown, true);
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
-    // The board accepts taps only once the cover has settled into the header, so
-    // an early tap on the still-hidden grid can't pick a mood before the board is
-    // shown. Reduced motion skips the choreography, so it's ready at once.
-    const card = overlay.querySelector('.mood-card');
+    // The board stays inert through the intro, so no pointer, keyboard, or
+    // assistive-tech interaction can pick a mood before the cover has settled and
+    // the board is shown. (inert covers what a CSS pointer-events guard would
+    // miss: a keyboard user tabbing in and pressing Enter.) Reduced motion skips
+    // the choreography, so it's ready at once.
+    const grid = overlay.querySelector('.mood-grid');
+    grid.inert = true;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      card.classList.add('mood-board-ready');
+      grid.inert = false;
     } else {
-      this._moodIntroT = setTimeout(() => card.classList.add('mood-board-ready'), MOOD_INTRO_MS);
+      this._moodIntroT = setTimeout(() => { grid.inert = false; }, MOOD_INTRO_MS);
     }
     this.renderMoodSelections();
   }

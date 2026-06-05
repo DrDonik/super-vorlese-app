@@ -1268,9 +1268,9 @@ button {
 }
 
 /* The board and its prompt stay hidden through the cover's held beat, then rise
-   in once it starts settling up into the header. Taps are gated separately (the
-   .mood-board-ready class) so an early tap on the still-hidden grid can't pick a
-   mood before the board is shown. */
+   in once it starts settling up into the header. Interaction is gated separately
+   in JS (the grid is `inert` until the intro ends), so it can't pick a mood
+   before the board is shown. */
 .mood-grid,
 .mood-instructions {
   animation: mood-board-rise 0.5s 1s ease both;
@@ -1279,14 +1279,6 @@ button {
 @keyframes mood-board-rise {
   from { opacity: 0; transform: translateY(14px); }
   to   { opacity: 1; transform: none; }
-}
-
-.mood-grid {
-  pointer-events: none;
-}
-
-.mood-card.mood-board-ready .mood-grid {
-  pointer-events: auto;
 }
 
 /* Fills the height left under the title. The cells stretch to share the space
