@@ -154,3 +154,47 @@ the following, without changing the ritual's mechanics or stored shape:
   synced-only; a solo finish still gets the plain end-of-book card. Letting solo
   reads flow into the same ritual (the reader's three picks, no waiting, no „Wir"
   / „Du" rows) is a worthwhile follow-up tracked separately as issue #79.
+
+## Amendment (2026-06-05): the board draw guarantees an honest range
+
+The original decision kept the board a **pure random** 20-mood subset (see "Board
+unchanged at 20"). Living with the catalogue surfaced that it is not evenly spread
+across the emotional space — it was reverse-engineered from one adventurous book
+and skews heavily toward high-energy positive feelings, with the *difficult* and
+*partner-directed* regions thinly represented. A pure random draw of 20 could
+therefore hand a child who just finished a sad or scary book a board with **no
+fitting word**, and a board with **nothing to aim at the other reader** — pushing
+them to pick a cheerful feeling they did not have. That is the exact cheerful-nudge
+this ADR set out to refuse: the ritual's whole point is an *honest* word for how
+the book felt, divergence included. Deliberation (issue #77) settled the following,
+without changing the ritual's mechanics or stored shape:
+
+- **The catalogue was widened where it was thinnest.** Seven illustrations were
+  added (ids 41–47, briefs in `doc/mood-icon-descriptions.txt`) to give the
+  single-image difficult feelings — scared, overwhelmed, angry — and the
+  partner-directed gestures a second variant, plus another sad and another
+  courage. This makes a fitting feeling *available* and not always the identical
+  tile, but does not by itself fix the *draw*.
+
+- **The draw is now balanced, not pure-random.** `pickMoodBoard` first guarantees
+  a per-cluster minimum (`MOOD_BOARD_FLOORS` in `src/moods.js`) — ≥2 low-arousal
+  difficult, ≥1 each of high-arousal difficult, relational, calm, courage, and
+  tender — picking at random *within* each cluster, then fills the remaining slots
+  at random from the whole catalogue, then shuffles display order. Floors cover
+  only the regions where thinness genuinely hurts and no positive feeling can
+  substitute; the large, substitutable joy and anticipation clusters carry no floor
+  and still dominate the fill, so the board stays mostly random. The floors commit
+  7 of 20 slots, well under board size.
+
+- **This does not reopen the "don't tune the board" caution.** That caution was
+  about *shrinking* the board to manufacture coincidental overlap between readers
+  who felt different things. A floor does the opposite: it **widens** the
+  vocabulary on offer without changing board size, so it makes honest — including
+  *divergent* — naming reliably possible rather than nudging two readers toward the
+  same tile. It celebrates overlap only when it happens organically, exactly as
+  before.
+
+- **Determinism is unchanged.** The initiator still rolls the board once and
+  broadcasts the resulting `order` array; the partner renders whatever arrives and
+  never rolls its own. Balancing the draw touches only the initiator's selection,
+  so both devices remain identical with no change to the sync layer.
