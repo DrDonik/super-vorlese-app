@@ -740,9 +740,13 @@ export class ReaderView {
     this.moodOpen = true;
     this.moodLockHandled = false;
     // The board is a random subset of the catalogue; both devices must show the
-    // identical one. The initiator rolls it; a follower adopts what arrived (and
-    // falls back to a fresh roll only if it somehow opened without one).
-    this.moodOrder = (order && order.length) ? order : pickMoodBoard();
+    // identical one. The initiator rolls it; a follower adopts what arrived. A
+    // follower with no order is following a client that predates this feature
+    // (it wrote `open` without `order`) and is showing the old fixed board, so
+    // match that — the original ids 1..20 — instead of rolling a mismatched one.
+    this.moodOrder = (order && order.length)
+      ? order
+      : (initiate ? pickMoodBoard() : MOODS.slice(0, 20).map((m) => m.id));
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.updateMoodCue();
