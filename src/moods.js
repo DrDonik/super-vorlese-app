@@ -2,10 +2,9 @@
 // (issue #65). The numeric `id` is what travels over the wire and is stored in
 // completion records, so it must stay stable; the `slug` maps to the shipped
 // asset at public/mood-icons/<slug>.webp (generated from doc/mood-icons/ by
-// scripts/generate-mood-icons.js). The order matches doc/mood-icon-descriptions.txt,
-// which lists more mood *ideas* than are illustrated — the catalogue stops at the
-// last one with a shipped image (currently 31; #32 has no asset yet, so including
-// it would render a broken tile).
+// scripts/generate-mood-icons.js). The order matches doc/mood-icon-descriptions.txt;
+// every entry below has a shipped image, so the full file (currently 40) is the
+// catalogue the board draws from.
 export const MOODS = [
   { id: 1, slug: 'crash-and-still-grinning', label: 'Trotzdem fröhlich' },
   { id: 2, slug: 'determined-chin-up', label: 'Jetzt erst recht' },
@@ -40,6 +39,16 @@ export const MOODS = [
   { id: 29, slug: 'slow-nod-of-getting-it', label: 'Aha, verstanden' },
   { id: 30, slug: 'warm-and-full', label: 'Wohlig zufrieden' },
   { id: 31, slug: 'secretly-moved', label: 'Heimlich gerührt' },
+  // Added later still; ids continue from 31 so earlier stored records stay stable.
+  { id: 32, slug: 'again-from-the-start', label: 'Nochmal von vorne!' },
+  { id: 33, slug: 'scary-shivers', label: 'Wohliges Gruseln' },
+  { id: 34, slug: 'gleeful-yuck', label: 'Herrlich eklig' },
+  { id: 35, slug: 'real-tears', label: 'Echte Tränen' },
+  { id: 36, slug: 'lost-the-thread', label: 'Den Faden verloren' },
+  { id: 37, slug: 'politely-elsewhere', label: 'Mit den Gedanken woanders' },
+  { id: 38, slug: 'jaw-drop-twist', label: 'Damit nicht gerechnet!' },
+  { id: 39, slug: 'kiss-across-the-miles', label: 'Kuss in die Ferne' },
+  { id: 40, slug: 'proud-of-you', label: 'Stolz auf dich' },
 ];
 
 const MOOD_BY_ID = new Map(MOODS.map((m) => [m.id, m]));
