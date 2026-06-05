@@ -1324,7 +1324,7 @@ button {
 }
 
 .mood-reveal-tile {
-  width: 48px;
+  width: 72px;
   border-radius: 10px;
   border: 2px solid var(--surface-line);
   padding: 2px;
@@ -1342,10 +1342,15 @@ button {
   border-radius: 6px;
 }
 
-/* In the full-screen reveal the tiles are larger and pop in, and the shared row
-   gets a soft glow to celebrate what both readers felt. */
+/* In the full-screen reveal the tiles are large and present, pop in, and the
+   shared row gets a soft glow to celebrate what both readers felt. The split
+   maths in splitMoods never yields a full 3×3 (3 icons across ⇒ at most 2 rows;
+   3 rows ⇒ at most 2 across), so sizing each tile to whichever of width/height
+   is tighter keeps every reveal on one screen without scrolling while filling
+   the iPad. The 80px floor only bites on a short landscape phone (where the
+   fixed chrome barely fits) — there it falls back and may scroll. */
 .mood-overlay .mood-reveal-tile {
-  width: clamp(64px, 18vw, 120px);
+  width: max(80px, min((100vw - 96px) / 3, (100vh - 300px) / 3));
   animation: mood-pop 0.35s ease-out both;
 }
 
