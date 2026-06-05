@@ -58,8 +58,9 @@
             ".validate": "newData.isBoolean()"
           },
           "order": {
+            ".validate": "newData.hasChildren()",
             "$index": {
-              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 99"
+              ".validate": "$index.matches(/^(0|[1-9][0-9]?)$/) && newData.isNumber() && newData.val() >= 1 && newData.val() <= 99"
             }
           },
           "picks": {
