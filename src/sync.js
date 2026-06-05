@@ -370,9 +370,9 @@ export class SyncSession {
   //                          shows, in display order. The initiator rolls it once
   //                          so both devices render the identical board.
   //   mood/picks/{clientId}: { iconId: true } — that side's current selection
-  //   mood/lock            : { shared:{id:true}, personal:{id:true}, at } —
-  //                          written once, via a transaction, when the picks
-  //                          agree; both sides persist the same record from it.
+  // There is no shared "lock": once both sides have picked, each device reveals
+  // and stores its own perspective ({ mine, theirs }) locally, so nothing about
+  // the agreement needs to be reconciled over the wire.
 
   moodRef(child) {
     const path = child ? `rooms/${this.roomCode}/mood/${child}` : `rooms/${this.roomCode}/mood`;
@@ -401,31 +401,16 @@ export class SyncSession {
     await this.fb.set(r, map);
   }
 
-  // Atomically records the agreed completion. The transaction makes a
-  // simultaneous attempt from both devices collapse into one write, so there is
-  // exactly one record (one timestamp) that both sides then read back and store.
-  async lockMood(record) {
-    if (!this.roomCode || !this.fb) return;
-    const lock = { shared: {}, at: Date.now() };
-    for (const id of record.shared) lock.shared[id] = true;
-    if (record.personal.length) {
-      lock.personal = {};
-      for (const id of record.personal) lock.personal[id] = true;
-    }
-    await this.fb.runTransaction(this.moodRef('lock'), (current) => (current ? undefined : lock));
-  }
-
   async clearMood() {
     if (!this.roomCode || !this.fb) return;
     await this.fb.remove(this.moodRef());
   }
 
-  // Streams the whole mood node, parsed into { open, order, picks, lock }.
+  // Streams the whole mood node, parsed into { open, order, picks }.
   // `order` is the shared board (icon ids in display order), or null before the
   // initiator has written it. `picks` maps each participant's clientId to its
   // array of selected icon ids (our own slot included, so the caller can
-  // reconcile after a reconnect). `lock` is the resolved record once it exists,
-  // or null.
+  // reconcile after a reconnect).
   listenMood(cb) {
     if (!this.roomCode || !this.fb) return;
     this.stopListeningMood();
@@ -438,16 +423,8 @@ export class SyncSession {
           picks[id] = Object.keys(map || {}).map(Number);
         }
       }
-      let lock = null;
-      if (data.lock && data.lock.shared) {
-        lock = {
-          shared: Object.keys(data.lock.shared).map(Number).sort((a, b) => a - b),
-          personal: Object.keys(data.lock.personal || {}).map(Number).sort((a, b) => a - b),
-          at: data.lock.at,
-        };
-      }
       const order = Array.isArray(data.order) ? data.order.map(Number) : null;
-      cb({ open: !!data.open, order, picks, lock });
+      cb({ open: !!data.open, order, picks });
     });
   }
 

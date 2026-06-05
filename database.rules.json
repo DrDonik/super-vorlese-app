@@ -71,25 +71,6 @@
               }
             }
           },
-          "lock": {
-            ".validate": "newData.hasChildren(['shared', 'at'])",
-            "shared": {
-              "$iconId": {
-                ".validate": "$iconId.matches(/^[1-9][0-9]?$/) && newData.isBoolean() && newData.val() == true"
-              }
-            },
-            "personal": {
-              "$iconId": {
-                ".validate": "$iconId.matches(/^[1-9][0-9]?$/) && newData.isBoolean() && newData.val() == true"
-              }
-            },
-            "at": {
-              ".validate": "newData.isNumber()"
-            },
-            "$other": {
-              ".validate": false
-            }
-          },
           "$other": {
             ".validate": false
           }

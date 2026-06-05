@@ -5,7 +5,7 @@ import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from '.
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert } from './dialog.js';
-import { MOODS, moodById, moodIconUrl, pickMoodBoard, evaluateLock, MOOD_PICK_COUNT, MOOD_MIN_OVERLAP } from './moods.js';
+import { moodById, moodIconUrl, moodRevealRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
@@ -95,12 +95,14 @@ export class ReaderView {
     this.longPressTimer = null;
     // Shared reading memory (issue #65). The mood overlay is built on demand;
     // mySelection is this device's authoritative picks, moodPartnerPicks mirrors
-    // the other participants' picks from Firebase, keyed by clientId.
+    // the other participants' picks from Firebase, keyed by clientId. The
+    // partner's picks stay hidden until the reveal, so neither reader steers the
+    // other toward a match.
     this.moodOpen = false;
     this.moodOrder = null; // the shared board (icon ids), agreed via Firebase
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
-    this.moodLockHandled = false;
+    this.moodRevealed = false;
   }
 
   async render() {
@@ -738,15 +740,11 @@ export class ReaderView {
     const session = this.syncSession;
     if (!session?.roomCode) { this.showEnd(); return; }
     this.moodOpen = true;
-    this.moodLockHandled = false;
+    this.moodRevealed = false;
     // The board is a random subset of the catalogue; both devices must show the
-    // identical one. The initiator rolls it; a follower adopts what arrived. A
-    // follower with no order is following a client that predates this feature
-    // (it wrote `open` without `order`) and is showing the old fixed board, so
-    // match that — the original ids 1..20 — instead of rolling a mismatched one.
-    this.moodOrder = (order && order.length)
-      ? order
-      : (initiate ? pickMoodBoard() : MOODS.slice(0, 20).map((m) => m.id));
+    // identical one. The initiator rolls it and publishes it with the `open`
+    // flag in one write, so a follower always arrives with the order in hand.
+    this.moodOrder = (order && order.length) ? order : pickMoodBoard(MOOD_BOARD_COUNT);
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.updateMoodCue();
@@ -776,7 +774,7 @@ export class ReaderView {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
-      if (this.moodLockHandled) {
+      if (this.moodRevealed) {
         this.concludeMood();
       } else {
         this.cancelMood();
@@ -807,7 +805,6 @@ export class ReaderView {
       btn.innerHTML = `
         <span class="mood-image-wrap">
           <img src="${moodIconUrl(mood.slug)}" alt="" draggable="false" />
-          <span class="mood-partner-badge" aria-hidden="true" hidden></span>
         </span>
       `;
       btn.addEventListener('click', () => this.toggleMoodIcon(mood.id));
@@ -816,7 +813,7 @@ export class ReaderView {
   }
 
   toggleMoodIcon(id) {
-    if (this.moodLockHandled) return;
+    if (this.moodRevealed) return;
     if (this.mySelection.has(id)) {
       this.mySelection.delete(id);
     } else if (this.mySelection.size < MOOD_PICK_COUNT) {
@@ -826,54 +823,40 @@ export class ReaderView {
     }
     this.renderMoodSelections();
     this.syncSession?.setMoodPicks([...this.mySelection]).catch(() => {});
-    this.maybeLockMood();
+    this.maybeReveal();
   }
 
-  // Reflects both sides' current picks onto the grid: this device's selections
-  // get the "mine" state, and any icon a partner has chosen carries a small
-  // badge so each reader can watch the other's choices arrive in real time.
+  // Reflects only this device's own picks onto the grid; the partner's picks are
+  // deliberately not shown, so the reveal is a genuine surprise and neither
+  // reader nudges the other toward matching. The instruction is a simple "still
+  // to pick" counter, then a wait once this side is done.
   renderMoodSelections() {
     const overlay = this.moodOverlay;
-    if (!overlay) return;
-    const partnerIds = new Set();
-    for (const ids of Object.values(this.moodPartnerPicks)) {
-      for (const id of ids) partnerIds.add(id);
-    }
+    if (!overlay || this.moodRevealed) return;
     for (const btn of overlay.querySelectorAll('.mood-icon')) {
       const id = Number(btn.dataset.id);
       const mine = this.mySelection.has(id);
       btn.classList.toggle('mood-selected', mine);
       btn.setAttribute('aria-pressed', mine ? 'true' : 'false');
-      const badge = btn.querySelector('.mood-partner-badge');
-      badge.hidden = !partnerIds.has(id);
     }
     const instructions = overlay.querySelector('.mood-instructions');
-    if (instructions && !this.moodLockHandled) {
-      // Two live counters: how many more this reader still picks, and how many
-      // more of their picks must match the partner's to reach the shared total.
+    if (instructions) {
       const remaining = MOOD_PICK_COUNT - this.mySelection.size;
-      const overlap = [...this.mySelection].filter((id) => partnerIds.has(id)).length;
-      const needed = Math.max(0, MOOD_MIN_OVERLAP - overlap);
-      let text;
-      if (remaining > 0 && needed > 0) text = `Wähle noch ${remaining}. Einigt Euch auf ${needed}.`;
-      else if (remaining > 0) text = `Wähle noch ${remaining}.`;
-      else if (needed > 0) text = `Einigt Euch auf ${needed}.`;
-      else text = 'Wartet, bis ihr fertig seid …';
-      instructions.textContent = text;
+      instructions.textContent = remaining > 0
+        ? `Wähle ${remaining} ${remaining === 1 ? 'Gefühl' : 'Gefühle'}.`
+        : 'Warte auf den anderen …';
     }
   }
 
-  // After either side's picks change, see whether this device and a partner now
-  // satisfy the lock rule. We only request the lock here; the actual recording
-  // happens when the resulting lock node echoes back through handleMood, so both
-  // devices act on the one canonical record (identical moods and timestamp).
-  maybeLockMood() {
-    if (this.moodLockHandled || !this.moodOpen) return;
-    const mine = [...this.mySelection];
+  // After either side's picks change, reveal once both readers have picked their
+  // full set. Each device computes its own perspective and stores it locally, so
+  // there is no shared record to agree on — the partner's device does the same.
+  maybeReveal() {
+    if (this.moodRevealed || !this.moodOpen) return;
+    if (this.mySelection.size !== MOOD_PICK_COUNT) return;
     for (const partnerIds of Object.values(this.moodPartnerPicks)) {
-      const record = evaluateLock(mine, partnerIds);
-      if (record) {
-        this.syncSession?.lockMood(record).catch(() => {});
+      if (partnerIds.length === MOOD_PICK_COUNT) {
+        this.revealMood([...this.mySelection], partnerIds);
         return;
       }
     }
@@ -881,22 +864,16 @@ export class ReaderView {
 
   handleMood(data) {
     if (!this.moodOpen) {
-      // The partner opened the ritual: follow them in on their board, without
-      // re-flagging.
-      if (data && data.open && !data.lock) this.openMood(false, data.order);
-      else if (data && data.lock) { this.openMood(false, data.order); this.handleMoodLock(data.lock); }
+      // The partner opened the ritual: follow them in on their board.
+      if (data && data.open) this.openMood(false, data.order);
       return;
     }
     if (!data) {
       // The whole node was removed. While still selecting that means the other
-      // party cancelled, so close too; once we've locked and are showing the
-      // result, it just means a participant finished tidying up — leave our
-      // celebration on screen until this reader dismisses it.
-      if (!this.moodLockHandled) this.closeMoodUI();
-      return;
-    }
-    if (data.lock) {
-      this.handleMoodLock(data.lock);
+      // party cancelled, so close too; once we're showing the reveal it just
+      // means a participant finished tidying up — leave our reveal on screen
+      // until this reader dismisses it.
+      if (!this.moodRevealed) this.closeMoodUI();
       return;
     }
     // If both devices opened at once they each rolled a board; the node's order
@@ -915,46 +892,33 @@ export class ReaderView {
       this.moodPartnerPicks[clientId] = ids;
     }
     this.renderMoodSelections();
-    this.maybeLockMood();
+    this.maybeReveal();
   }
 
-  // The agreed completion arrived. Persist the identical record locally on both
-  // devices (guarded so a re-fired listener can't store it twice, and so a
-  // bystander who never picked doesn't record someone else's finish), then show
-  // the satisfying locked result.
-  handleMoodLock(lock) {
-    if (this.moodLockHandled) return;
-    this.moodLockHandled = true;
-    if (this.mySelection.size === MOOD_PICK_COUNT) {
-      addCompletion(this.bookId, {
-        id: uid(),
-        completedAt: lock.at,
-        shared: lock.shared,
-        personal: lock.personal,
-      }).catch(() => {});
-    }
-    this.showMoodResult(lock);
+  // Both readers have picked. Store this device's own perspective of the finish
+  // ({ mine, theirs }) locally — the partner's device stores the mirror image —
+  // then show the reveal. Guarded so a re-fired listener can't store it twice.
+  revealMood(mine, theirs) {
+    if (this.moodRevealed) return;
+    this.moodRevealed = true;
+    addCompletion(this.bookId, {
+      id: uid(),
+      completedAt: Date.now(),
+      mine,
+      theirs,
+    }).catch(() => {});
+    this.showMoodResult(mine, theirs);
   }
 
-  showMoodResult(lock) {
+  showMoodResult(mine, theirs) {
     const overlay = this.moodOverlay;
     if (!overlay) return;
     const card = overlay.querySelector('.mood-card');
-    overlay.classList.add('mood-locked');
-    const icons = [...(lock.shared || []), ...(lock.personal || [])];
-    const tiles = icons.map((id) => {
-      const mood = MOODS.find((m) => m.id === id);
-      if (!mood) return '';
-      const personal = (lock.personal || []).includes(id);
-      return `
-        <div class="mood-result-icon${personal ? ' mood-result-personal' : ''}">
-          <img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" />
-        </div>`;
-    }).join('');
+    overlay.classList.add('mood-revealed');
     card.innerHTML = `
-      <div class="mood-result-title">Euer gemeinsames Gefühl</div>
-      <div class="mood-result-icons">${tiles}</div>
-      <button class="mood-result-done" type="button">Fertig</button>
+      <div class="mood-result-title">Eure Gefühle</div>
+      ${moodRevealRowsHTML(mine, theirs)}
+      <button class="mood-result-done" type="button">Buch schliessen</button>
     `;
     card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
   }
@@ -968,18 +932,18 @@ export class ReaderView {
 
   cancelMood() {
     // Clearing the shared node makes the partner's listener close their screen
-    // too. Safe after a lock as well: the record is already stored locally.
+    // too. Safe after the reveal as well: the record is already stored locally.
     this.syncSession?.clearMood().catch(() => {});
     this.closeMoodUI();
   }
 
   closeMoodUI() {
     // A concluded ritual leaves its node behind; clear it so a re-read starts
-    // clean and re-entering the book doesn't replay the celebration. The record
-    // is already stored locally on both devices by the time anyone closes, and
+    // clean and re-entering the book doesn't replay the reveal. The record is
+    // already stored locally on both devices by the time anyone closes, and
     // clearing is idempotent, so both sides closing is harmless. (A cancel
-    // before locking clears via cancelMood instead.)
-    if (this.moodLockHandled) this.syncSession?.clearMood().catch(() => {});
+    // before the reveal clears via cancelMood instead.)
+    if (this.moodRevealed) this.syncSession?.clearMood().catch(() => {});
     this.moodOpen = false;
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
