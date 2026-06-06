@@ -195,11 +195,16 @@ export async function updateLastPage(id, page) {
 
 // --- Shared reading memory (issue #65) --------------------------------------
 // Each book carries a chronological list of completion records, one per time it
-// was finished together. A record is { id, completedAt, mine:[iconId…],
+// was finished together. A pair record is { id, completedAt, mine:[iconId…],
 // theirs:[iconId…] } — this device owner's picks and the partner's, from which
 // the shared "Wir" moods are derived at render time. The record is stored from
 // each device's own perspective (so "mine" is always this device's reader); the
-// partner's device holds the mirror image. No name is ever stored.
+// partner's device holds the mirror image.
+//
+// A witness record (issue #82) — kept by the one grandparent reading to two
+// grandchildren — instead has the shape { id, completedAt, witnessed: true,
+// a:[iconId…], b:[iconId…] }: both children's picks, from which „Ihr"/„Du"/„Du"
+// is derived at render time. No name is ever stored in either shape.
 
 export async function getCompletions(id) {
   return (await get(completionsKey(id))) || [];

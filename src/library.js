@@ -3,7 +3,7 @@ import {
   ensureContentHash, findBookByContentHash, findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
-import { moodById, moodIconUrl, splitMoods, moodRevealRowsHTML } from './moods.js';
+import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook, lookupRoom, getFirebase } from './sync.js';
@@ -143,9 +143,18 @@ export class LibraryView {
         strip.className = 'book-mood-strip';
         strip.setAttribute('aria-label', `Gefühle zu „${book.title}" ansehen`);
         // A row of every distinct mood from the latest read: the shared ones,
-        // then each reader's own — the cover's at-a-glance memory of the book.
-        const { mineOnly, ours, theirsOnly } = splitMoods(latest.mine || [], latest.theirs || []);
-        for (const id of [...ours, ...mineOnly, ...theirsOnly]) {
+        // then each reader's own — the cover's at-a-glance memory of the book. A
+        // witnessed read (issue #82) shows both children's distinct moods, shared
+        // first, the same way.
+        let stripIds;
+        if (latest.witnessed) {
+          const { shared, aOnly, bOnly } = splitWitness(latest.a || [], latest.b || []);
+          stripIds = [...shared, ...aOnly, ...bOnly];
+        } else {
+          const { mineOnly, ours, theirsOnly } = splitMoods(latest.mine || [], latest.theirs || []);
+          stripIds = [...ours, ...mineOnly, ...theirsOnly];
+        }
+        for (const id of stripIds) {
           const mood = moodById(id);
           if (!mood) continue;
           const img = document.createElement('img');
@@ -266,7 +275,7 @@ export class LibraryView {
     const entries = [...completions].reverse().map((c) => `
       <li class="mood-history-entry">
         <div class="mood-history-date">${fmtDate(c.completedAt)}</div>
-        ${moodRevealRowsHTML(c.mine || [], c.theirs || [])}
+        ${c.witnessed ? moodWitnessRowsHTML(c.a || [], c.b || []) : moodRevealRowsHTML(c.mine || [], c.theirs || [])}
       </li>`).join('');
 
     card.innerHTML = `

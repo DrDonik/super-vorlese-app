@@ -177,26 +177,65 @@ export function splitMoods(mine, theirs) {
 // drops „Ich" and „Du". `mine`/`theirs` are this device's and the partner's
 // picks, so „Ich" is always the viewer's own.
 const REVEAL_ROWS = [
-  ['ours', 'Wir'],
-  ['mine', 'Ich'],
-  ['theirs', 'Du'],
+  ['ours', 'Wir', 'ours'],
+  ['mine', 'Ich', 'mine'],
+  ['theirs', 'Du', 'theirs'],
 ];
+
+function moodRevealTile(id) {
+  const mood = moodById(id);
+  if (!mood) return '';
+  return `<div class="mood-reveal-tile"><img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" /></div>`;
+}
+
+// Renders the labelled rows shared by the picker reveal and the library history.
+// Each row is [groupKey, label, styleKey]: `groupKey` indexes `groups`, while
+// `styleKey` picks the `.mood-reveal-*` styling — so the witness keepsake can
+// reuse the celebrated „ours" styling for „Ihr" and the „theirs" styling for both
+// its „Du" rows. A row is omitted entirely when its zone is empty.
+function moodRevealRows(rows, groups) {
+  const html = rows.map(([groupKey, label, styleKey]) => {
+    const ids = groups[groupKey];
+    if (!ids.length) return '';
+    return `<div class="mood-reveal-row mood-reveal-${styleKey}">
+        <span class="mood-reveal-label">${label}</span>
+        <div class="mood-reveal-tiles">${ids.map(moodRevealTile).join('')}</div>
+      </div>`;
+  }).join('');
+  return `<div class="mood-reveal-rows">${html}</div>`;
+}
 
 export function moodRevealRowsHTML(mine, theirs) {
   const { mineOnly, ours, theirsOnly } = splitMoods(mine, theirs);
-  const groups = { mine: mineOnly, ours, theirs: theirsOnly };
-  const tile = (id) => {
-    const mood = moodById(id);
-    if (!mood) return '';
-    return `<div class="mood-reveal-tile"><img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" /></div>`;
+  return moodRevealRows(REVEAL_ROWS, { mine: mineOnly, ours, theirs: theirsOnly });
+}
+
+// Splits the two children's picks for the witness keepsake (issue #82: one
+// grandparent reading to two grandchildren). `shared` are the moods both children
+// picked; `aOnly`/`bOnly` are each child's own remaining picks. Same three-zone
+// shape as splitMoods, so there are always six picks to keep and the record is
+// never empty — honouring divergence (ADR 12) by keeping the whole picture, not
+// just the agreement.
+export function splitWitness(a, b) {
+  const aSet = new Set(a);
+  const bSet = new Set(b);
+  return {
+    shared: a.filter((id) => bSet.has(id)),
+    aOnly: a.filter((id) => !bSet.has(id)),
+    bOnly: b.filter((id) => !aSet.has(id)),
   };
-  const rows = REVEAL_ROWS.map(([key, label]) => {
-    const ids = groups[key];
-    if (!ids.length) return '';
-    return `<div class="mood-reveal-row mood-reveal-${key}">
-        <span class="mood-reveal-label">${label}</span>
-        <div class="mood-reveal-tiles">${ids.map(tile).join('')}</div>
-      </div>`;
-  }).join('');
-  return `<div class="mood-reveal-rows">${rows}</div>`;
+}
+
+// The witness reveal/keepsake: „Ihr" (what both children felt, celebrated like
+// the picker's „Wir") on top, then each child's own picks as two deliberately
+// unnamed „Du" rows. Reuses the picker reveal's markup so the keepsake looks
+// identical wherever it appears.
+const WITNESS_ROWS = [
+  ['shared', 'Ihr', 'ours'],
+  ['aOnly', 'Du', 'theirs'],
+  ['bOnly', 'Du', 'theirs'],
+];
+
+export function moodWitnessRowsHTML(a, b) {
+  return moodRevealRows(WITNESS_ROWS, splitWitness(a, b));
 }
