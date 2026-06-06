@@ -219,11 +219,9 @@ export function moodRevealRowsHTML(mine, theirs) {
 export function splitWitness(a, b) {
   const aSet = new Set(a);
   const bSet = new Set(b);
-  const shared = a.filter((id) => bSet.has(id));
-  const sharedSet = new Set(shared);
   return {
-    shared,
-    aOnly: a.filter((id) => !sharedSet.has(id)),
+    shared: a.filter((id) => bSet.has(id)),
+    aOnly: a.filter((id) => !bSet.has(id)),
     bOnly: b.filter((id) => !aSet.has(id)),
   };
 }
