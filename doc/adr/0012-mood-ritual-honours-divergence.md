@@ -198,3 +198,58 @@ without changing the ritual's mechanics or stored shape:
   broadcasts the resulting `order` array; the partner renders whatever arrives and
   never rolls its own. Balancing the draw touches only the initiator's selection,
   so both devices remain identical with no change to the sync layer.
+
+## Amendment (2026-06-06): three or more participants
+
+ADR 12 left multi-party behaviour as a degenerate "pairs with the first partner to
+finish", which silently drops the third person and can pair the devices
+inconsistently. For the one realistic >2 shape in this app — **one grandparent
+reading to two grandchildren** — we replace that with an explicit, fair design,
+while keeping the ritual's dyadic heart and its identity-free, symmetric selection
+screen untouched. The three-person case is handled almost entirely downstream of
+*behaviour*, never by putting any device into a special "I am the grandparent"
+mode (issue #82).
+
+- **Participant count via a grace-window announcement.** When the ritual opens,
+  every device announces itself under `mood/present/{clientId}`. The existing
+  ~1.5 s cover-close intro (`MOOD_INTRO_MS`), during which the board is `inert`,
+  doubles as a settle window: by the time picking is possible, every device has
+  tallied how many are present. The count is recomputed reactively (never frozen),
+  and the whole-node write in `startMood` wipes any stale `present` from a previous
+  finish, so the count reflects *this* ritual only.
+
+- **Two pick, one witnesses — decided by behaviour, not identity.** No device is
+  ever marked "the grandparent". When three are present, all three see one extra
+  advisory line — „Drei Personen anwesend. Nur die Kinder wählen Gefühle." — above
+  the unchanged „Wähle 3 Gefühle". The adult reads it and abstains; the
+  pre-reading children pick as before. Roles emerge from who acts: a device that
+  picked a full set pairs (as today) with another full set; a device that picked
+  **nothing** while **two** others each completed a full set shows the **witness
+  reveal**.
+
+- **The witness reveal: „Ihr / Du / Du".** The bystander sees the moods both
+  children agreed on (`Ihr`, on top, celebrated like the picker's `Wir`), then each
+  child's own picks as two deliberately-unnamed `Du` rows. No name is ever stored
+  — consistent with the perspectival-unnamed model.
+
+- **The witness keeps the whole picture.** Honouring divergence means the witness
+  stores not just the agreement but the full reveal — both children's picks and
+  their overlap — rendered in her history in the same layout. This also removes the
+  "what if they overlap on nothing" edge: there are always six picks to keep. Her
+  record is a distinct shape (`{ witnessed: true, a, b }`) from the picker's
+  `{ mine, theirs }` mirror pair.
+
+- **Four or more bows out.** Beyond three there is no honest pair-plus-witness
+  mapping, so the ritual does not run: after the same intro, every device shows
+  „Ende" and stores no record. This delivers the *closure* half without a keepsake;
+  a richer N-person ritual is explicitly out of scope for now.
+
+- **Invariants that make a wrong count harmless.** The count drives **only** the
+  advisory line and the 4+ bow-out — never a device's ability to pair.
+  Pairing/witnessing is purely behaviour-driven. Because the grandparent is on a
+  parallel video call she has ground truth on how many people are really present,
+  and the advisory line **states the number** so she can cross-check it: if a
+  stale/idle device inflates a real pair to a phantom "3", she ignores the line and
+  picks, and the normal two-person reveal fires. The one un-rescuable residue — a
+  phantom inflating a real three to "4" and suppressing to „Ende" — compounds two
+  rare events and fails safe; accepted for now.

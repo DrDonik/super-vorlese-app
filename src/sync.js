@@ -386,7 +386,21 @@ export class SyncSession {
   // remove-then-set, never flashes an empty node past our own listener.
   async startMood(order) {
     if (!this.roomCode || !this.fb) return;
-    await this.fb.set(this.moodRef(), { open: true, order });
+    // Include our own presence in the same atomic write, so it can't be wiped by
+    // this very set; the fresh whole-node write also clears any stale `present`
+    // (and picks) from an earlier finish, so the count reflects *this* ritual
+    // only. Followers add themselves via announceMoodPresence when they open.
+    await this.fb.set(this.moodRef(), { open: true, order, present: { [this.clientId]: true } });
+  }
+
+  // A follower opening the ritual in response to the `open` flag adds itself to
+  // the presence set (the initiator is already in via startMood). The ~1.5 s
+  // cover-close intro doubles as a settle window, so every device's count is in
+  // by the time the board accepts taps. Durable like the rest of the mood node
+  // (no onDisconnect): it is wiped per-ritual by startMood, never by a drop.
+  async announceMoodPresence() {
+    if (!this.roomCode || !this.fb) return;
+    await this.fb.set(this.moodRef('present/' + this.clientId), true);
   }
 
   async setMoodPicks(iconIds) {
@@ -406,11 +420,12 @@ export class SyncSession {
     await this.fb.remove(this.moodRef());
   }
 
-  // Streams the whole mood node, parsed into { open, order, picks }.
+  // Streams the whole mood node, parsed into { open, order, picks, present }.
   // `order` is the shared board (icon ids in display order), or null before the
   // initiator has written it. `picks` maps each participant's clientId to its
   // array of selected icon ids (our own slot included, so the caller can
-  // reconcile after a reconnect).
+  // reconcile after a reconnect). `present` is the list of clientIds that have
+  // announced themselves this ritual — used only to count participants (#82).
   listenMood(cb) {
     if (!this.roomCode || !this.fb) return;
     this.stopListeningMood();
@@ -424,7 +439,10 @@ export class SyncSession {
         }
       }
       const order = Array.isArray(data.order) ? data.order.map(Number) : null;
-      cb({ open: !!data.open, order, picks });
+      const present = (data.present && typeof data.present === 'object')
+        ? Object.keys(data.present)
+        : [];
+      cb({ open: !!data.open, order, picks, present });
     });
   }
 

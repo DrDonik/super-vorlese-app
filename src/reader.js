@@ -5,7 +5,7 @@ import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from '.
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert } from './dialog.js';
-import { moodById, moodIconUrl, moodRevealRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
+import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
@@ -106,6 +106,9 @@ export class ReaderView {
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.moodRevealed = false;
+    // clientIds present this ritual, used only to count participants (issue #82):
+    // three shows an advisory so the reading adult abstains, four or more bows out.
+    this.moodPresentIds = [];
   }
 
   async render() {
@@ -758,10 +761,15 @@ export class ReaderView {
     this.moodOrder = (order && order.length) ? order : pickMoodBoard(MOOD_BOARD_COUNT);
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
+    this.moodPresentIds = [];
     this.updateMoodCue();
     this.renderMoodOverlay();
     if (initiate) {
       session.startMood(this.moodOrder).catch(() => {});
+    } else {
+      // The initiator's presence rides startMood; a follower announces itself so
+      // every device can tally how many are present (issue #82).
+      session.announceMoodPresence().catch(() => {});
     }
   }
 
@@ -783,6 +791,7 @@ export class ReaderView {
           <div class="mood-cover">${cover}</div>
           <div class="mood-cover-title"></div>
         </div>
+        <div class="mood-warning" hidden></div>
         <div class="mood-instructions"></div>
         <div class="mood-grid"></div>
       </div>
@@ -815,8 +824,9 @@ export class ReaderView {
     grid.inert = true;
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       grid.inert = false;
+      this.applyMoodBranch();
     } else {
-      this._moodIntroT = setTimeout(() => { grid.inert = false; }, MOOD_INTRO_MS);
+      this._moodIntroT = setTimeout(() => { grid.inert = false; this.applyMoodBranch(); }, MOOD_INTRO_MS);
     }
     this.renderMoodSelections();
   }
@@ -888,13 +898,72 @@ export class ReaderView {
   // there is no shared record to agree on — the partner's device does the same.
   maybeReveal() {
     if (this.moodRevealed || !this.moodOpen) return;
-    if (this.mySelection.size !== MOOD_PICK_COUNT) return;
-    for (const partnerIds of Object.values(this.moodPartnerPicks)) {
-      if (partnerIds.length === MOOD_PICK_COUNT) {
-        this.revealMood([...this.mySelection], partnerIds);
-        return;
+    if (this.mySelection.size === MOOD_PICK_COUNT) {
+      // The picker's reveal: pair with the first partner who has a full set. In a
+      // three-person room this skips the abstaining adult's empty slot, so each
+      // child pairs with its sibling and sees the ordinary „Wir / Ich / Du".
+      for (const partnerIds of Object.values(this.moodPartnerPicks)) {
+        if (partnerIds.length === MOOD_PICK_COUNT) {
+          this.revealMood([...this.mySelection], partnerIds);
+          return;
+        }
       }
+    } else if (this.mySelection.size === 0) {
+      // The witness reveal (issue #82): this device picked nothing while two
+      // others each completed a full set — the one-grandparent-two-children
+      // shape. This only ever fires for the watching adult in a triad: a normal
+      // pair has just one partner, and in the 4+ bow-out nobody picks.
+      const full = Object.values(this.moodPartnerPicks).filter((ids) => ids.length === MOOD_PICK_COUNT);
+      if (full.length === 2) this.revealWitness(full[0], full[1]);
     }
+  }
+
+  // Adapts the open ritual to how many devices are present (issue #82). Two is the
+  // unchanged dyad. Three shows an advisory so the reading adult abstains and the
+  // two children pair with each other — differentiation carried by the humans, not
+  // by any device knowing who it is. Four or more has no honest pair-plus-witness
+  // mapping, so the ritual bows out to a plain „Ende" closure with no keepsake.
+  // The count drives ONLY this advisory and the 4+ bow-out, never a device's
+  // ability to pair (that stays purely behaviour-driven), so a miscount can't
+  // wrongly gate anyone. Guarded so it never disturbs a shown reveal or „Ende".
+  applyMoodBranch() {
+    if (this.moodRevealed) return;
+    const overlay = this.moodOverlay;
+    if (!overlay) return;
+    if (this.moodPresentIds.length >= 4) {
+      this.showMoodEnd();
+      return;
+    }
+    const warning = overlay.querySelector('.mood-warning');
+    if (!warning) return;
+    if (this.moodPresentIds.length === 3) {
+      warning.textContent = 'Drei Personen anwesend. Nur die Kinder wählen Gefühle.';
+      warning.hidden = false;
+    } else {
+      warning.hidden = true;
+    }
+  }
+
+  // Four or more devices: the ritual does not run. Keep the settled cover in place
+  // (no re-animation) and swap the board for a plain „Ende" + „Buch ins Regal
+  // stellen". Marked revealed so a peer wiping the node can't yank this card, and
+  // so concluding clears the node — no record is stored and the next open is clean.
+  showMoodEnd() {
+    const overlay = this.moodOverlay;
+    if (!overlay) return;
+    this.moodRevealed = true;
+    const card = overlay.querySelector('.mood-card');
+    card.querySelector('.mood-warning')?.remove();
+    card.querySelector('.mood-instructions')?.remove();
+    card.querySelector('.mood-grid')?.remove();
+    const end = document.createElement('div');
+    end.className = 'mood-end-message';
+    end.innerHTML = `
+      <div class="mood-result-title">Ende</div>
+      <button class="mood-result-done" type="button">Buch ins Regal stellen</button>
+    `;
+    card.appendChild(end);
+    end.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
   }
 
   handleMood(data) {
@@ -926,7 +995,9 @@ export class ReaderView {
       if (clientId === this.syncSession?.clientId) continue;
       this.moodPartnerPicks[clientId] = ids;
     }
+    this.moodPresentIds = Array.isArray(data.present) ? data.present : [];
     this.renderMoodSelections();
+    this.applyMoodBranch();
     this.maybeReveal();
   }
 
@@ -958,6 +1029,36 @@ export class ReaderView {
     card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
   }
 
+  // The witness keeps the whole picture — both children's picks and their overlap
+  // (issue #82). Setting moodRevealed first is the persistence guard: it reuses
+  // handleMood's „node gone but already revealed → keep my screen" path, so a child
+  // tapping „Regal" first can't yank the keepsake before the adult has read it.
+  revealWitness(a, b) {
+    if (this.moodRevealed) return;
+    this.moodRevealed = true;
+    addCompletion(this.bookId, {
+      id: uid(),
+      completedAt: Date.now(),
+      witnessed: true,
+      a,
+      b,
+    }).catch(() => {});
+    this.showWitnessResult(a, b);
+  }
+
+  showWitnessResult(a, b) {
+    const overlay = this.moodOverlay;
+    if (!overlay) return;
+    const card = overlay.querySelector('.mood-card');
+    overlay.classList.add('mood-revealed');
+    card.innerHTML = `
+      <div class="mood-result-title">Eure Gefühle</div>
+      ${moodWitnessRowsHTML(a, b)}
+      <button class="mood-result-done" type="button">Buch ins Regal stellen</button>
+    `;
+    card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
+  }
+
   // The ritual is done and acknowledged: tear it down, then leave the finished
   // book and rewind it to the start.
   concludeMood() {
@@ -982,6 +1083,7 @@ export class ReaderView {
     this.moodOpen = false;
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
+    this.moodPresentIds = [];
     clearTimeout(this._moodIntroT);
     if (this._moodKeyDown) {
       document.removeEventListener('keydown', this._moodKeyDown, true);
