@@ -807,11 +807,11 @@ export class ReaderView {
     overlay.classList.add('mood-pending');
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
-    // The board stays inert through the intro, so no pointer, keyboard, or
-    // assistive-tech interaction can pick a mood before the cover has settled and
-    // the board is shown. (inert covers what a CSS pointer-events guard would
-    // miss: a keyboard user tabbing in and pressing Enter.) Reduced motion skips
-    // the choreography, so it's ready at once.
+    // The board stays inert from open until it has fully risen in, so no pointer,
+    // keyboard, or assistive-tech interaction can pick a mood before it's shown and
+    // settled. (inert covers what a CSS pointer-events guard would miss: a keyboard
+    // user tabbing in and pressing Enter.) It's lifted in applyMoodBranch when the
+    // rise-in ends; reduced motion has no rise, so it's made ready here at once.
     const grid = overlay.querySelector('.mood-grid');
     grid.inert = true;
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -831,7 +831,6 @@ export class ReaderView {
       this.applyMoodBranch();
     } else {
       this._moodIntroT = setTimeout(() => {
-        grid.inert = false;
         this.moodSettled = true;
         this.applyMoodBranch();
       }, MOOD_INTRO_MS);
@@ -956,8 +955,26 @@ export class ReaderView {
     // A real pair (2–3) is confirmed: reveal the board, which has stayed hidden
     // through the grace window so a bow-out never flashes it (issue #79). Dropping
     // `mood-pending` lets the grid and prompt rise in (CSS); the cover has already
-    // settled into the header by now, so the rise plays as a clean follow-on.
-    overlay.classList.remove('mood-pending');
+    // settled into the header by now, so the rise plays as a clean follow-on. The
+    // grid stays inert through that 0.5s rise so no tap, key, or assistive-tech
+    // pick lands on a board still animating in — it's made interactive only once
+    // the rise ends. Guarded on the class (and the listener self-removes) so a
+    // later presence update — which re-runs this — can't re-arm the gate and
+    // strand the board inert. Reduced motion has no rise and was readied at open.
+    if (overlay.classList.contains('mood-pending')) {
+      overlay.classList.remove('mood-pending');
+      const grid = overlay.querySelector('.mood-grid');
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (grid && !reducedMotion) {
+        grid.inert = true;
+        const liftInert = (e) => {
+          if (e.target !== grid) return; // ignore any animation bubbling from a child
+          grid.removeEventListener('animationend', liftInert);
+          grid.inert = false;
+        };
+        grid.addEventListener('animationend', liftInert);
+      }
+    }
     const warning = overlay.querySelector('.mood-warning');
     if (!warning) return;
     if (this.moodPresentIds.length === 3) {
