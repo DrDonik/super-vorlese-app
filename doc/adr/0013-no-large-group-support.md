@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-ADR 0009 namespaced the WebRTC book transfer per joiner so a small reading circle
+[ADR 9](0009-per-peer-book-transfer.md) namespaced the WebRTC book transfer per joiner so a small reading circle
 — a grandparent reading to two or three grandchildren — can all pull the book at
 once. It explicitly left the **large-group** case (one reader streaming to ~20+
 listeners, e.g. a teacher reading remotely to a class) out of scope, tracked
@@ -37,7 +37,7 @@ intervention. Nearly every feature is shaped around that intimacy and would have
 be *undone* for a classroom:
 
 - The book-closing **mood ritual** is deliberately scoped to one-to-three intimate
-  participants and bows out entirely at four or more (ADR 0012 and its amendment).
+  participants and bows out entirely at four or more ([ADR 12](0012-mood-ritual-honours-divergence.md) and its amendment).
   It celebrates the feelings *two people shared across the distance* — meaningless,
   even faintly absurd, broadcast to a class of twenty.
 - The **remote pointer** and the **shared "we finished this together" keepsake**
@@ -61,7 +61,7 @@ We will **not** support large reading groups (classrooms, ~20+ listeners). The
 supported scope is a small, intimate reading circle — typically a grandparent and
 one or two grandchildren. Concretely:
 
-- Book transfer stays **peer-to-peer** (ADR 0005, ADR 0009). We will not upload
+- Book transfer stays **peer-to-peer** ([ADR 5](0005-webrtc-book-transfer.md), [ADR 9](0009-per-peer-book-transfer.md)). We will not upload
   bundles to cloud storage for fan-out. The small-group ceiling of per-peer
   transfer is the supported ceiling **by design**, not a limitation to fix.
 - Page-turn control stays **symmetric** — anyone in the room may turn the page. We
@@ -72,7 +72,7 @@ Issue #58 is closed as out of scope.
 
 ## Consequences
 
-- ADR 0009's per-peer transfer remains the only transfer mechanism; its handful-of-
+- [ADR 9](0009-per-peer-book-transfer.md)'s per-peer transfer remains the only transfer mechanism; its handful-of-
   joiners ceiling is intentional.
 - No server-side book hosting: no storage billing, no content-moderation or cleanup
   model, and no copyright exposure from hosting whole books — the bundle only ever
