@@ -1194,8 +1194,8 @@ button {
    in with the board, so the cover-only intro and the bow-outs never show it. */
 .mood-board-title {
   margin: 0;
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 600;
 }
 
 /* Holds the cover big and low — centred over the board area — for the first half,
