@@ -781,6 +781,7 @@ export class ReaderView {
           <div class="mood-cover">${cover}</div>
           <div class="mood-cover-title"></div>
         </div>
+        <h2 class="mood-board-title">Wie war das Buch?</h2>
         <div class="mood-warning" hidden></div>
         <div class="mood-instructions"></div>
         <div class="mood-grid"></div>
@@ -997,6 +998,7 @@ export class ReaderView {
     if (!overlay) return;
     this.moodRevealed = true;
     const card = overlay.querySelector('.mood-card');
+    card.querySelector('.mood-board-title')?.remove();
     card.querySelector('.mood-warning')?.remove();
     card.querySelector('.mood-instructions')?.remove();
     card.querySelector('.mood-grid')?.remove();
