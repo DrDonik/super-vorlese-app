@@ -14,6 +14,13 @@ const CURSOR_IDLE_MS = 2500;
 // header) before the mood board accepts taps. Must match the CSS choreography.
 const MOOD_INTRO_MS = 1500;
 
+// How long the board stays inert after it's revealed, covering its rise-in so a
+// pick can't land while it's still animating in. Matches the `mood-board-rise`
+// duration in style.css. A timer (rather than the rise's `animationend`) drives
+// the lift so it always fires: a cancelled or dropped animation can skip the
+// event, which would strand the board inert — visible but un-tappable.
+const MOOD_BOARD_RISE_MS = 500;
+
 // Distinct, high-contrast colours for "point at the page" overlays so several
 // participants pointing at once stay visually separable.
 const POINTER_COLORS = ['#ff3b6b', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4'];
@@ -956,23 +963,18 @@ export class ReaderView {
     // through the grace window so a bow-out never flashes it (issue #79). Dropping
     // `mood-pending` lets the grid and prompt rise in (CSS); the cover has already
     // settled into the header by now, so the rise plays as a clean follow-on. The
-    // grid stays inert through that 0.5s rise so no tap, key, or assistive-tech
-    // pick lands on a board still animating in — it's made interactive only once
-    // the rise ends. Guarded on the class (and the listener self-removes) so a
-    // later presence update — which re-runs this — can't re-arm the gate and
-    // strand the board inert. Reduced motion has no rise and was readied at open.
+    // grid stays inert through that rise so no tap, key, or assistive-tech pick
+    // lands on a board still animating in — it's made interactive when the rise
+    // ends (MOOD_BOARD_RISE_MS later). Guarded on the class so a later presence
+    // update — which re-runs this — can't re-arm the gate. Reduced motion has no
+    // rise and was readied at open. The timer is stored for teardown.
     if (overlay.classList.contains('mood-pending')) {
       overlay.classList.remove('mood-pending');
       const grid = overlay.querySelector('.mood-grid');
       const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       if (grid && !reducedMotion) {
         grid.inert = true;
-        const liftInert = (e) => {
-          if (e.target !== grid) return; // ignore any animation bubbling from a child
-          grid.removeEventListener('animationend', liftInert);
-          grid.inert = false;
-        };
-        grid.addEventListener('animationend', liftInert);
+        this._moodRiseT = setTimeout(() => { grid.inert = false; }, MOOD_BOARD_RISE_MS);
       }
     }
     const warning = overlay.querySelector('.mood-warning');
@@ -1128,6 +1130,7 @@ export class ReaderView {
     this.moodPartnerPicks = {};
     this.moodPresentIds = [];
     clearTimeout(this._moodIntroT);
+    clearTimeout(this._moodRiseT);
     if (this._moodKeyDown) {
       document.removeEventListener('keydown', this._moodKeyDown, true);
       this._moodKeyDown = null;
@@ -1365,6 +1368,7 @@ export class ReaderView {
     clearTimeout(this.pointerSendTimer);
     clearTimeout(this.longPressTimer);
     clearTimeout(this._moodIntroT);
+    clearTimeout(this._moodRiseT);
     this.clearAllPointers();
     if (this.coverUrl) {
       URL.revokeObjectURL(this.coverUrl);
