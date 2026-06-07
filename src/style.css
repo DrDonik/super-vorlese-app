@@ -1184,7 +1184,17 @@ button {
 }
 
 .mood-cover-title {
-  font-size: 18px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--fg-dim);
+}
+
+/* The board's title — the question the icons answer. It leads the screen (the
+   book title beneath the cover is the smaller anchor to *this* book), and rises
+   in with the board, so the cover-only intro and the bow-outs never show it. */
+.mood-board-title {
+  margin: 0;
+  font-size: 20px;
   font-weight: 600;
 }
 
@@ -1229,6 +1239,7 @@ button {
    rise plays immediately with no delay. Interaction is gated separately in JS
    (the grid is `inert` until the intro ends), so it can't pick a mood before the
    board is shown. */
+.mood-board-title,
 .mood-grid,
 .mood-instructions {
   animation: mood-board-rise 0.5s ease both;
@@ -1244,6 +1255,7 @@ button {
    applyMoodBranch drops `mood-pending` and the rise-in above plays (issue #79).
    So the solo, synced-but-alone, and 4+ bow-outs never paint a board only to
    replace it with „Ende" a moment later. */
+.mood-overlay.mood-pending .mood-board-title,
 .mood-overlay.mood-pending .mood-grid,
 .mood-overlay.mood-pending .mood-instructions {
   display: none;
@@ -1476,6 +1488,7 @@ button {
   /* Drop the closing choreography to a plain crossfade: the cover and board
      appear in place, carried only by the overlay fade. */
   .mood-cover-header,
+  .mood-board-title,
   .mood-grid,
   .mood-instructions { animation: none; }
 }
