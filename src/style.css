@@ -1238,6 +1238,14 @@ button {
   to   { opacity: 1; transform: none; }
 }
 
+/* A solo finish has no board — it bows straight to „Ende" once the cover has
+   settled (issue #79). Keep the grid and its prompt hidden from the start so they
+   never rise in (the animation above) only to be replaced moments later. */
+.mood-overlay.mood-solo .mood-grid,
+.mood-overlay.mood-solo .mood-instructions {
+  display: none;
+}
+
 /* Fills the height left under the title. The cells stretch to share the space
    (4×5 in portrait, 5×4 in landscape) and each icon is a square sized to the
    smaller of its cell's width/height — so the icons grow until whichever

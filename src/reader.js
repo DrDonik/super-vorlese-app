@@ -796,6 +796,13 @@ export class ReaderView {
       }
     };
     document.addEventListener('keydown', this._moodKeyDown, true);
+    // A solo finish (no room) has no board: it bows straight to „Ende" once the
+    // cover settles. Mark the overlay so CSS keeps the grid and prompt hidden from
+    // the start, rather than letting them rise in only to be swapped out half a
+    // second later (issue #79). The synced-but-alone and 4+ bow-outs can't be
+    // pre-marked — their count isn't known until the grace window settles — so
+    // they still briefly show the board, which is unavoidable and accepted.
+    if (!this.syncSession?.roomCode) overlay.classList.add('mood-solo');
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
     // The board stays inert through the intro, so no pointer, keyboard, or
