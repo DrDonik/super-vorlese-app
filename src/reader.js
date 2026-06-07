@@ -796,13 +796,15 @@ export class ReaderView {
       }
     };
     document.addEventListener('keydown', this._moodKeyDown, true);
-    // A solo finish (no room) has no board: it bows straight to „Ende" once the
-    // cover settles. Mark the overlay so CSS keeps the grid and prompt hidden from
-    // the start, rather than letting them rise in only to be swapped out half a
-    // second later (issue #79). The synced-but-alone and 4+ bow-outs can't be
-    // pre-marked — their count isn't known until the grace window settles — so
-    // they still briefly show the board, which is unavoidable and accepted.
-    if (!this.syncSession?.roomCode) overlay.classList.add('mood-solo');
+    // Every finish opens on just the cover: the board stays hidden until the grace
+    // window confirms a real pair (2–3 present), so the solo, synced-but-alone,
+    // and 4+ bow-outs never flash a board only to swap it for „Ende" (issue #79).
+    // applyMoodBranch drops `mood-pending` once the count settles in band, which
+    // lets the grid and prompt rise in (CSS); a bow-out leaves it on and goes
+    // straight to „Ende". The count can't be trusted upfront — a partner's
+    // presence may not have announced yet — so this gate replaces the old
+    // solo-only hide that left the synced-but-alone case still flashing.
+    overlay.classList.add('mood-pending');
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
     // The board stays inert through the intro, so no pointer, keyboard, or
@@ -951,6 +953,11 @@ export class ReaderView {
       this.showMoodEnd();
       return;
     }
+    // A real pair (2–3) is confirmed: reveal the board, which has stayed hidden
+    // through the grace window so a bow-out never flashes it (issue #79). Dropping
+    // `mood-pending` lets the grid and prompt rise in (CSS); the cover has already
+    // settled into the header by now, so the rise plays as a clean follow-on.
+    overlay.classList.remove('mood-pending');
     const warning = overlay.querySelector('.mood-warning');
     if (!warning) return;
     if (this.moodPresentIds.length === 3) {

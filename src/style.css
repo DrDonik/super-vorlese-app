@@ -1224,13 +1224,14 @@ button {
   gap: 18px;
 }
 
-/* The board and its prompt stay hidden through the cover's held beat, then rise
-   in once it starts settling up into the header. Interaction is gated separately
-   in JS (the grid is `inert` until the intro ends), so it can't pick a mood
-   before the board is shown. */
+/* The board and its prompt rise in when applyMoodBranch drops `mood-pending`
+   (a confirmed 2–3 pair) — by then the cover has settled into the header, so the
+   rise plays immediately with no delay. Interaction is gated separately in JS
+   (the grid is `inert` until the intro ends), so it can't pick a mood before the
+   board is shown. */
 .mood-grid,
 .mood-instructions {
-  animation: mood-board-rise 0.5s 1s ease both;
+  animation: mood-board-rise 0.5s ease both;
 }
 
 @keyframes mood-board-rise {
@@ -1238,11 +1239,13 @@ button {
   to   { opacity: 1; transform: none; }
 }
 
-/* A solo finish has no board — it bows straight to „Ende" once the cover has
-   settled (issue #79). Keep the grid and its prompt hidden from the start so they
-   never rise in (the animation above) only to be replaced moments later. */
-.mood-overlay.mood-solo .mood-grid,
-.mood-overlay.mood-solo .mood-instructions {
+/* Every finish opens on just the cover; the board and its prompt stay hidden
+   until the grace window confirms a real pair (2–3 present), at which point
+   applyMoodBranch drops `mood-pending` and the rise-in above plays (issue #79).
+   So the solo, synced-but-alone, and 4+ bow-outs never paint a board only to
+   replace it with „Ende" a moment later. */
+.mood-overlay.mood-pending .mood-grid,
+.mood-overlay.mood-pending .mood-instructions {
   display: none;
 }
 
