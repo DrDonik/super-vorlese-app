@@ -14,6 +14,13 @@ const CURSOR_IDLE_MS = 2500;
 // header) before the mood board accepts taps. Must match the CSS choreography.
 const MOOD_INTRO_MS = 1500;
 
+// How long the board stays inert after it's revealed, covering its rise-in so a
+// pick can't land while it's still animating in. Matches the `mood-board-rise`
+// duration in style.css. A timer (rather than the rise's `animationend`) drives
+// the lift so it always fires: a cancelled or dropped animation can skip the
+// event, which would strand the board inert — visible but un-tappable.
+const MOOD_BOARD_RISE_MS = 500;
+
 // Distinct, high-contrast colours for "point at the page" overlays so several
 // participants pointing at once stay visually separable.
 const POINTER_COLORS = ['#ff3b6b', '#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#06b6d4'];
@@ -796,20 +803,22 @@ export class ReaderView {
       }
     };
     document.addEventListener('keydown', this._moodKeyDown, true);
-    // A solo finish (no room) has no board: it bows straight to „Ende" once the
-    // cover settles. Mark the overlay so CSS keeps the grid and prompt hidden from
-    // the start, rather than letting them rise in only to be swapped out half a
-    // second later (issue #79). The synced-but-alone and 4+ bow-outs can't be
-    // pre-marked — their count isn't known until the grace window settles — so
-    // they still briefly show the board, which is unavoidable and accepted.
-    if (!this.syncSession?.roomCode) overlay.classList.add('mood-solo');
+    // Every finish opens on just the cover: the board stays hidden until the grace
+    // window confirms a real pair (2–3 present), so the solo, synced-but-alone,
+    // and 4+ bow-outs never flash a board only to swap it for „Ende" (issue #79).
+    // applyMoodBranch drops `mood-pending` once the count settles in band, which
+    // lets the grid and prompt rise in (CSS); a bow-out leaves it on and goes
+    // straight to „Ende". The count can't be trusted upfront — a partner's
+    // presence may not have announced yet — so this gate replaces the old
+    // solo-only hide that left the synced-but-alone case still flashing.
+    overlay.classList.add('mood-pending');
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
-    // The board stays inert through the intro, so no pointer, keyboard, or
-    // assistive-tech interaction can pick a mood before the cover has settled and
-    // the board is shown. (inert covers what a CSS pointer-events guard would
-    // miss: a keyboard user tabbing in and pressing Enter.) Reduced motion skips
-    // the choreography, so it's ready at once.
+    // The board stays inert from open until it has fully risen in, so no pointer,
+    // keyboard, or assistive-tech interaction can pick a mood before it's shown and
+    // settled. (inert covers what a CSS pointer-events guard would miss: a keyboard
+    // user tabbing in and pressing Enter.) It's lifted in applyMoodBranch when the
+    // rise-in ends; reduced motion has no rise, so it's made ready here at once.
     const grid = overlay.querySelector('.mood-grid');
     grid.inert = true;
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -829,7 +838,6 @@ export class ReaderView {
       this.applyMoodBranch();
     } else {
       this._moodIntroT = setTimeout(() => {
-        grid.inert = false;
         this.moodSettled = true;
         this.applyMoodBranch();
       }, MOOD_INTRO_MS);
@@ -950,6 +958,24 @@ export class ReaderView {
     if (this.moodPresentIds.length <= 1 || this.moodPresentIds.length >= 4) {
       this.showMoodEnd();
       return;
+    }
+    // A real pair (2–3) is confirmed: reveal the board, which has stayed hidden
+    // through the grace window so a bow-out never flashes it (issue #79). Dropping
+    // `mood-pending` lets the grid and prompt rise in (CSS); the cover has already
+    // settled into the header by now, so the rise plays as a clean follow-on. The
+    // grid stays inert through that rise so no tap, key, or assistive-tech pick
+    // lands on a board still animating in — it's made interactive when the rise
+    // ends (MOOD_BOARD_RISE_MS later). Guarded on the class so a later presence
+    // update — which re-runs this — can't re-arm the gate. Reduced motion has no
+    // rise and was readied at open. The timer is stored for teardown.
+    if (overlay.classList.contains('mood-pending')) {
+      overlay.classList.remove('mood-pending');
+      const grid = overlay.querySelector('.mood-grid');
+      const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (grid && !reducedMotion) {
+        grid.inert = true;
+        this._moodRiseT = setTimeout(() => { grid.inert = false; }, MOOD_BOARD_RISE_MS);
+      }
     }
     const warning = overlay.querySelector('.mood-warning');
     if (!warning) return;
@@ -1104,6 +1130,7 @@ export class ReaderView {
     this.moodPartnerPicks = {};
     this.moodPresentIds = [];
     clearTimeout(this._moodIntroT);
+    clearTimeout(this._moodRiseT);
     if (this._moodKeyDown) {
       document.removeEventListener('keydown', this._moodKeyDown, true);
       this._moodKeyDown = null;
@@ -1341,6 +1368,7 @@ export class ReaderView {
     clearTimeout(this.pointerSendTimer);
     clearTimeout(this.longPressTimer);
     clearTimeout(this._moodIntroT);
+    clearTimeout(this._moodRiseT);
     this.clearAllPointers();
     if (this.coverUrl) {
       URL.revokeObjectURL(this.coverUrl);
