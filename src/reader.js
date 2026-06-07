@@ -805,11 +805,19 @@ export class ReaderView {
     // the choreography, so it's ready at once.
     const grid = overlay.querySelector('.mood-grid');
     grid.inert = true;
-    // The grace window doubles as the present-count settle (issue #82): only once
-    // it elapses is the count trusted, so the ≤1 bow-out can't misfire on a
-    // paired ritual's first tick (issue #79). moodSettled gates applyMoodBranch.
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      grid.inert = false;
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // Reduced motion skips the cover-close choreography, so the grid is tappable
+    // at once rather than after the intro.
+    if (reducedMotion) grid.inert = false;
+    // The intro doubles as the grace window that lets the present-count settle
+    // before the band is evaluated (issues #82, #79): only once it elapses is the
+    // count trusted, so the ≤1 bow-out can't misfire on a paired ritual's first
+    // tick. A synced reader must always wait it out — even under reduced motion —
+    // so the partner's presence announcement can land before the initiator's
+    // still-empty tally would bow it straight out to „Ende". Only a solo reader,
+    // who has no one to wait for and no listener to settle the count, evaluates
+    // immediately under reduced motion. moodSettled gates applyMoodBranch.
+    if (reducedMotion && !this.syncSession?.roomCode) {
       this.moodSettled = true;
       this.applyMoodBranch();
     } else {
