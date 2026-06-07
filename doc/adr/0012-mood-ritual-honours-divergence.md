@@ -154,6 +154,8 @@ the following, without changing the ritual's mechanics or stored shape:
   synced-only; a solo finish still gets the plain end-of-book card. Letting solo
   reads flow into the same ritual (the reader's three picks, no waiting, no „Wir"
   / „Du" rows) is a worthwhile follow-up tracked separately as issue #79.
+  (Superseded by the 2026-06-07 clarification below: solo gets the closing
+  *beat*, not the board.)
 
 ## Amendment (2026-06-05): the board draw guarantees an honest range
 
@@ -253,3 +255,47 @@ mode (issue #82).
   picks, and the normal two-person reveal fires. The one un-rescuable residue — a
   phantom inflating a real three to "4" and suppressing to „Ende" — compounds two
   rare events and fails safe; accepted for now.
+
+## Amendment (2026-06-07): solo and synced-but-alone get closure, not a keepsake
+
+Issue #79 originally proposed routing a solo finish into the mood board as a
+single-player ritual. On deliberation we **decline** that: the board (pick-3 →
+reveal → keepsake) stays gated to a real co-reading moment, and solo finishes
+instead get the ritual's *closure* beat — the cover-close „thunk" → „Ende" →
+„Buch ins Regal stellen" — with **no** board and **no** stored keepsake.
+
+- **The ritual is interpersonal by design.** [ADR 11](0011-shared-reading-memory.md)
+  opens with „It is interpersonal, not solitary … and never intrude on solo
+  reading." This ADR reframed the ritual's *content* but never overturned that
+  scoping, so a solo board would be the first reversal of that decision — and it
+  does not survive scrutiny. Solo, the „Wir / Ich / Du" reveal reveals nothing
+  (two of three rows vanish, there is no surprise in your own taps, and no partner
+  on the call to talk to), and a solitary keepsake quietly changes what the shelf
+  *means* — a paired record is „the feelings we shared across the distance", the
+  whole reason this app exists. Closure, by contrast, never needed the board: the
+  cover-close animation already delivers „I finished this".
+
+- **Both tails of the participant band bow out to the same „Ende".** This slots
+  into the count band introduced by the #82 amendment: the board is the middle of
+  the band, and both tails bow out identically. **One** participant (an unsynced
+  solo reader, or a synced reader whose partner never joined the ritual) and
+  **four or more** both bow out to the same plain „Ende" closure with **no
+  keepsake** — reusing the exact `showMoodEnd` path the 4+ tail already used.
+  **Two or three** still show the board. This upholds ADR 11's „interpersonal,
+  not solitary" premise while giving every finish the same warm cover-close
+  ending; a finish with no one to share it with is marked as *closure only*,
+  never recorded as a solitary keepsake.
+
+- **The standalone end-of-book card is removed.** Every finish — solo, alone, or
+  synced — now flows through the one closing overlay, which **supersedes** the old
+  „Ende des Buches" card. This also fixes the two prior dead-ends in one stroke:
+  the synced-but-alone board that never revealed (pick 3, nothing happens), and
+  the cold standalone end card. The ✕ on the „Ende" screen returns to the last
+  page (the old „Weiterlesen"); „Buch ins Regal stellen" shelves the book, rewound
+  to page 1 (the old „Zur Bibliothek").
+
+- **No misfire during the grace window.** Because a normal synced pair momentarily
+  tallies a count of 1 before the partner announces, the ≤1 bow-out is gated on the
+  same ~1.5 s settle window the count band already uses (a `moodSettled` flag): the
+  branch is evaluated only after the window elapses, so a paired ritual never
+  flashes „Ende" on its first listener tick.

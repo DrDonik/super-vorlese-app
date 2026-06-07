@@ -109,6 +109,11 @@ export class ReaderView {
     // clientIds present this ritual, used only to count participants (issue #82):
     // three shows an advisory so the reading adult abstains, four or more bows out.
     this.moodPresentIds = [];
+    // Gates the present-count branch until the ~1.5 s grace window has elapsed
+    // (issue #79). A synced pair momentarily tallies a count of 1 before the
+    // partner announces, so the count must settle before the ≤1 tail can bow out
+    // to „Ende" — otherwise every paired ritual would misfire on its first tick.
+    this.moodSettled = false;
   }
 
   async render() {
@@ -150,14 +155,6 @@ export class ReaderView {
           <span class="reader-finish-cue-icon" aria-hidden="true">📖</span>
           Fertig? Buch schliessen
         </button>
-        <div class="reader-end" hidden>
-          <div class="reader-end-card">
-            <div class="reader-end-title">Ende des Buches</div>
-            <div class="reader-end-sub">Du hast die letzte Seite erreicht.</div>
-            <button class="reader-end-library" type="button">Zur Bibliothek</button>
-            <button class="reader-end-stay" type="button">Weiterlesen</button>
-          </div>
-        </div>
         <div class="reader-loading">Lade…</div>
       </div>
     `;
@@ -167,13 +164,7 @@ export class ReaderView {
     reader.querySelector('.reader-back').addEventListener('click', () => this.close());
     reader.querySelector('.reader-zone-prev').addEventListener('click', () => this.goPrev());
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
-    reader.querySelector('.reader-end-library').addEventListener('click', () => this.closeToFirstPage());
-    reader.querySelector('.reader-end-stay').addEventListener('click', () => this.hideEnd());
     reader.querySelector('.reader-finish-cue').addEventListener('click', () => this.openMood(true));
-    reader.querySelector('.reader-end').addEventListener('click', (e) => {
-      if (e.target.closest('.reader-end-card')) return;
-      this.hideEnd();
-    });
 
     const indicator = reader.querySelector('.reader-page-indicator');
     indicator.setAttribute('role', 'button');
@@ -574,13 +565,12 @@ export class ReaderView {
       this.currentPage++;
       await this.renderCurrent();
       if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
-    } else if (this.syncSession?.roomCode) {
-      // Finishing a book together opens the shared mood ritual instead of the
-      // solo end-of-book card; turning forward past the last page is one of its
-      // two triggers (the persistent finish cue on the last page is the other).
-      this.openMood(true);
     } else {
-      this.showEnd();
+      // Every finish opens the closing overlay (issue #79): a synced pair runs
+      // the full mood ritual, while solo (or synced-but-alone) bows out to the
+      // same warm „Ende" closure with no keepsake. Turning forward past the last
+      // page is one of its two triggers (the persistent finish cue is the other).
+      this.openMood(true);
     }
   }
 
@@ -719,26 +709,16 @@ export class ReaderView {
     }
   }
 
-  showEnd() {
-    const end = this.root.querySelector('.reader-end');
-    if (end) end.hidden = false;
-  }
-
-  hideEnd() {
-    const end = this.root.querySelector('.reader-end');
-    if (end) end.hidden = true;
-  }
-
   // --- Shared reading memory ("mood ritual", issue #65) -------------------
 
-  // The persistent invitation on the last page. It only appears for a synced
-  // pair sitting on the final page with no overlay already up, so a solo reader
-  // never sees it and it can't compete with the open mood screen.
+  // The persistent invitation on the last page. It appears for any reader —
+  // synced or solo (issue #79) — sitting on the final page with no overlay
+  // already up, so it can't compete with the open mood screen. Solo, it leads to
+  // the same closing beat it promises („Buch schliessen" → „Ende").
   updateMoodCue() {
     const cue = this.root.querySelector('.reader-finish-cue');
     if (!cue) return;
-    const show = !!this.syncSession?.roomCode
-      && this.currentPage === this.totalPages
+    const show = this.currentPage === this.totalPages
       && this.totalPages > 0
       && !this.moodOpen;
     cue.hidden = !show;
@@ -752,9 +732,9 @@ export class ReaderView {
   openMood(initiate, order) {
     if (this.moodOpen) return;
     const session = this.syncSession;
-    if (!session?.roomCode) { this.showEnd(); return; }
     this.moodOpen = true;
     this.moodRevealed = false;
+    this.moodSettled = false;
     // The board is a random subset of the catalogue; both devices must show the
     // identical one. The initiator rolls it and publishes it with the `open`
     // flag in one write, so a follower always arrives with the order in hand.
@@ -764,9 +744,12 @@ export class ReaderView {
     this.moodPresentIds = [];
     this.updateMoodCue();
     this.renderMoodOverlay();
-    if (initiate) {
+    // Sync writes only when there's a partner to coordinate with. A solo reader
+    // (no room) has no listener, so applyMoodBranch runs only from the intro
+    // timer at settle, sees a count of 0, and bows out to „Ende" (issue #79).
+    if (initiate && session?.roomCode) {
       session.startMood(this.moodOrder).catch(() => {});
-    } else {
+    } else if (session?.roomCode) {
       // The initiator's presence rides startMood; a follower announces itself so
       // every device can tally how many are present (issue #82).
       session.announceMoodPresence().catch(() => {});
@@ -822,11 +805,19 @@ export class ReaderView {
     // the choreography, so it's ready at once.
     const grid = overlay.querySelector('.mood-grid');
     grid.inert = true;
+    // The grace window doubles as the present-count settle (issue #82): only once
+    // it elapses is the count trusted, so the ≤1 bow-out can't misfire on a
+    // paired ritual's first tick (issue #79). moodSettled gates applyMoodBranch.
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
       grid.inert = false;
+      this.moodSettled = true;
       this.applyMoodBranch();
     } else {
-      this._moodIntroT = setTimeout(() => { grid.inert = false; this.applyMoodBranch(); }, MOOD_INTRO_MS);
+      this._moodIntroT = setTimeout(() => {
+        grid.inert = false;
+        this.moodSettled = true;
+        this.applyMoodBranch();
+      }, MOOD_INTRO_MS);
     }
     this.renderMoodSelections();
   }
@@ -918,19 +909,30 @@ export class ReaderView {
     }
   }
 
-  // Adapts the open ritual to how many devices are present (issue #82). Two is the
-  // unchanged dyad. Three shows an advisory so the reading adult abstains and the
-  // two children pair with each other — differentiation carried by the humans, not
-  // by any device knowing who it is. Four or more has no honest pair-plus-witness
-  // mapping, so the ritual bows out to a plain „Ende" closure with no keepsake.
-  // The count drives ONLY this advisory and the 4+ bow-out, never a device's
-  // ability to pair (that stays purely behaviour-driven), so a miscount can't
-  // wrongly gate anyone. Guarded so it never disturbs a shown reveal or „Ende".
+  // Adapts the open ritual to how many devices are present (issues #82, #79). Two
+  // is the unchanged dyad. Three shows an advisory so the reading adult abstains
+  // and the two children pair with each other — differentiation carried by the
+  // humans, not by any device knowing who it is. Both tails of the band bow out to
+  // a plain „Ende" closure with no keepsake: ≤1 is a finish with no one to share
+  // it with (solo, or a partner who never joined — issue #79), 4+ has no honest
+  // pair-plus-witness mapping. The count drives ONLY this advisory and the
+  // bow-outs, never a device's ability to pair (that stays purely
+  // behaviour-driven), so a miscount can't wrongly gate anyone. Gated on
+  // moodSettled and guarded so it never misfires early or disturbs a shown
+  // reveal or „Ende".
   applyMoodBranch() {
     if (this.moodRevealed) return;
+    // Hold off until the grace window has let the present-tally settle (issue
+    // #79); evaluating earlier would bow a normal pair out to „Ende" on the
+    // first listener tick, before the partner has announced.
+    if (!this.moodSettled) return;
     const overlay = this.moodOverlay;
     if (!overlay) return;
-    if (this.moodPresentIds.length >= 4) {
+    // Both tails of the participant-count band bow out to the same plain „Ende"
+    // with no keepsake (issue #79): ≤1 is a solo reader (count 0) or a synced
+    // reader whose partner never joined (count 1); ≥4 has no honest
+    // pair-plus-witness mapping (issue #82). The 2–3 board is unchanged.
+    if (this.moodPresentIds.length <= 1 || this.moodPresentIds.length >= 4) {
       this.showMoodEnd();
       return;
     }
@@ -944,10 +946,11 @@ export class ReaderView {
     }
   }
 
-  // Four or more devices: the ritual does not run. Keep the settled cover in place
-  // (no re-animation) and swap the board for a plain „Ende" + „Buch ins Regal
-  // stellen". Marked revealed so a peer wiping the node can't yank this card, and
-  // so concluding clears the node — no record is stored and the next open is clean.
+  // The band's bow-out tails (≤1 or 4+ present): the ritual does not run. Keep the
+  // settled cover in place (no re-animation) and swap the board for a plain „Ende"
+  // + „Buch ins Regal stellen". Marked revealed so a peer wiping the node can't
+  // yank this card, and so concluding clears the node — no record is stored and
+  // the next open is clean. This is also the solo / synced-but-alone close (#79).
   showMoodEnd() {
     const overlay = this.moodOverlay;
     if (!overlay) return;
@@ -1081,6 +1084,7 @@ export class ReaderView {
     // before the reveal clears via cancelMood instead.)
     if (this.moodRevealed) this.syncSession?.clearMood().catch(() => {});
     this.moodOpen = false;
+    this.moodSettled = false;
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.moodPresentIds = [];
@@ -1301,10 +1305,11 @@ export class ReaderView {
 
   // Leaves the reader and rewinds the book to its first page, so reopening it
   // begins a fresh read (and, when synced, a fresh chance at the mood ritual).
-  // Used when a book is "finished" — the mood ritual concluding and the solo
-  // end-of-book card's "Zur Bibliothek" — but deliberately NOT by the chrome
-  // back button, which leaves the book wherever the reader paused. When synced,
-  // the room's shared page is reset too so the partner reopens at the start.
+  // Used when a book is "finished" — the closing overlay's „Buch ins Regal
+  // stellen", for both the synced reveal and the solo/alone „Ende" close (#79) —
+  // but deliberately NOT by the chrome back button, which leaves the book wherever
+  // the reader paused. When synced, the room's shared page is reset too so the
+  // partner reopens at the start.
   closeToFirstPage() {
     this.currentPage = 1;
     updateLastPage(this.bookId, 1).catch(() => {});
