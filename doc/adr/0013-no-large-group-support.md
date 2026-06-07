@@ -30,7 +30,7 @@ re-broadcast. So this is not a question of whether the plumbing *could* be made 
 scale — it largely could. It is a question of whether we *should*, and that is a
 product-scope decision rather than a technical one.
 
-The app's purpose (see `AGENTS.md`) is **remote bedtime reading for grandparents
+The app's purpose (see [AGENTS.md](../../AGENTS.md)) is **remote bedtime reading for grandparents
 and their grandchildren** — a close, mutual, one-to-a-few experience for laypeople
 with no setup, designed so a six-year-old and a grandparent can use it with no
 intervention. Nearly every feature is shaped around that intimacy and would have to
