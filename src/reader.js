@@ -620,16 +620,20 @@ export class ReaderView {
     this.showChrome();
   }
 
-  // Single source of truth: the `nav-off` class on the reader root drives both
-  // the zones (pointer-events removed in CSS, so taps fall through to reveal the
-  // chrome) and the toggle button's crossed-out look. Swipe is gated in JS via
-  // this.navEnabled.
+  // Single source of truth: the `nav-off` class on the reader root drives the
+  // zones' pointer fall-through (CSS) and the toggle button's crossed-out look.
+  // The zones are also made `inert` so that, with navigation off, keyboard and
+  // assistive-technology users can't focus or activate the invisible page-turn
+  // buttons either. Swipe is gated in JS via this.navEnabled.
   applyNavState() {
     const reader = this.readerEl;
     if (!reader) return;
     reader.classList.toggle('nav-off', !this.navEnabled);
     const btn = reader.querySelector('.reader-nav-toggle');
     if (btn) btn.setAttribute('aria-pressed', String(this.navEnabled));
+    reader.querySelectorAll('.reader-zone').forEach((zone) => {
+      zone.inert = !this.navEnabled;
+    });
   }
 
   scheduleRender() {

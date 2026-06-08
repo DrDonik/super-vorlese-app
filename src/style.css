@@ -464,7 +464,10 @@ button {
 /* Navigation off: let taps fall straight through the zones to the stage gesture
    recognizer, which then reveals the chrome (onZone is false once nothing
    intercepts the touch). Pointing via long-press still works because it is
-   handled on the stage, not the zones. */
+   handled on the stage, not the zones. The zones are also set `inert` in JS,
+   which blocks keyboard/AT activation; pointer-events stays here so the touch
+   hit-test fall-through is guaranteed regardless of how `inert` is implemented
+   across browsers (notably the iOS PWA). */
 .reader.nav-off .reader-zone {
   pointer-events: none;
   cursor: default;
