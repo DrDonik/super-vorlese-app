@@ -10,6 +10,22 @@ import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoo
 const HIDE_CHROME_AFTER_MS = 2500;
 const CHROME_REVEAL_BAND_PX = 80;
 const CURSOR_IDLE_MS = 2500;
+
+// The page-turn zones and swipe can be switched off locally, so a listener can
+// rest a hand on the screen (or use the pointer) without flipping pages — only
+// the reading partner's synced turns move the page then. Pointing and the
+// page-jump indicator stay live regardless. The setting is per-device for all
+// books (not per book), and read synchronously from localStorage so the zones
+// never flash active for a frame before an async store resolves.
+const NAV_ENABLED_KEY = 'nav-zones-enabled';
+
+function loadNavEnabled() {
+  try { return localStorage.getItem(NAV_ENABLED_KEY) !== 'false'; } catch { return true; }
+}
+
+function saveNavEnabled(enabled) {
+  try { localStorage.setItem(NAV_ENABLED_KEY, enabled ? 'true' : 'false'); } catch {}
+}
 // How long the book-closing intro runs (cover held, then settling into the
 // header) before the mood board accepts taps. Must match the CSS choreography.
 const MOOD_INTRO_MS = 1500;
@@ -93,6 +109,9 @@ export class ReaderView {
     this.boundResize = this.scheduleRender.bind(this);
     this.syncSession = null;
     this.isSyncing = false;
+    // Local page-navigation toggle (zones + swipe). Default on; persisted
+    // per-device. Read synchronously so the first render is already correct.
+    this.navEnabled = loadNavEnabled();
     // Remote/local "point at the page" overlays, keyed by senderId ('local'
     // for this device's own pointer). See attachStageGestures + the pointer
     // helpers below.
@@ -128,8 +147,9 @@ export class ReaderView {
       <div class="reader">
         <div class="reader-chrome">
           <button class="reader-back" type="button">← Bibliothek</button>
-          <div class="reader-title"></div>
           <button class="reader-sync-btn" type="button" aria-label="Sync">⇄</button>
+          <div class="reader-title"></div>
+          <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
           <div class="reader-page-indicator"></div>
         </div>
         <div class="sync-panel" hidden>
@@ -172,6 +192,8 @@ export class ReaderView {
     reader.querySelector('.reader-zone-prev').addEventListener('click', () => this.goPrev());
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
     reader.querySelector('.reader-finish-cue').addEventListener('click', () => this.openMood(true));
+    reader.querySelector('.reader-nav-toggle').addEventListener('click', () => this.toggleNav());
+    this.applyNavState();
 
     const indicator = reader.querySelector('.reader-page-indicator');
     indicator.setAttribute('role', 'button');
@@ -369,7 +391,7 @@ export class ReaderView {
       const dy = end ? end.clientY - startY : 0;
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      if (absX > SWIPE_PX && absX > absY) {
+      if (this.navEnabled && absX > SWIPE_PX && absX > absY) {
         if (dx < 0) this.goNext();
         else this.goPrev();
       } else if (dt < TAP_MAX_MS && absX < TAP_MAX_PX && absY < TAP_MAX_PX && !onZone) {
@@ -587,6 +609,27 @@ export class ReaderView {
       await this.renderCurrent();
       if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
     }
+  }
+
+  // Flip the local page-navigation toggle, persist it, and reflect it in the UI.
+  // The chrome is kept up so the listener sees the button's state change.
+  toggleNav() {
+    this.navEnabled = !this.navEnabled;
+    saveNavEnabled(this.navEnabled);
+    this.applyNavState();
+    this.showChrome();
+  }
+
+  // Single source of truth: the `nav-off` class on the reader root drives both
+  // the zones (pointer-events removed in CSS, so taps fall through to reveal the
+  // chrome) and the toggle button's crossed-out look. Swipe is gated in JS via
+  // this.navEnabled.
+  applyNavState() {
+    const reader = this.readerEl;
+    if (!reader) return;
+    reader.classList.toggle('nav-off', !this.navEnabled);
+    const btn = reader.querySelector('.reader-nav-toggle');
+    if (btn) btn.setAttribute('aria-pressed', String(this.navEnabled));
   }
 
   scheduleRender() {

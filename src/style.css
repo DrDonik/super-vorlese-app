@@ -332,6 +332,52 @@ button {
   white-space: nowrap;
 }
 
+/* Local page-navigation toggle: turns the tap zones + swipe on/off on this
+   device. State lives in the glyph, not a reserved colour — turning navigation
+   off is a safe, reversible mode, not a connection state (--success) or a
+   destructive action (--danger), so neither green nor red applies. Off = the
+   arrows dim and a diagonal line strikes through them. */
+.reader-nav-toggle {
+  position: relative;
+  background: var(--surface-glass);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: background 0.15s, color 0.15s;
+}
+
+.reader-nav-toggle:hover {
+  background: var(--surface-glass-hover);
+}
+
+.reader.nav-off .reader-nav-toggle {
+  color: var(--fg-dim);
+}
+
+/* The strike: a thin bar spanning the button, rotated to a diagonal. A
+   pseudo-element renders reliably across platforms where text-decoration on
+   triangle glyphs does not. */
+.reader.nav-off .reader-nav-toggle::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  bottom: 7px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--fg-dim);
+  transform: translateX(-50%) rotate(45deg);
+}
+
 .reader-page-indicator {
   font-variant-numeric: tabular-nums;
   color: var(--fg-dim);
@@ -414,6 +460,15 @@ button {
 
 .reader-zone-prev { left: 0; }
 .reader-zone-next { right: 0; }
+
+/* Navigation off: let taps fall straight through the zones to the stage gesture
+   recognizer, which then reveals the chrome (onZone is false once nothing
+   intercepts the touch). Pointing via long-press still works because it is
+   handled on the stage, not the zones. */
+.reader.nav-off .reader-zone {
+  pointer-events: none;
+  cursor: default;
+}
 
 /* "Point at the page" overlay: a peer's long press paints four chevrons that
    converge on the touched spot, with a pulsing dot at the centre. Never blocks
