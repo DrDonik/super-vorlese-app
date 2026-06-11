@@ -332,7 +332,7 @@ export class LibraryView {
   async startJoin() {
     const entered = await showPrompt({
       title: 'Gemeinsam lesen',
-      message: 'Frag Deinen Lesepartner nach dem Synchronisations-Code des Buches, das Ihr gemeinsam lesen wollt.',
+      message: 'Frag deinen Lesepartner nach dem Synchronisations-Code des Buches, das ihr gemeinsam lesen wollt.',
       placeholder: 'Synchronisations-Code',
       confirmLabel: 'Verbinden',
     });

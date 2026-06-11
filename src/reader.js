@@ -161,7 +161,7 @@ export class ReaderView {
             </div>
             <div class="sync-or">— oder —</div>
             <div class="sync-join-section">
-              <div class="sync-join-label">Code von deinem Lesepartner bekommen?</div>
+              <div class="sync-join-label">Synchronisations-Code von deinem Lesepartner bekommen?</div>
               <div class="sync-join-row">
                 <input class="sync-join-input" type="text" placeholder="Synchronisations-Code eingeben" maxlength="6" autocomplete="off" spellcheck="false" />
                 <button class="sync-join-btn" type="button">Verbinden</button>
