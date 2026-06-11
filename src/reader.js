@@ -7,7 +7,7 @@ import { exportBook } from './bundle.js';
 import { showAlert } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 
-const HIDE_CHROME_AFTER_MS = 2500;
+const HIDE_CHROME_AFTER_MS = 4000;
 const CHROME_REVEAL_BAND_PX = 80;
 const CURSOR_IDLE_MS = 2500;
 
