@@ -87,17 +87,17 @@ export async function lookupRoom(code) {
   const fb = await loadFirebase();
   const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
   if (normalizedCode.length !== 6) {
-    throw new Error('Code muss 6 Zeichen lang sein');
+    throw new Error('Der Synchronisations-Code besteht aus 6 Zeichen.');
   }
   const r = fb.ref(fb.db, `rooms/${normalizedCode}`);
   const snapshot = await fb.get(r);
   if (!snapshot.exists()) {
-    throw new Error('Raum existiert nicht');
+    throw new Error('Diesen Synchronisations-Code gibt es nicht.');
   }
   const data = snapshot.val();
   if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
     fb.remove(r).catch(() => {});
-    throw new Error('Raum existiert nicht');
+    throw new Error('Diesen Synchronisations-Code gibt es nicht.');
   }
   return { code: normalizedCode, book: data.book || null, page: data.page };
 }
@@ -163,7 +163,7 @@ export class SyncSession {
       r = this.fb.ref(this.fb.db, `rooms/${code}`);
       const snapshot = await this.fb.get(r);
       if (!snapshot.exists()) break;
-      if (i === 4) throw new Error('Kein freier Raum-Code gefunden. Bitte erneut versuchen.');
+      if (i === 4) throw new Error('Es konnte kein Synchronisations-Code erstellt werden. Bitte erneut versuchen.');
     }
     const payload = {
       page: initialPage,
@@ -187,17 +187,17 @@ export class SyncSession {
     this.fb = await loadFirebase();
     const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
     if (normalizedCode.length !== 6) {
-      throw new Error('Code muss 6 Zeichen lang sein');
+      throw new Error('Der Synchronisations-Code besteht aus 6 Zeichen.');
     }
     const r = this.fb.ref(this.fb.db, `rooms/${normalizedCode}`);
     const snapshot = await this.fb.get(r);
     if (!snapshot.exists()) {
-      throw new Error('Raum existiert nicht');
+      throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
     const data = snapshot.val();
     if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
       this.fb.remove(r).catch(() => {});
-      throw new Error('Raum existiert nicht');
+      throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
     this.roomCode = normalizedCode;
     this.isCreator = false;

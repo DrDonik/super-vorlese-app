@@ -316,7 +316,7 @@ export class LibraryView {
     tile.innerHTML = `
       <div class="book-cover connect-cover">👥</div>
       <div class="book-title">Gemeinsam lesen</div>
-      <div class="book-meta">Code eingeben, um euch zu verbinden</div>
+      <div class="book-meta">Synchronisations-Code eingeben und mitlesen</div>
     `;
     tile.addEventListener('click', () => this.startJoin());
     tile.addEventListener('keydown', (e) => {
@@ -332,8 +332,8 @@ export class LibraryView {
   async startJoin() {
     const entered = await showPrompt({
       title: 'Gemeinsam lesen',
-      message: 'Gib den Code deines Lesepartners ein.',
-      placeholder: 'Code',
+      message: 'Frag Deinen Lesepartner nach dem Synchronisations-Code des Buches, das Ihr gemeinsam lesen wollt.',
+      placeholder: 'Synchronisations-Code',
       confirmLabel: 'Verbinden',
     });
     if (entered === null) return;
@@ -342,14 +342,14 @@ export class LibraryView {
     try {
       room = await lookupRoom(entered);
     } catch (err) {
-      await showAlert({ title: 'Gemeinsam lesen', message: err.message || 'Beitreten fehlgeschlagen.' });
+      await showAlert({ title: 'Gemeinsam lesen', message: err.message || 'Verbindung fehlgeschlagen.' });
       return;
     }
 
     if (!room.book || !room.book.hash) {
       await showAlert({
         title: 'Gemeinsam lesen',
-        message: 'Dieser Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Raum neu erstellen.',
+        message: 'Dieser Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Synchronisations-Code neu erstellen.',
       });
       return;
     }

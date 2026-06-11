@@ -147,24 +147,28 @@ export class ReaderView {
       <div class="reader">
         <div class="reader-chrome">
           <button class="reader-back" type="button">← Bibliothek</button>
-          <button class="reader-sync-btn" type="button" aria-label="Sync">⇄</button>
+          <button class="reader-sync-btn" type="button" aria-label="Gemeinsam lesen">⇄</button>
           <div class="reader-title"></div>
           <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
           <div class="reader-page-indicator"></div>
         </div>
         <div class="sync-panel" hidden>
           <div class="sync-panel-card">
-            <div class="sync-panel-title">Seiten synchronisieren</div>
-            <div class="sync-panel-desc">Teile den Code, damit jemand anderes die gleiche Seite sieht.</div>
+            <div class="sync-panel-title">Gemeinsam lesen</div>
+            <div class="sync-panel-desc">Damit ihr dieselbe Seite seht, braucht ihr beide den gleichen Synchronisations-Code des Buches.</div>
             <div class="sync-create-section">
-              <button class="sync-create-btn" type="button">Raum erstellen</button>
+              <button class="sync-create-btn" type="button">Synchronisations-Code erstellen</button>
             </div>
             <div class="sync-or">— oder —</div>
             <div class="sync-join-section">
-              <input class="sync-join-input" type="text" placeholder="Code eingeben" maxlength="6" autocomplete="off" spellcheck="false" />
-              <button class="sync-join-btn" type="button">Beitreten</button>
+              <div class="sync-join-label">Code von deinem Lesepartner bekommen?</div>
+              <div class="sync-join-row">
+                <input class="sync-join-input" type="text" placeholder="Synchronisations-Code eingeben" maxlength="6" autocomplete="off" spellcheck="false" />
+                <button class="sync-join-btn" type="button">Verbinden</button>
+              </div>
             </div>
             <div class="sync-active-section" hidden>
+              <div class="sync-code-label">Synchronisations-Code des Buches</div>
               <div class="sync-code-display"></div>
               <div class="sync-status">Verbunden</div>
               <button class="sync-stop-btn" type="button">Trennen</button>
@@ -267,7 +271,7 @@ export class ReaderView {
       existing.onRemotePageChange = (page) => this.onRemotePage(page);
       existing.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Der Raum wurde geschlossen.' });
+        showAlert({ message: 'Die Synchronisation wurde beendet.' });
       };
       existing.listen();
       this.showSyncActive(existing.roomCode);
@@ -280,7 +284,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Der Raum wurde geschlossen.' });
+        showAlert({ message: 'Die Synchronisation wurde beendet.' });
       };
       this.syncSession = session;
       const code = await session.reconnect().catch(() => null);
@@ -1233,7 +1237,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Der Raum wurde geschlossen.' });
+        showAlert({ message: 'Die Synchronisation wurde beendet.' });
       };
       this.syncSession = session;
       const code = await session.createRoom(this.currentPage, await this.buildBookDescriptor());
@@ -1267,7 +1271,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Der Raum wurde geschlossen.' });
+        showAlert({ message: 'Die Synchronisation wurde beendet.' });
       };
       this.syncSession = session;
       const normalizedCode = await session.joinRoom(code);
@@ -1279,7 +1283,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
-      if (this.source) await showAlert({ message: err.message || 'Beitreten fehlgeschlagen.' });
+      if (this.source) await showAlert({ message: err.message || 'Verbindung fehlgeschlagen.' });
     } finally {
       this.isSyncing = false;
     }
@@ -1290,7 +1294,7 @@ export class ReaderView {
     session.onRemotePageChange = (page) => this.onRemotePage(page);
     session.onRoomDeleted = () => {
       this.syncStop();
-      showAlert({ message: 'Der Raum wurde geschlossen.' });
+      showAlert({ message: 'Die Synchronisation wurde beendet.' });
     };
     this.syncSession = session;
     try {
@@ -1302,7 +1306,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       if (this.syncSession === session) this.syncSession = null;
-      await showAlert({ message: err.message || 'Beitreten fehlgeschlagen.' });
+      await showAlert({ message: err.message || 'Verbindung fehlgeschlagen.' });
     }
   }
 

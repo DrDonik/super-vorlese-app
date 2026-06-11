@@ -687,6 +687,17 @@ button {
 
 .sync-join-section {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sync-join-label {
+  font-size: 14px;
+  color: var(--fg-dim);
+}
+
+.sync-join-row {
+  display: flex;
   gap: 8px;
 }
 
@@ -737,6 +748,11 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 12px;
+}
+
+.sync-code-label {
+  font-size: 14px;
+  color: var(--fg-dim);
 }
 
 .sync-code-display {
