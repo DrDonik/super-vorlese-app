@@ -105,6 +105,10 @@ export class ReaderView {
     this.renderToken = 0;
     this.hideTimer = null;
     this.pageJumpOpen = false;
+    // The "?" help overlay (see openHelp). Tracked so the chrome auto-hide can
+    // pause while it is up and so any tap or key can dismiss it.
+    this.helpOpen = false;
+    this.helpOverlay = null;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
     this.syncSession = null;
@@ -151,6 +155,7 @@ export class ReaderView {
           <div class="reader-title"></div>
           <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
           <div class="reader-page-indicator"></div>
+          <button class="reader-help-btn" type="button" aria-label="Hilfe" aria-expanded="false">?</button>
         </div>
         <div class="sync-panel" hidden>
           <div class="sync-panel-card">
@@ -197,6 +202,7 @@ export class ReaderView {
     reader.querySelector('.reader-zone-next').addEventListener('click', () => this.goNext());
     reader.querySelector('.reader-finish-cue').addEventListener('click', () => this.openMood(true));
     reader.querySelector('.reader-nav-toggle').addEventListener('click', () => this.toggleNav());
+    reader.querySelector('.reader-help-btn').addEventListener('click', () => this.toggleHelp());
     this.applyNavState();
 
     const indicator = reader.querySelector('.reader-page-indicator');
@@ -582,6 +588,14 @@ export class ReaderView {
   }
 
   handleKey(e) {
+    // Any key dismisses the help overlay. Escape is consumed by that dismissal
+    // (it must not fall through and close the whole reader); every other key
+    // then acts as usual, mirroring how a tap closes the help and still
+    // performs the tapped action.
+    if (this.helpOpen) {
+      this.closeHelp();
+      if (e.key === 'Escape') return;
+    }
     if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
       e.preventDefault();
       this.goNext();
@@ -641,6 +655,9 @@ export class ReaderView {
   }
 
   scheduleRender() {
+    // The help callouts were positioned for the old layout; a resize (e.g. an
+    // orientation change) invalidates them, so the help simply closes.
+    if (this.helpOpen) this.closeHelp();
     clearTimeout(this._resizeT);
     this._resizeT = setTimeout(() => this.renderCurrent(), 120);
   }
@@ -745,7 +762,9 @@ export class ReaderView {
     if (!reader) return;
     reader.classList.remove('chrome-hidden');
     clearTimeout(this.hideTimer);
-    if (this.pageJumpOpen) return;
+    // While the page-jump input or the help overlay is up, the chrome must not
+    // slide away under the user (the callouts point at its controls).
+    if (this.pageJumpOpen || this.helpOpen) return;
     this.hideTimer = setTimeout(() => {
       reader.classList.add('chrome-hidden');
     }, HIDE_CHROME_AFTER_MS);
@@ -765,6 +784,145 @@ export class ReaderView {
         reader.classList.add('cursor-hidden');
       }, CURSOR_IDLE_MS);
     }
+  }
+
+  // --- Help overlay --------------------------------------------------------
+
+  // The chrome's "?" explains the reader in place: a dimmed scrim with short
+  // callouts on every control — including the two invisible page-turn zones
+  // and the long-press pointing gesture, which are otherwise undiscoverable.
+  // The overlay never intercepts input (pointer-events: none in CSS); instead
+  // a capture-phase pointerdown listener dismisses it, so tapping a labelled
+  // control closes the help AND performs that control's normal action in the
+  // same tap, while a tap on empty space just closes it.
+  toggleHelp() {
+    if (this.helpOpen) this.closeHelp();
+    else this.openHelp();
+  }
+
+  openHelp() {
+    if (this.helpOpen || !this.readerEl) return;
+    this.helpOpen = true;
+    const reader = this.readerEl;
+    reader.classList.add('help-open');
+    reader.querySelector('.reader-help-btn').setAttribute('aria-expanded', 'true');
+    // Pin the chrome up while the help is open (the helpOpen guard in
+    // showChrome suppresses the auto-hide) so the callouts' targets stay put.
+    this.showChrome();
+
+    const overlay = document.createElement('div');
+    // Purely visual: every callout repeats what the target's own label or
+    // aria-label already provides, so the overlay is hidden from AT.
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.className = 'help-overlay';
+    overlay.innerHTML = `
+      <div class="help-band help-band-prev"></div>
+      <div class="help-band help-band-next"></div>
+    `;
+    this.helpOverlay = overlay;
+    reader.appendChild(overlay);
+
+    this.addHelpHint('help-hint-zone help-hint-zone-prev', 'Zurück', { glyph: '◀' });
+    this.addHelpHint('help-hint-zone help-hint-zone-next', 'Weiter', { glyph: '▶' });
+    this.addHelpHint('help-hint-center', 'Finger gedrückt halten: auf die Seite zeigen', {
+      sub: 'beim gemeinsamen Lesen',
+    });
+    this.addChromeHelpHints();
+
+    this._helpDismiss = (e) => {
+      // The ? button has its own toggle handler; consuming its pointerdown
+      // here would close the help only to have the click reopen it.
+      if (e.target.closest?.('.reader-help-btn')) return;
+      this.closeHelp();
+    };
+    window.addEventListener('pointerdown', this._helpDismiss, true);
+  }
+
+  // One callout bubble. `glyph` stacks a large chevron above the text (the
+  // page-turn zones); `sub` adds a smaller second line (the pointing hint).
+  addHelpHint(className, text, { glyph, sub } = {}) {
+    const hint = document.createElement('div');
+    hint.className = `help-hint ${className}`;
+    if (glyph) {
+      const g = document.createElement('span');
+      g.className = 'help-hint-glyph';
+      g.textContent = glyph;
+      hint.appendChild(g);
+    }
+    const label = document.createElement('span');
+    label.className = 'help-hint-text';
+    label.textContent = text;
+    hint.appendChild(label);
+    if (sub) {
+      const s = document.createElement('span');
+      s.className = 'help-hint-sub';
+      s.textContent = sub;
+      hint.appendChild(s);
+    }
+    this.helpOverlay.appendChild(hint);
+    return hint;
+  }
+
+  // Callouts for the chrome controls, placed under each target with an arrow
+  // running up to it. Positioned at open time from the live layout (the bar is
+  // a flex row, so the targets' positions vary with viewport and title width).
+  // Bubbles stagger across tiers: each starts on its preferred tier and drops
+  // a tier while it would horizontally overlap an already-placed bubble, so on
+  // a wide screen they sit in two neat rows and on a cramped phone they
+  // cascade instead of colliding. A resize closes the help (see
+  // scheduleRender) rather than repositioning.
+  addChromeHelpHints() {
+    const reader = this.readerEl;
+    const base = reader.getBoundingClientRect();
+    const TIER_STEP = 46; // > bubble height, so tiers never touch vertically
+    const targets = [
+      ['.reader-back', 'Zurück zur Bibliothek', 0],
+      ['.reader-sync-btn', 'Gemeinsam lesen', 1],
+      ['.reader-nav-toggle', 'Umblättern an / aus', 0],
+      ['.reader-page-indicator', 'Zu einer Seite springen', 1],
+    ];
+    const placed = []; // { tier, left, right } of every bubble already laid out
+    for (const [selector, text, preferredTier] of targets) {
+      const target = reader.querySelector(selector);
+      if (!target) continue;
+      const r = target.getBoundingClientRect();
+      const hint = this.addHelpHint('help-hint-chrome', text);
+      const arrow = document.createElement('span');
+      arrow.className = 'help-hint-arrow';
+      hint.appendChild(arrow);
+      const targetX = r.left + r.width / 2 - base.left;
+      const targetBottom = r.bottom - base.top;
+      // Centre the bubble on its target, clamped to the viewport; the arrow
+      // then leans back to stay on the target.
+      const width = hint.offsetWidth;
+      const left = Math.max(8, Math.min(base.width - 8 - width, targetX - width / 2));
+      const right = left + width;
+      let tier = preferredTier;
+      while (placed.some((p) => p.tier === tier && left < p.right + 8 && right > p.left - 8)) {
+        tier++;
+      }
+      placed.push({ tier, left, right });
+      const top = targetBottom + 10 + tier * TIER_STEP;
+      hint.style.top = `${top}px`;
+      hint.style.left = `${left}px`;
+      arrow.style.left = `${Math.max(12, Math.min(width - 12, targetX - left))}px`;
+      arrow.style.height = `${top - targetBottom}px`;
+    }
+  }
+
+  closeHelp() {
+    if (!this.helpOpen) return;
+    this.helpOpen = false;
+    if (this._helpDismiss) {
+      window.removeEventListener('pointerdown', this._helpDismiss, true);
+      this._helpDismiss = null;
+    }
+    this.helpOverlay?.remove();
+    this.helpOverlay = null;
+    this.readerEl?.classList.remove('help-open');
+    this.readerEl?.querySelector('.reader-help-btn')?.setAttribute('aria-expanded', 'false');
+    // Re-arm the chrome auto-hide that openHelp suspended.
+    this.showChrome();
   }
 
   // --- Shared reading memory ("mood ritual", issue #65) -------------------
@@ -1415,6 +1573,7 @@ export class ReaderView {
   destroy() {
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
+    this.closeHelp(); // also detaches its window pointerdown listener
     clearTimeout(this.hideTimer);
     clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);

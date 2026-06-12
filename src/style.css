@@ -581,6 +581,9 @@ button {
 }
 
 @media (max-width: 600px) {
+  /* The chrome row holds six fixed-width items on a phone; tighter gaps and
+     side padding keep them from squeezing each other. */
+  .reader-chrome { gap: 10px; padding-left: calc(16px + env(safe-area-inset-left, 0px)); padding-right: calc(16px + env(safe-area-inset-right, 0px)); }
   .library-header { padding: 16px 16px 8px; padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); flex-wrap: wrap; }
   .library-header h1 { font-size: 22px; }
   .library-grid { padding: 12px 16px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
@@ -794,6 +797,171 @@ button {
 
 .sync-panel-close:hover {
   color: var(--fg);
+}
+
+/* ============ HELP ============ */
+
+/* The chrome's "?" opens a dimmed overlay that labels every reader control —
+   including the invisible page-turn zones and the long-press pointing gesture.
+   The overlay is pure presentation: pointer-events stays off so every control
+   keeps working straight through it, and a capture-phase pointerdown listener
+   in JS closes it on the next tap anywhere (that tap's normal action still
+   happens). */
+.reader-help-btn {
+  background: var(--surface-glass);
+  border: none;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 18px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: background 0.15s;
+}
+
+.reader-help-btn:hover {
+  background: var(--surface-glass-hover);
+}
+
+.help-overlay {
+  position: absolute;
+  inset: 0;
+  /* Above the page, pointers and finish cue; below the mood ritual (25) and
+     sync panel (30), which are full flows of their own. */
+  z-index: 18;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.5);
+  animation: help-fade 0.2s ease both;
+}
+
+@keyframes help-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Lift the labelled controls above the scrim so they stay bright while
+   everything else dims. */
+.reader.help-open .reader-chrome,
+.reader.help-open .reader-finish-cue {
+  z-index: 19;
+}
+
+/* The page-turn zones made visible: two bands mirroring the .reader-zone
+   geometry, a dashed inner edge marking where each zone ends. */
+.help-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 30%; /* matches .reader-zone */
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.help-band-prev {
+  left: 0;
+  border-right: 2px dashed rgba(255, 255, 255, 0.3);
+}
+
+.help-band-next {
+  right: 0;
+  border-left: 2px dashed rgba(255, 255, 255, 0.3);
+}
+
+/* One callout: a small white bubble. White is deliberate — every reserved
+   interactive colour (see :root) means something a passive label is not, and
+   white reads best over the dimmed page. */
+.help-hint {
+  position: absolute;
+  max-width: 210px;
+  background: #fff;
+  color: #111;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 8px 12px;
+  border-radius: 10px;
+  text-align: center;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+/* The arrow from a chrome bubble up to its control: a thin stem (height set
+   in JS to span the gap) with a triangular head at the top. */
+.help-hint-arrow {
+  position: absolute;
+  bottom: 100%;
+  width: 2px;
+  background: #fff;
+  transform: translateX(-50%);
+  /* Behind every bubble (but still over the scrim), so a long stem in the
+     cascaded narrow-screen layout never strikes through another label. */
+  z-index: -1;
+}
+
+.help-hint-arrow::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 7px solid #fff;
+}
+
+.help-hint-glyph {
+  display: block;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.help-hint-sub {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  color: #555;
+  margin-top: 2px;
+}
+
+/* Zone labels sit centred in their bands; the long-press hint mid-page. */
+.help-hint-zone-prev {
+  left: 15%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.help-hint-zone-next {
+  left: 85%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.help-hint-center {
+  left: 50%;
+  /* Slightly below the zone labels' line (50%) so the three middle bubbles
+     can't collide on a narrow screen. */
+  top: 60%;
+  transform: translate(-50%, -50%);
+  max-width: 240px;
+}
+
+/* Navigation switched off: the zones do nothing right now, so their bands and
+   labels dim and the text is struck through — the same language as the
+   toggle's own strike. */
+.reader.nav-off .help-band,
+.reader.nav-off .help-hint-zone {
+  opacity: 0.35;
+}
+
+.reader.nav-off .help-hint-zone .help-hint-text {
+  text-decoration: line-through;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .help-overlay { animation: none; }
 }
 
 /* ============ CAMERA ============ */
