@@ -6,7 +6,7 @@ This web app's purpose is remote bedtime reading for grandparents and their gran
 2. Always think user experience first. If the intended user experience or user flow is unclear, ask.
 3. Adhere to the Eight Golden Rules of Interface Design: @InterfaceDesign.md
 4. Never jump straight to implementation. Always present your plan and the resulting user experience first and deliberate with the person requesting new code. Only implement new code when the requester explicitely states you should.
-5. All new code is reviewed by an expert reviewer. Implement with a goal of a single positive review and no iterations needed.
+5. All new will be carefully reviewed by an expert for correctness, security, edge cases, maintainability, and fit with the existing codebase. Implement with a goal of a single positive review and no iterations needed.
 6. Backwards compatibility is never required. This is a personal app and the maintainer controls all instances, so changes may freely break older clients or stored data without migration paths or fallbacks.
 
 Significant architecture and product-scope decisions are recorded as ADRs in `doc/adr/`; consult them for context and add a new one when making such a decision.
