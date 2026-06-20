@@ -1083,7 +1083,7 @@ export class ReaderView {
       if (room.book?.hash && room.book.hash !== ownHash) {
         const goThere = await showConfirm({
           title: 'Anderes Buch',
-          message: `Dieser Code gehört zu „${room.book.title || 'einem anderen Buch'}". Gemeinsam lesen heißt, zu diesem Buch zu wechseln. Jetzt öffnen?`,
+          message: `Dieser Code gehört zu „${room.book.title || 'einem anderen Buch'}". Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?`,
           confirmLabel: 'Buch öffnen',
         });
         // Either way the code is useless for the book open here, so clear it to
