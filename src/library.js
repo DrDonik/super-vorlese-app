@@ -1,14 +1,13 @@
 import {
   listBooks, saveBook, deleteBook, renameBook, getThumbs, uid,
-  ensureContentHash, findBookByContentHash, findAndBumpExistingBook, hashBook,
+  findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, moodRevealRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
-import { closeSyncForBook, lookupRoom, getFirebase } from './sync.js';
-import { receiveBook } from './transfer.js';
-import { showAlert, showConfirm, showPrompt, showProgress } from './dialog.js';
+import { closeSyncForBook, lookupRoom } from './sync.js';
+import { showAlert, showConfirm, showPrompt } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
@@ -21,11 +20,11 @@ function deriveTitle(filename) {
 }
 
 export class LibraryView {
-  constructor(root, { onOpenBook, onAddPhotos, onJoinBook }) {
+  constructor(root, { onOpenBook, onAddPhotos, onJoinRoom }) {
     this.root = root;
     this.onOpenBook = onOpenBook;
     this.onAddPhotos = onAddPhotos;
-    this.onJoinBook = onJoinBook;
+    this.onJoinRoom = onJoinRoom;
     this.thumbUrls = [];
     this.renderId = 0;
   }
@@ -337,56 +336,9 @@ export class LibraryView {
       return;
     }
 
-    if (!room.book || !room.book.hash) {
-      await showAlert({
-        title: 'Gemeinsam lesen',
-        message: 'Dieser Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Raum neu erstellen.',
-      });
-      return;
-    }
-
-    // Already have this exact book? Open the local copy and sync — no download.
-    const local = await findBookByContentHash(room.book.hash, {
-      type: room.book.type,
-      pageCount: room.book.pageCount,
-    });
-    if (local) {
-      this.onJoinBook?.(local.id, room.code);
-      return;
-    }
-
-    // Otherwise fetch it from the partner over WebRTC.
-    const progress = showProgress({
-      title: 'Buch wird geladen',
-      message: `„${room.book.title || 'Buch'}" wird von deinem Lesepartner gesendet…`,
-    });
-    let newBookId = null;
-    try {
-      const fb = await getFirebase();
-      const bundleBlob = await receiveBook(fb, room.code, {
-        onProgress: (fraction) => progress.update(fraction),
-      });
-      progress.update(1, 'Buch wird gespeichert…');
-      const { id } = await importBundle(bundleBlob);
-      newBookId = id;
-      const gotHash = await ensureContentHash(id);
-      if (gotHash !== room.book.hash) {
-        throw new Error('integrity');
-      }
-      progress.close();
-      this.onJoinBook?.(id, room.code);
-    } catch (err) {
-      progress.close();
-      if (newBookId) await deleteBook(newBookId).catch(() => {});
-      console.error('Buch-Übertragung fehlgeschlagen', err);
-      const corrupt = err.message === 'integrity';
-      await showAlert({
-        title: corrupt ? 'Übertragung fehlerhaft' : 'Verbindung nicht möglich',
-        message: corrupt
-          ? 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.'
-          : 'Dein Lesepartner muss online und im Buch sein, um es zu senden. Bitte versuche es erneut.',
-      });
-    }
+    // Fetching the book (or reusing a local copy) and opening the reader is
+    // shared with the reader's own "Beitreten" field — see openRoom in main.js.
+    await this.onJoinRoom?.(room);
   }
 
   async handleImport(fileList) {

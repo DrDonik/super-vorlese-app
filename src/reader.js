@@ -1,10 +1,10 @@
 import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from './sync.js';
+import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
-import { showAlert } from './dialog.js';
+import { showAlert, showConfirm } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 
 const HIDE_CHROME_AFTER_MS = 2500;
@@ -70,10 +70,11 @@ async function createSource(meta) {
 }
 
 export class ReaderView {
-  constructor(root, { bookId, onClose, joinCode = null }) {
+  constructor(root, { bookId, onClose, onJoinRoom, joinCode = null }) {
     this.root = root;
     this.bookId = bookId;
     this.onClose = onClose;
+    this.onJoinRoom = onJoinRoom;
     this.joinCode = joinCode;
     this.serveStop = null;
     this.source = null;
@@ -1064,8 +1065,36 @@ export class ReaderView {
     if (!code) return;
     if (this.isSyncing) return;
     this.isSyncing = true;
-    this.syncStop();
     try {
+      // Look the room up before touching any session, so the mismatch branch
+      // below can bail out without having torn anything down.
+      let room;
+      try {
+        room = await lookupRoom(code);
+      } catch (err) {
+        await showAlert({ message: err.message || 'Beitreten fehlgeschlagen.' });
+        return;
+      }
+
+      // A code points at one specific book. If it isn't the book open here,
+      // syncing by page number would pair two different books — so offer to
+      // switch to the book the code is for (the same path the library takes).
+      const ownHash = await ensureContentHash(this.bookId);
+      if (room.book?.hash && room.book.hash !== ownHash) {
+        const goThere = await showConfirm({
+          title: 'Anderes Buch',
+          message: `Dieser Code gehört zu „${room.book.title || 'einem anderen Buch'}". Gemeinsam lesen heißt, zu diesem Buch zu wechseln. Jetzt öffnen?`,
+          confirmLabel: 'Buch öffnen',
+        });
+        // Either way the code is useless for the book open here, so clear it to
+        // avoid re-triggering this same prompt. On cancel we simply stay put;
+        // nothing was started, both "Raum erstellen" and "Beitreten" remain.
+        input.value = '';
+        if (goThere) await this.onJoinRoom?.(room);
+        return;
+      }
+
+      this.syncStop();
       const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
