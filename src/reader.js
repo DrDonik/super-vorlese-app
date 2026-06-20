@@ -167,10 +167,7 @@ export class ReaderView {
             <div class="sync-or">— oder —</div>
             <div class="sync-join-section">
               <div class="sync-join-label">Synchronisations-Code von deinem Lesepartner bekommen?</div>
-              <div class="sync-join-row">
-                <input class="sync-join-input" type="text" placeholder="Synchronisations-Code" aria-label="Synchronisations-Code" maxlength="6" autocomplete="off" spellcheck="false" />
-                <button class="sync-join-btn" type="button">Verbinden</button>
-              </div>
+              <input class="sync-join-input" type="text" placeholder="Synchronisations-Code" aria-label="Synchronisations-Code" maxlength="6" autocomplete="off" spellcheck="false" />
             </div>
             <div class="sync-active-section" hidden>
               <div class="sync-code-label">Synchronisations-Code des Buches</div>
@@ -178,7 +175,10 @@ export class ReaderView {
               <div class="sync-status">Verbunden</div>
               <button class="sync-stop-btn" type="button">Trennen</button>
             </div>
-            <button class="sync-panel-close" type="button">Schliessen</button>
+            <div class="sync-panel-actions">
+              <button class="sync-panel-close" type="button">Abbrechen</button>
+              <button class="sync-join-btn" type="button">Verbinden</button>
+            </div>
           </div>
         </div>
         <div class="reader-stage">
@@ -1376,6 +1376,10 @@ export class ReaderView {
 
     createBtn.addEventListener('click', () => this.syncCreate());
     joinBtn.addEventListener('click', () => this.syncJoin());
+    // Gray out "Verbinden" until a code is typed (rule 5: prevent errors).
+    const syncJoinAvailability = () => { joinBtn.disabled = joinInput.value.trim() === ''; };
+    joinInput.addEventListener('input', syncJoinAvailability);
+    syncJoinAvailability();
     joinInput.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') this.syncJoin();
     });
@@ -1519,6 +1523,10 @@ export class ReaderView {
     reader.querySelector('.sync-or').hidden = true;
     reader.querySelector('.sync-join-section').hidden = true;
     reader.querySelector('.sync-panel-desc').hidden = true;
+    // Connected: "Verbinden" has nothing left to do, and the dismiss button
+    // closes the panel without ending the sync — so it reads "Schliessen".
+    reader.querySelector('.sync-join-btn').hidden = true;
+    reader.querySelector('.sync-panel-close').textContent = 'Schliessen';
     const active = reader.querySelector('.sync-active-section');
     active.hidden = false;
     active.querySelector('.sync-code-display').textContent = code;
@@ -1538,6 +1546,10 @@ export class ReaderView {
     reader.querySelector('.sync-join-section').hidden = false;
     const input = reader.querySelector('.sync-join-input');
     if (input) input.value = '';
+    const joinBtn = reader.querySelector('.sync-join-btn');
+    joinBtn.hidden = false;
+    joinBtn.disabled = true;
+    reader.querySelector('.sync-panel-close').textContent = 'Abbrechen';
     reader.querySelector('.sync-panel-desc').hidden = false;
     const active = reader.querySelector('.sync-active-section');
     active.hidden = true;

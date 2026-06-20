@@ -699,14 +699,8 @@ button {
   color: var(--fg-dim);
 }
 
-.sync-join-row {
-  display: flex;
-  gap: 8px;
-}
-
 .sync-join-input {
-  flex: 1;
-  min-width: 7.5em;
+  width: 100%;
   background: var(--surface);
   border: 1px solid var(--surface-line);
   border-radius: 10px;
@@ -731,7 +725,7 @@ button {
 }
 
 .sync-join-btn {
-  flex: none;
+  flex: 1;
   background: var(--surface);
   color: var(--fg);
   padding: 12px 16px;
@@ -742,8 +736,13 @@ button {
   white-space: nowrap;
 }
 
-.sync-join-btn:hover {
+.sync-join-btn:not(:disabled):hover {
   background: var(--surface-line);
+}
+
+.sync-join-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .sync-active-section {
@@ -785,14 +784,23 @@ button {
   width: 100%;
 }
 
+/* The dismiss button and "Verbinden" share one row, mirroring the library's
+   join dialog. "Verbinden" hides when connected, leaving the dismiss button
+   ("Schliessen") spanning the row on its own. */
+.sync-panel-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
 .sync-panel-close {
+  flex: 1;
   background: transparent;
   color: var(--fg-dim);
-  padding: 10px 18px;
+  padding: 12px 18px;
   border: none;
   border-radius: 10px;
   cursor: pointer;
-  margin-top: 4px;
 }
 
 .sync-panel-close:hover {
