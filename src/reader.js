@@ -1,10 +1,10 @@
 import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase } from './sync.js';
+import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
-import { showAlert } from './dialog.js';
+import { showAlert, showConfirm } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 
 const HIDE_CHROME_AFTER_MS = 4000;
@@ -93,10 +93,11 @@ async function createSource(meta) {
 }
 
 export class ReaderView {
-  constructor(root, { bookId, onClose, joinCode = null }) {
+  constructor(root, { bookId, onClose, onJoinRoom, joinCode = null }) {
     this.root = root;
     this.bookId = bookId;
     this.onClose = onClose;
+    this.onJoinRoom = onJoinRoom;
     this.joinCode = joinCode;
     this.serveStop = null;
     this.source = null;
@@ -1427,8 +1428,60 @@ export class ReaderView {
     if (!code) return;
     if (this.isSyncing) return;
     this.isSyncing = true;
-    this.syncStop();
     try {
+      // Look the room up before any session is created or torn down, so the
+      // "other book" branch below can bail out without having disturbed an
+      // active sync or the open book.
+      // Each await below is a point where the listener may meanwhile have left
+      // for the library (destroy() nulls this.source and the next view takes
+      // over this.root). Re-check after every one and bail out, the same guard
+      // the rest of syncJoin/syncCreate use, so a late resolve never shows a
+      // dialog over the library or touches a torn-down DOM.
+      let room;
+      try {
+        room = await lookupRoom(code);
+      } catch (err) {
+        if (!this.source) return;
+        await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
+        return;
+      }
+      if (!this.source) return;
+
+      // A Synchronisations-Code points at one specific book. If it isn't the
+      // book open here, syncing by page number would pair two different books —
+      // so offer to switch to the book the code is for, over the same path the
+      // library takes (local copy by hash, otherwise WebRTC download).
+      const ownHash = await ensureContentHash(this.bookId);
+      if (!this.source) return;
+      if (room.book?.hash && room.book.hash !== ownHash) {
+        const goThere = await showConfirm({
+          title: 'Anderes Buch',
+          message: `Dieser Synchronisations-Code gehört zu „${room.book.title || 'einem anderen Buch'}". Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?`,
+          confirmLabel: 'Buch öffnen',
+        });
+        if (!this.source) return;
+        // The code is unusable for the book open here either way, so clear the
+        // field to prevent a retry loop (the title was already in the dialog).
+        // Clearing programmatically fires no input event, so grey out "Verbinden"
+        // by hand to keep it disabled on an empty field (rule 5: prevent errors).
+        // On cancel nothing was started or torn down; the Sync-Panel stays open
+        // with both next steps — "Synchronisations-Code erstellen" and
+        // "Verbinden" — still visible.
+        input.value = '';
+        this.root.querySelector('.sync-join-btn').disabled = true;
+        // Tear the old session down before the switch: openRoom may download for
+        // several seconds, and an still-listening session would keep reacting to
+        // the old book's page turns and pointers (behind the progress dialog) the
+        // whole time. syncStop also resets this view to "not connected", so if the
+        // switch fails and this view stays on screen, its UI is left coherent.
+        if (goThere) {
+          this.syncStop();
+          await this.onJoinRoom?.(room);
+        }
+        return;
+      }
+
+      this.syncStop();
       const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
@@ -1445,7 +1498,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
-      if (this.source) await showAlert({ message: err.message || 'Verbindung fehlgeschlagen.' });
+      if (this.source) await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
     } finally {
       this.isSyncing = false;
     }
