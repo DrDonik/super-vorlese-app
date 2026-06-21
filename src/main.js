@@ -97,8 +97,8 @@ async function openRoom(room) {
   } catch (err) {
     progress.close();
     if (newBookId) await deleteBook(newBookId).catch(() => {});
-    console.error('Buch-Übertragung fehlgeschlagen', err.message || err);
-    const corrupt = err.message === 'integrity';
+    console.error('Buch-Übertragung fehlgeschlagen', err?.message || err);
+    const corrupt = err?.message === 'integrity';
     await showAlert({
       title: corrupt ? 'Übertragung fehlerhaft' : 'Verbindung nicht möglich',
       message: corrupt
