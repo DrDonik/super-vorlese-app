@@ -1432,25 +1432,34 @@ export class ReaderView {
       // Look the room up before any session is created or torn down, so the
       // "other book" branch below can bail out without having disturbed an
       // active sync or the open book.
+      // Each await below is a point where the listener may meanwhile have left
+      // for the library (destroy() nulls this.source and the next view takes
+      // over this.root). Re-check after every one and bail out, the same guard
+      // the rest of syncJoin/syncCreate use, so a late resolve never shows a
+      // dialog over the library or touches a torn-down DOM.
       let room;
       try {
         room = await lookupRoom(code);
       } catch (err) {
+        if (!this.source) return;
         await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
         return;
       }
+      if (!this.source) return;
 
       // A Synchronisations-Code points at one specific book. If it isn't the
       // book open here, syncing by page number would pair two different books —
       // so offer to switch to the book the code is for, over the same path the
       // library takes (local copy by hash, otherwise WebRTC download).
       const ownHash = await ensureContentHash(this.bookId);
+      if (!this.source) return;
       if (room.book?.hash && room.book.hash !== ownHash) {
         const goThere = await showConfirm({
           title: 'Anderes Buch',
           message: `Dieser Synchronisations-Code gehört zu „${room.book.title || 'einem anderen Buch'}". Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?`,
           confirmLabel: 'Buch öffnen',
         });
+        if (!this.source) return;
         // The code is unusable for the book open here either way, so clear the
         // field to prevent a retry loop (the title was already in the dialog).
         // Clearing programmatically fires no input event, so grey out "Verbinden"
