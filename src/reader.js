@@ -1460,7 +1460,15 @@ export class ReaderView {
         // "Verbinden" — still visible.
         input.value = '';
         this.root.querySelector('.sync-join-btn').disabled = true;
-        if (goThere) await this.onJoinRoom?.(room);
+        // Tear the old session down before the switch: openRoom may download for
+        // several seconds, and an still-listening session would keep reacting to
+        // the old book's page turns and pointers (behind the progress dialog) the
+        // whole time. syncStop also resets this view to "not connected", so if the
+        // switch fails and this view stays on screen, its UI is left coherent.
+        if (goThere) {
+          this.syncStop();
+          await this.onJoinRoom?.(room);
+        }
         return;
       }
 
