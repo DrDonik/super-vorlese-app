@@ -1436,7 +1436,7 @@ export class ReaderView {
       try {
         room = await lookupRoom(code);
       } catch (err) {
-        await showAlert({ message: err.message || 'Verbindung fehlgeschlagen.' });
+        await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
         return;
       }
 
@@ -1489,7 +1489,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
-      if (this.source) await showAlert({ message: err.message || 'Verbindung fehlgeschlagen.' });
+      if (this.source) await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
     } finally {
       this.isSyncing = false;
     }
