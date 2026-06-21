@@ -11,3 +11,7 @@ dist-ssr
 # folder is the local working source for scripts/generate-mood-icons.js, which
 # no-ops when it is absent. The briefs live in doc/mood-icon-descriptions.txt.
 doc/mood-icons/
+
+# Books downloaded from various sources. No license to publish them, only
+# storing them locally.
+doc/books/

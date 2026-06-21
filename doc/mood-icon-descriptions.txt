@@ -1,5 +1,4 @@
 Mood icon descriptions for the shared reading memory feature.
-Derived from the emotional arc of "Tinka Knitterflügel – Heldin in Ringelsocken".
 Feed these to nano banana one at a time. Suggested style: simple hand-drawn sketch,
 expressive minimal character, warm ink line on cream/off-white, small square icon format,
 no text or labels in the image.
@@ -109,7 +108,7 @@ A figure hunched small, collar or blanket-edge pulled up over the nose with both
 A figure recoiling with the nose scrunched tight and the tongue half out, one hand flung up between the face and whatever it is. Delighted revulsion — the delicious horror of something truly, gloriously gross.
 
 35. REAL TEARS
-A figure with two shining tracks down the cheeks and a trembling mouth, not hiding the face, looking openly up. Unashamedly sad — the story earned every tear and they are being let to fall.
+A figure with two shining tracks down the cheeks and a trembling mouth, not hiding the face, looking openly up. Unashamedly sad — the story in the book earned every tear and they are being let to fall.
 
 36. LOST THE THREAD
 A figure with both palms turned up and empty, head cocked to one side, eyebrows pulled together over a plain blink of puzzlement. Not playing along — genuinely lost, and honest enough to show it.
@@ -126,12 +125,8 @@ A figure pressing fingertips to the lips and sweeping the hand outward toward so
 40. PROUD OF YOU
 A figure mid-clap, hands just meeting, head tilted with a beaming wide smile turned toward someone off to one side. Not pride in oneself — a warm bursting pride held up for somebody else.
 
----
-
-The entries below were added to thicken under-served clusters for the balanced board draw (issue #77). A board guarantees a minimum from each emotional region, so these previously single-image feelings — scared, overwhelmed, anger, sad, courage, and the two partner-directed gestures — give those guarantees a fitting, varied word rather than one repeated tile. Same style as above; numbering continues so existing ids stay stable.
-
 41. PEERING OUT FROM HIDING
-A small figure ducked low behind the edge of a blanket or the back of a chair, only the eyes and the grip of two hands showing over the top, brows tented with worry. Frightened and taking cover — watching the scary part from just barely far enough away.
+A small figure ducked low behind the edge of a blanket or the back of a chair, only the eyes and the grip of two hands showing over the top, brows tented with worry. Frightened and taking cover — listening the scary part of the book from just barely far enough away.
 
 42. HANDS OVER THE EARS
 A figure curling inward with both hands clamped over the ears, eyes squeezed shut, shoulders hunched up tight. Not frightened exactly — just too much, too loud, too fast, and needing it all to stop for a second.
