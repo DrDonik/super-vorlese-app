@@ -14,7 +14,7 @@
     "fflate": "^0.8.3",
     "firebase": "^12.15.0",
     "idb-keyval": "^6.2.5",
-    "pdfjs-dist": "^6.0.227"
+    "pdfjs-dist": "^6.1.200"
   },
   "devDependencies": {
     "google-auth-library": "^10.7.0",
