@@ -1,4 +1,4 @@
-import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
@@ -251,6 +251,10 @@ export class ReaderView {
     }
     reader.querySelector('.reader-title').textContent = meta.title;
     this.bookTitle = meta.title;
+    // The single place a book is opened — whether tapped in the library or
+    // joined via a Synchronisations-Code — so the library's "Zuletzt gelesen"
+    // order stays truthful for both routes.
+    markOpened(this.bookId).catch(() => {});
     // Preloaded here, while the book opens, so the closing ritual can show the
     // cover (the just-closed book) the instant it begins — no async wait mid-
     // ritual. Absent thumbnails fall back to an icon; the URL is revoked on

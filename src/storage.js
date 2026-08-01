@@ -185,6 +185,17 @@ export async function findAndBumpExistingBook(hash, { type, pageCount } = {}) {
   return existing;
 }
 
+// Records that the book was just opened, so the library can offer a "zuletzt
+// gelesen" order. Books stored before this field existed simply have no value;
+// the library falls back to addedAt for them.
+export async function markOpened(id) {
+  const meta = await get(metaKey(id));
+  if (meta) {
+    meta.lastOpenedAt = Date.now();
+    await set(metaKey(id), meta);
+  }
+}
+
 export async function updateLastPage(id, page) {
   const meta = await get(metaKey(id));
   if (meta) {

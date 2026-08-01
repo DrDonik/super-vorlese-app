@@ -19,6 +19,59 @@ function deriveTitle(filename) {
   return filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() || 'Unbenannt';
 }
 
+// --- Sorting ----------------------------------------------------------------
+// The pills stay visible no matter how many books there are (they only vanish
+// with an empty library, which is a visibly different screen): a control that
+// appears and disappears as the shelf grows is exactly the kind of surprise
+// this app's users should never have to explain to themselves.
+
+const SORT_MODES = [
+  { id: 'opened', label: 'Zuletzt gelesen' },
+  { id: 'title', label: 'A–Z' },
+  { id: 'added', label: 'Hinzugefügt' },
+];
+
+// Bedtime reading returns to the same book night after night, so the book you
+// last read belongs on top. Until anything has been opened this is identical to
+// 'added', because lastOpenedAt falls back to addedAt.
+const DEFAULT_SORT = 'opened';
+const SORT_STORAGE_KEY = 'library-sort';
+
+function loadSortMode() {
+  try {
+    const stored = localStorage.getItem(SORT_STORAGE_KEY);
+    if (SORT_MODES.some((m) => m.id === stored)) return stored;
+  } catch {
+    // Storage can be unavailable (private mode); the default is fine.
+  }
+  return DEFAULT_SORT;
+}
+
+function storeSortMode(mode) {
+  try {
+    localStorage.setItem(SORT_STORAGE_KEY, mode);
+  } catch {
+    // Not remembering the choice is a smaller failure than breaking the view.
+  }
+}
+
+// numeric so „Band 2" precedes „Band 10"; base sensitivity so „Ätna" sorts with
+// the A's and capitalisation never splits otherwise identical titles.
+const titleCollator = new Intl.Collator('de-CH', { numeric: true, sensitivity: 'base' });
+
+// listBooks() delivers newest-added first and Array.prototype.sort is stable, so
+// every mode falls back to that order for ties without comparing explicitly.
+function sortBooks(books, mode) {
+  if (mode === 'title') {
+    return [...books].sort((a, b) => titleCollator.compare(a.title, b.title));
+  }
+  if (mode === 'opened') {
+    const opened = (b) => b.lastOpenedAt ?? b.addedAt;
+    return [...books].sort((a, b) => opened(b) - opened(a));
+  }
+  return books;
+}
+
 export class LibraryView {
   constructor(root, { onOpenBook, onAddPhotos, onJoinRoom }) {
     this.root = root;
@@ -27,24 +80,28 @@ export class LibraryView {
     this.onJoinRoom = onJoinRoom;
     this.thumbUrls = [];
     this.renderId = 0;
+    this.sortMode = loadSortMode();
   }
 
   async render() {
     this.root.innerHTML = `
-      <header class="library-header">
-        <h1>Bibliothek</h1>
-        <div class="library-actions">
-          <button class="add-book add-photos" type="button">
-            <span>📷 Fotografieren</span>
-          </button>
-          <label class="add-book add-import">
-            <input class="import-input" type="file" accept="application/pdf,.pdf,.vorlese,.zip,application/zip,application/octet-stream" multiple hidden />
-            <span>📥 Importieren</span>
-          </label>
-        </div>
-      </header>
-      <div class="library-status" hidden></div>
-      <div class="library-grid"></div>
+      <div class="library">
+        <header class="library-header">
+          <h1>Bibliothek</h1>
+          <div class="library-actions">
+            <button class="add-book add-photos" type="button">
+              <span>📷 Fotografieren</span>
+            </button>
+            <label class="add-book add-import">
+              <input class="import-input" type="file" accept="application/pdf,.pdf,.vorlese,.zip,application/zip,application/octet-stream" multiple hidden />
+              <span>📥 Importieren</span>
+            </label>
+          </div>
+        </header>
+        <div class="library-status" hidden></div>
+        <div class="library-sort" role="group" aria-label="Bücher sortieren" hidden></div>
+        <div class="library-grid"></div>
+      </div>
     `;
 
     const importInput = this.root.querySelector('.import-input');
@@ -53,7 +110,37 @@ export class LibraryView {
     const photoBtn = this.root.querySelector('.add-photos');
     photoBtn.addEventListener('click', () => this.onAddPhotos?.());
 
+    this.buildSortBar();
+
     await this.renderGrid();
+  }
+
+  buildSortBar() {
+    const bar = this.root.querySelector('.library-sort');
+    for (const mode of SORT_MODES) {
+      const pill = document.createElement('button');
+      pill.type = 'button';
+      pill.className = 'sort-pill';
+      pill.dataset.mode = mode.id;
+      pill.textContent = mode.label;
+      pill.setAttribute('aria-pressed', String(mode.id === this.sortMode));
+      pill.addEventListener('click', () => this.setSortMode(mode.id));
+      bar.appendChild(pill);
+    }
+  }
+
+  async setSortMode(mode) {
+    if (mode === this.sortMode) return;
+    this.sortMode = mode;
+    storeSortMode(mode);
+    for (const pill of this.root.querySelectorAll('.sort-pill')) {
+      pill.setAttribute('aria-pressed', String(pill.dataset.mode === mode));
+    }
+    await this.renderGrid();
+    // Show the new top of the shelf: reordering while scrolled halfway down
+    // would otherwise look like nothing happened.
+    const grid = this.root.querySelector('.library-grid');
+    if (grid) grid.scrollTop = 0;
   }
 
   async renderGrid() {
@@ -66,8 +153,11 @@ export class LibraryView {
     const renderId = ++this.renderId;
     const isStale = () => this.renderId !== renderId;
 
-    const books = await listBooks();
+    const books = sortBooks(await listBooks(), this.sortMode);
     if (isStale()) return;
+
+    const sortBar = this.root.querySelector('.library-sort');
+    if (sortBar) sortBar.hidden = books.length === 0;
 
     if (books.length === 0) {
       grid.innerHTML = '';
