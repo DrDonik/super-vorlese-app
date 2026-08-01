@@ -90,17 +90,33 @@ export async function savePhotoBook({ id, title, pages, thumbBlob, contentHash }
 // and write happen in one IndexedDB transaction, so two updates that overlap —
 // markOpened() as the reader opens a book and updateLastPage() on the first
 // page turn, say — can no longer overwrite each other's field with a stale
-// value. A book deleted in the meantime is not resurrected: the record is
-// written back untouched, which every reader treats as "no such book".
+// value.
+//
+// Returns whether a record was actually there to change. Callers that decide
+// something on the strength of the write — "this book already exists, skip the
+// import" — must not mistake a vanished book for a successful update.
+//
+// A book deleted in the meantime is not resurrected. update() always writes
+// back whatever the callback returns, so the miss leaves an entry holding
+// undefined; the follow-up del() clears it. Every reader would treat such an
+// entry as "no such book" anyway, but it would sit in the key list forever.
 async function updateMeta(id, mutate) {
-  await update(metaKey(id), (meta) => (meta ? mutate(meta) : meta));
+  let updated = false;
+  await update(metaKey(id), (meta) => {
+    if (!meta) return meta;
+    updated = true;
+    return mutate(meta);
+  });
+  if (!updated) await del(metaKey(id));
+  return updated;
 }
 
 // Moves a book to the front of the library by refreshing its addedAt timestamp
 // (listBooks() orders newest-first). Used when a re-import should resurface the
 // existing copy where the user expects freshly imported books to appear.
+// False if the book is gone.
 async function touchBook(id) {
-  await updateMeta(id, (meta) => ({ ...meta, addedAt: Date.now() }));
+  return updateMeta(id, (meta) => ({ ...meta, addedAt: Date.now() }));
 }
 
 export async function listBooks() {
@@ -154,7 +170,10 @@ export async function ensureContentHash(id) {
     if (!fileBlob) return null;
     contentHash = await hashBook({ type: 'pdf', fileBlob });
   }
-  await updateMeta(id, (m) => ({ ...m, contentHash }));
+  // Hashing a large book takes long enough for the book to be deleted meanwhile
+  // (the library stays usable while an import runs). A hash for a book that no
+  // longer exists would let callers act on a phantom, so report it as no hash.
+  if (!(await updateMeta(id, (m) => ({ ...m, contentHash })))) return null;
   return contentHash;
 }
 
@@ -187,7 +206,9 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
 export async function findAndBumpExistingBook(hash, { type, pageCount } = {}) {
   const existing = await findBookByContentHash(hash, { type, pageCount });
   if (!existing) return null;
-  await touchBook(existing.id);
+  // Deleted between finding and bumping: report no match, so the caller imports
+  // the file instead of skipping it as a duplicate of a book that is gone.
+  if (!(await touchBook(existing.id))) return null;
   return existing;
 }
 
