@@ -57,6 +57,15 @@ button {
 
 /* ============ LIBRARY ============ */
 
+/* Column layout so header, status and sort bar take their natural height and
+   the grid gets whatever is left — no magic offset to keep in sync when a row
+   is added or the header wraps on a narrow phone. */
+.library {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
 .library-header {
   padding: 24px 32px 16px;
   padding: calc(24px + env(safe-area-inset-top, 0px)) calc(32px + env(safe-area-inset-right, 0px)) 16px calc(32px + env(safe-area-inset-left, 0px));
@@ -108,6 +117,52 @@ button {
   font-size: 14px;
 }
 
+/* Sits directly above the grid it orders and stays put whatever the shelf holds
+   (it only goes away with an empty library). Deliberately quiet: this labels how
+   the books are arranged, it is not a third action next to the two add buttons. */
+/* Side padding is the grid's 32px minus the pill's own 16px, so the first
+   label's text starts exactly above the first cover's edge. */
+.library-sort {
+  padding: 0 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Quiet, but a full-size target: 44px is what a six-year-old's or a
+   grandparent's finger needs to hit reliably, even though the pill's fill is
+   deliberately lighter than the buttons above it. */
+.sort-pill {
+  background: transparent;
+  color: var(--fg-dim);
+  border: none;
+  border-radius: 999px;
+  padding: 0 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+/* Hover brightens the label but adds no fill: the filled pill means "this is the
+   current order", and a hover fill would blur that distinction. The selected
+   pill deepens on hover the same way the add buttons do. */
+.sort-pill:hover {
+  color: var(--fg);
+}
+
+.sort-pill[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.sort-pill[aria-pressed='true']:hover {
+  background: var(--surface-line);
+}
+
 .library-grid {
   padding: 16px 32px 32px;
   display: grid;
@@ -115,7 +170,8 @@ button {
   align-content: start;
   gap: 20px;
   overflow-y: auto;
-  height: calc(100% - 88px);
+  flex: 1;
+  min-height: 0;
 }
 
 .empty {
@@ -587,6 +643,10 @@ button {
   .library-header { padding: 16px 16px 8px; padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); flex-wrap: wrap; }
   .library-header h1 { font-size: 22px; }
   .library-grid { padding: 12px 16px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+  /* Tighter pill padding so all three still share one row on a phone; the 44px
+     target height is kept. */
+  .library-sort { padding: 0 4px; padding-left: calc(4px + env(safe-area-inset-left, 0px)); padding-right: calc(4px + env(safe-area-inset-right, 0px)); gap: 4px; }
+  .sort-pill { padding: 0 12px; }
   .add-book { padding: 10px 14px; font-size: 14px; }
 }
 

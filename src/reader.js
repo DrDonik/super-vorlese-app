@@ -1,4 +1,4 @@
-import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, ensureContentHash, addCompletion, uid } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
@@ -265,6 +265,12 @@ export class ReaderView {
       this.close();
       return;
     }
+    // Only now that the book actually opened — whether tapped in the library or
+    // joined via a Synchronisations-Code, both routes pass here. A book whose
+    // pages are missing bails out above and must not be pushed to the top of
+    // "Zuletzt gelesen".
+    markOpened(this.bookId).catch(() => {});
+
     this.totalPages = this.source.numPages;
     this.currentPage = Math.min(Math.max(meta.lastPage || 1, 1), this.totalPages);
 

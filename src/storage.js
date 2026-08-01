@@ -1,4 +1,4 @@
-import { get, set, del, keys, getMany, setMany, delMany } from 'idb-keyval';
+import { get, set, del, keys, getMany, setMany, delMany, update } from 'idb-keyval';
 
 const BOOK_PREFIX = 'book:';
 const META_PREFIX = 'meta:';
@@ -86,14 +86,37 @@ export async function savePhotoBook({ id, title, pages, thumbBlob, contentHash }
   });
 }
 
+// Every change to a single field of a book's metadata goes through here. Read
+// and write happen in one IndexedDB transaction, so two updates that overlap —
+// markOpened() as the reader opens a book and updateLastPage() on the first
+// page turn, say — can no longer overwrite each other's field with a stale
+// value.
+//
+// Returns whether a record was actually there to change. Callers that decide
+// something on the strength of the write — "this book already exists, skip the
+// import" — must not mistake a vanished book for a successful update.
+//
+// A book deleted in the meantime is not resurrected. update() always writes
+// back whatever the callback returns, so the miss leaves an entry holding
+// undefined; the follow-up del() clears it. Every reader would treat such an
+// entry as "no such book" anyway, but it would sit in the key list forever.
+async function updateMeta(id, mutate) {
+  let updated = false;
+  await update(metaKey(id), (meta) => {
+    if (!meta) return meta;
+    updated = true;
+    return mutate(meta);
+  });
+  if (!updated) await del(metaKey(id));
+  return updated;
+}
+
 // Moves a book to the front of the library by refreshing its addedAt timestamp
 // (listBooks() orders newest-first). Used when a re-import should resurface the
 // existing copy where the user expects freshly imported books to appear.
-async function touchBook(id, existingMeta) {
-  const meta = existingMeta || await get(metaKey(id));
-  if (!meta) return;
-  meta.addedAt = Date.now();
-  await set(metaKey(id), meta);
+// False if the book is gone.
+async function touchBook(id) {
+  return updateMeta(id, (meta) => ({ ...meta, addedAt: Date.now() }));
 }
 
 export async function listBooks() {
@@ -147,8 +170,10 @@ export async function ensureContentHash(id) {
     if (!fileBlob) return null;
     contentHash = await hashBook({ type: 'pdf', fileBlob });
   }
-  meta.contentHash = contentHash;
-  await set(metaKey(id), meta);
+  // Hashing a large book takes long enough for the book to be deleted meanwhile
+  // (the library stays usable while an import runs). A hash for a book that no
+  // longer exists would let callers act on a phantom, so report it as no hash.
+  if (!(await updateMeta(id, (m) => ({ ...m, contentHash })))) return null;
   return contentHash;
 }
 
@@ -181,16 +206,21 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
 export async function findAndBumpExistingBook(hash, { type, pageCount } = {}) {
   const existing = await findBookByContentHash(hash, { type, pageCount });
   if (!existing) return null;
-  await touchBook(existing.id, existing);
+  // Deleted between finding and bumping: report no match, so the caller imports
+  // the file instead of skipping it as a duplicate of a book that is gone.
+  if (!(await touchBook(existing.id))) return null;
   return existing;
 }
 
+// Records that the book was just opened, so the library can offer a "zuletzt
+// gelesen" order. Books stored before this field existed simply have no value;
+// the library falls back to addedAt for them.
+export async function markOpened(id) {
+  await updateMeta(id, (meta) => ({ ...meta, lastOpenedAt: Date.now() }));
+}
+
 export async function updateLastPage(id, page) {
-  const meta = await get(metaKey(id));
-  if (meta) {
-    meta.lastPage = page;
-    await set(metaKey(id), meta);
-  }
+  await updateMeta(id, (meta) => ({ ...meta, lastPage: page }));
 }
 
 // --- Shared reading memory (issue #65) --------------------------------------
@@ -229,11 +259,7 @@ export async function getCompletionsMany(ids) {
 }
 
 export async function renameBook(id, title) {
-  const meta = await get(metaKey(id));
-  if (meta) {
-    meta.title = title;
-    await set(metaKey(id), meta);
-  }
+  await updateMeta(id, (meta) => ({ ...meta, title }));
 }
 
 export async function deleteBook(id) {
