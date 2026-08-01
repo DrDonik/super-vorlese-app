@@ -298,6 +298,10 @@ export class LibraryView {
         book.title = trimmed;
         titleEl.textContent = trimmed;
         card.setAttribute('aria-label', `${trimmed} öffnen`);
+        // Under A–Z the new name usually belongs somewhere else on the shelf;
+        // leaving the card where it was would contradict the very order the
+        // user selected. The other modes are unaffected by a title change.
+        if (this.sortMode === 'title') await this.renderGrid();
       });
 
       const shareBtn = card.querySelector('.book-share');

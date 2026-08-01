@@ -251,10 +251,6 @@ export class ReaderView {
     }
     reader.querySelector('.reader-title').textContent = meta.title;
     this.bookTitle = meta.title;
-    // The single place a book is opened — whether tapped in the library or
-    // joined via a Synchronisations-Code — so the library's "Zuletzt gelesen"
-    // order stays truthful for both routes.
-    markOpened(this.bookId).catch(() => {});
     // Preloaded here, while the book opens, so the closing ritual can show the
     // cover (the just-closed book) the instant it begins — no async wait mid-
     // ritual. Absent thumbnails fall back to an icon; the URL is revoked on
@@ -269,6 +265,12 @@ export class ReaderView {
       this.close();
       return;
     }
+    // Only now that the book actually opened — whether tapped in the library or
+    // joined via a Synchronisations-Code, both routes pass here. A book whose
+    // pages are missing bails out above and must not be pushed to the top of
+    // "Zuletzt gelesen".
+    markOpened(this.bookId).catch(() => {});
+
     this.totalPages = this.source.numPages;
     this.currentPage = Math.min(Math.max(meta.lastPage || 1, 1), this.totalPages);
 
