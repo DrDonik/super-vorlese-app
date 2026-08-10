@@ -258,8 +258,18 @@ export async function getCompletionsMany(ids) {
   return lists.map((l) => l || []);
 }
 
-export async function renameBook(id, title) {
-  await updateMeta(id, (meta) => ({ ...meta, title }));
+// --- Tags (issue #140) -------------------------------------------------------
+// Tags are this device's own organisation of the shelf and never leave it:
+// they are not part of the .vorlese bundle and not sent over a sync session
+// (see ADR 16). There is no tag registry either — the set of known tags is
+// derived from the books carrying them, so a tag removed from its last book
+// simply ceases to exist.
+//
+// Title and tags are written together because the „Buch bearbeiten" dialog
+// offers them as one edit; one call means one transaction and no window in
+// which a book carries the new title but the old tags.
+export async function updateBookDetails(id, { title, tags }) {
+  await updateMeta(id, (meta) => ({ ...meta, title, tags }));
 }
 
 export async function deleteBook(id) {

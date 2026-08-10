@@ -1,5 +1,5 @@
 import {
-  listBooks, saveBook, deleteBook, renameBook, getThumbs, uid,
+  listBooks, saveBook, deleteBook, updateBookDetails, getThumbs, uid,
   findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
@@ -7,7 +7,7 @@ import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, mo
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { exportBook, importBundle, shareOrDownload } from './bundle.js';
 import { closeSyncForBook, lookupRoom } from './sync.js';
-import { showAlert, showConfirm, showPrompt } from './dialog.js';
+import { showAlert, showConfirm, showPrompt, openDialog } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
@@ -72,6 +72,215 @@ function sortBooks(books, mode) {
   return books;
 }
 
+// --- Tags and filtering (issue #140) ----------------------------------------
+// Organising the shelf is a power-user job — the parent who keeps the library,
+// not the child or the grandparent who reads from it. So the filter row does
+// not exist until there is something to filter: a library nobody has tagged
+// looks exactly as it did before, and the book cards themselves are unchanged.
+//
+// Filtering, not grouping by tag: a book can carry several tags, so tag
+// headings would either repeat a book on the shelf or need an arbitrary
+// "primary tag" rule. One filter at a time also spares everyone boolean logic
+// (rule 8) and can never produce a combination that matches nothing.
+
+const FILTER_DONE = 'done';
+const FILTER_OPEN = 'open';
+const TAG_FILTER_PREFIX = 'tag:';
+
+const MAX_TAG_LENGTH = 20;
+
+// Session-scoped on purpose, and deliberately not stored the way the sort mode
+// is: a filter *hides* books, and nobody should open the app to a shelf that is
+// silently half empty. A module-level value outlives the view being remounted
+// (open a book, come back) and dies with the page — exactly the lifetime we
+// want. Within a session the selected chip stays visible right above the grid,
+// so the missing books are always explained and one tap from coming back.
+let activeFilter = null;
+
+function bookTags(book) {
+  return Array.isArray(book.tags) ? book.tags : [];
+}
+
+function sameCaseInsensitive(a, b) {
+  return a.localeCompare(b, 'de-CH', { sensitivity: 'base' }) === 0;
+}
+
+// Compares the tag sets of one book, which hold no duplicates, so equal length
+// plus containment is a full set comparison and the stored order is irrelevant.
+function sameTags(a, b) {
+  return a.length === b.length && a.every((tag) => b.includes(tag));
+}
+
+// Every tag in use, in the same order the A–Z titles get, so „3 Jahre" precedes
+// „5 Jahre" precedes „10 Jahre". Tags that differ only in capitalisation are
+// merged onto the spelling encountered first; the edit dialog prevents them
+// from arising in the first place, but a shelf carrying both must not offer the
+// same filter twice.
+function collectTags(books) {
+  const byKey = new Map();
+  for (const book of books) {
+    for (const tag of bookTags(book)) {
+      const key = tag.toLocaleLowerCase('de-CH');
+      if (!byKey.has(key)) byKey.set(key, tag);
+    }
+  }
+  return [...byKey.values()].sort(titleCollator.compare);
+}
+
+// The chips on offer for the shelf in front of us. „Schon gelesen" / „Noch
+// nicht gelesen" appear only as a pair and only while they actually divide the
+// shelf: with every book finished — or none — one chip would show everything
+// and the other nothing. Because every chip is derived from these very books,
+// no chip can filter the shelf down to an empty grid.
+//
+// Finished means the book has a shared-reading completion (ADR 11/12), the fact
+// the app already records when two readers end a book together. Nothing is ever
+// auto-tagged: closing a book usually means "that's enough for tonight", so a
+// tag written on that event would be wrong more often than right.
+function buildFilterChips(books, doneFlags) {
+  const chips = [];
+  const doneCount = doneFlags.filter(Boolean).length;
+  if (doneCount > 0 && doneCount < books.length) {
+    chips.push({ id: FILTER_DONE, label: 'Schon gelesen' });
+    chips.push({ id: FILTER_OPEN, label: 'Noch nicht gelesen' });
+  }
+  for (const tag of collectTags(books)) {
+    chips.push({ id: `${TAG_FILTER_PREFIX}${tag}`, label: tag });
+  }
+  return chips;
+}
+
+function matchesFilter(book, isDone, filter) {
+  if (!filter) return true;
+  if (filter === FILTER_DONE) return isDone;
+  if (filter === FILTER_OPEN) return !isDone;
+  return bookTags(book).includes(filter.slice(TAG_FILTER_PREFIX.length));
+}
+
+// Collapses whitespace and caps the length, so no chip can stretch the filter
+// row out of shape. Returns '' for anything that isn't a usable tag.
+function normalizeTag(raw) {
+  return String(raw).replace(/\s+/g, ' ').trim().slice(0, MAX_TAG_LENGTH).trim();
+}
+
+let tagLabelSeq = 0;
+
+// „Buch bearbeiten": title and tags in one dialog, opened by the pencil that
+// used to only rename. Putting tags on the existing button means the card gains
+// no fourth control, so the shelf stays as quiet as it is for everyone who
+// never tags. Tags are created here and nowhere else — there is no separate
+// place to manage them, and one that no book carries any more is simply gone.
+// Resolves with { title, tags }, or null when cancelled.
+function showBookEdit({ title, tags, allTags }) {
+  const content = document.createElement('div');
+  content.className = 'book-edit-tags';
+
+  const label = document.createElement('div');
+  label.className = 'book-edit-label';
+  label.id = `tag-picker-label-${++tagLabelSeq}`;
+  label.textContent = 'Tags';
+  content.appendChild(label);
+
+  const picker = document.createElement('div');
+  picker.className = 'tag-picker';
+  picker.setAttribute('role', 'group');
+  picker.setAttribute('aria-labelledby', label.id);
+  content.appendChild(picker);
+
+  // Fold this book's tags onto the shelf's canonical spelling. collectTags()
+  // merges „Gelesen" and „gelesen" into one chip, so without this a book
+  // holding the losing spelling would show that chip unpressed — and pressing
+  // it would save both spellings at once.
+  const selected = new Set(
+    tags.map((tag) => allTags.find((t) => sameCaseInsensitive(t, tag)) ?? tag),
+  );
+  const chips = new Map();
+
+  const setSelected = (tag, on) => {
+    if (on) selected.add(tag);
+    else selected.delete(tag);
+    chips.get(tag)?.setAttribute('aria-pressed', String(on));
+  };
+
+  const addChip = (tag) => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'tag-chip';
+    chip.textContent = tag;
+    chip.setAttribute('aria-pressed', String(selected.has(tag)));
+    chip.addEventListener('click', () => setSelected(tag, !selected.has(tag)));
+    chips.set(tag, chip);
+    picker.appendChild(chip);
+  };
+
+  // Every tag in the library, so tagging a book is picking, not retyping
+  // (rule 8). A tag this book alone carries is part of that list already.
+  for (const tag of allTags) addChip(tag);
+
+  const newRow = document.createElement('div');
+  newRow.className = 'tag-new';
+
+  const newInput = document.createElement('input');
+  newInput.type = 'text';
+  newInput.className = 'dialog-input tag-new-input';
+  newInput.placeholder = 'Neuer Tag';
+  newInput.maxLength = MAX_TAG_LENGTH;
+  newInput.autocomplete = 'off';
+  newInput.setAttribute('aria-label', 'Neuen Tag hinzufügen');
+
+  const addBtn = document.createElement('button');
+  addBtn.type = 'button';
+  addBtn.className = 'tag-add';
+  addBtn.textContent = 'Hinzufügen';
+
+  const syncAddBtn = () => { addBtn.disabled = normalizeTag(newInput.value) === ''; };
+
+  // Typing a tag that exists already — in any capitalisation — selects that one
+  // instead of putting a near-duplicate next to it.
+  const commitNewTag = () => {
+    const tag = normalizeTag(newInput.value);
+    if (tag) {
+      const existing = [...chips.keys()].find((t) => sameCaseInsensitive(t, tag));
+      if (!existing) addChip(tag);
+      setSelected(existing ?? tag, true);
+    }
+    newInput.value = '';
+    syncAddBtn();
+    newInput.focus();
+  };
+
+  newInput.addEventListener('input', syncAddBtn);
+  newInput.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    // While the cursor is in this field, Enter belongs to it: it adds the tag
+    // rather than reaching the dialog, which would discard the half-typed word.
+    e.preventDefault();
+    e.stopPropagation();
+    commitNewTag();
+  });
+  addBtn.addEventListener('click', commitNewTag);
+  syncAddBtn();
+
+  newRow.appendChild(newInput);
+  newRow.appendChild(addBtn);
+  content.appendChild(newRow);
+
+  return openDialog({
+    title: 'Buch bearbeiten',
+    input: { value: title, placeholder: 'Titel', label: 'Titel' },
+    content,
+    buttons: [
+      { label: 'Abbrechen', value: null },
+      {
+        label: 'Speichern',
+        primary: true,
+        getValue: (titleValue) => ({ title: titleValue, tags: [...selected] }),
+      },
+    ],
+    cancelValue: null,
+  });
+}
+
 export class LibraryView {
   constructor(root, { onOpenBook, onAddPhotos, onJoinRoom }) {
     this.root = root;
@@ -100,6 +309,7 @@ export class LibraryView {
         </header>
         <div class="library-status" hidden></div>
         <div class="library-sort" role="group" aria-label="Bücher sortieren" hidden></div>
+        <div class="library-filter" role="group" aria-label="Bücher filtern" hidden></div>
         <div class="library-grid"></div>
       </div>
     `;
@@ -143,6 +353,34 @@ export class LibraryView {
     if (grid) grid.scrollTop = 0;
   }
 
+  // Rebuilt on every render rather than once like the sort pills, because the
+  // chips themselves come and go as books are tagged, finished or deleted.
+  renderFilterBar(chips) {
+    const bar = this.root.querySelector('.library-filter');
+    if (!bar) return;
+    bar.hidden = chips.length === 0;
+    bar.innerHTML = '';
+    for (const chip of chips) {
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'filter-chip';
+      el.dataset.filter = chip.id;
+      el.textContent = chip.label;
+      el.setAttribute('aria-pressed', String(chip.id === activeFilter));
+      el.addEventListener('click', () => this.setFilter(chip.id));
+      bar.appendChild(el);
+    }
+  }
+
+  // Tapping the active chip clears the filter: the control that hid the books
+  // brings them back, so there is no separate „Alle" chip to look for (rule 6).
+  async setFilter(id) {
+    activeFilter = activeFilter === id ? null : id;
+    await this.renderGrid();
+    const grid = this.root.querySelector('.library-grid');
+    if (grid) grid.scrollTop = 0;
+  }
+
   async renderGrid() {
     const grid = this.root.querySelector('.library-grid');
     if (!grid) return;
@@ -153,13 +391,15 @@ export class LibraryView {
     const renderId = ++this.renderId;
     const isStale = () => this.renderId !== renderId;
 
-    const books = sortBooks(await listBooks(), this.sortMode);
+    const allBooks = sortBooks(await listBooks(), this.sortMode);
     if (isStale()) return;
 
     const sortBar = this.root.querySelector('.library-sort');
-    if (sortBar) sortBar.hidden = books.length === 0;
+    if (sortBar) sortBar.hidden = allBooks.length === 0;
 
-    if (books.length === 0) {
+    if (allBooks.length === 0) {
+      activeFilter = null;
+      this.renderFilterBar([]);
       grid.innerHTML = '';
       grid.appendChild(this.buildConnectTile());
       const empty = document.createElement('div');
@@ -175,12 +415,35 @@ export class LibraryView {
 
     // Fetch all thumbnails in one batch so the build loop below is fully
     // synchronous: after this last await there is no interleaving point, so
-    // the latest run always completes its DOM swap atomically.
-    const [thumbs, completionsLists] = await Promise.all([
-      getThumbs(books.map((b) => b.id)),
-      getCompletionsMany(books.map((b) => b.id)),
+    // the latest run always completes its DOM swap atomically. Loaded for the
+    // whole shelf, not just the visible part — the filter chips are derived
+    // from the completions of every book, and filtering afterwards keeps that
+    // single batch as the last await.
+    const [allThumbs, allCompletions] = await Promise.all([
+      getThumbs(allBooks.map((b) => b.id)),
+      getCompletionsMany(allBooks.map((b) => b.id)),
     ]);
     if (isStale()) return;
+
+    const doneFlags = allCompletions.map((list) => list.length > 0);
+    const chips = buildFilterChips(allBooks, doneFlags);
+    // The chip we were filtering by can disappear under us — the last book
+    // carrying that tag gets deleted or retagged, or finishing the final open
+    // book collapses the „gelesen" pair. Fall back to the whole shelf rather
+    // than leaving a filter active that nothing on screen explains.
+    if (activeFilter && !chips.some((c) => c.id === activeFilter)) activeFilter = null;
+    this.renderFilterBar(chips);
+    const allTags = collectTags(allBooks);
+
+    const books = [];
+    const thumbs = [];
+    const completionsLists = [];
+    for (let i = 0; i < allBooks.length; i++) {
+      if (!matchesFilter(allBooks[i], doneFlags[i], activeFilter)) continue;
+      books.push(allBooks[i]);
+      thumbs.push(allThumbs[i]);
+      completionsLists.push(allCompletions[i]);
+    }
 
     const newUrls = [];
     const fragment = document.createDocumentFragment();
@@ -198,7 +461,7 @@ export class LibraryView {
         <div class="book-meta"></div>
         <div class="book-actions">
           <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
-          <button class="book-action book-rename" type="button" aria-label="Buch umbenennen">${ICON_PENCIL}</button>
+          <button class="book-action book-edit" type="button" aria-label="Buch bearbeiten">${ICON_PENCIL}</button>
           <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
         </div>
       `;
@@ -271,37 +534,43 @@ export class LibraryView {
         }
       });
 
-      const renameBtn = card.querySelector('.book-rename');
-      renameBtn.addEventListener('click', async (e) => {
+      const editBtn = card.querySelector('.book-edit');
+      editBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        renameBtn.disabled = true;
-        let newTitle = null;
+        editBtn.disabled = true;
+        let edited = null;
         try {
-          newTitle = await showPrompt({
-            title: 'Buch umbenennen',
-            value: book.title,
-            confirmLabel: 'Speichern',
+          edited = await showBookEdit({
+            title: book.title,
+            tags: bookTags(book),
+            allTags,
           });
         } finally {
-          renameBtn.disabled = false;
+          editBtn.disabled = false;
         }
-        if (newTitle === null) return;
-        const trimmed = newTitle.trim();
-        if (!trimmed || trimmed === book.title) return;
+        if (edited === null) return;
+        const newTitle = edited.title.trim();
+        if (!newTitle) return;
+        const newTags = [...edited.tags].sort(titleCollator.compare);
+        const titleChanged = newTitle !== book.title;
+        const tagsChanged = !sameTags(newTags, bookTags(book));
+        if (!titleChanged && !tagsChanged) return;
         try {
-          await renameBook(book.id, trimmed);
+          await updateBookDetails(book.id, { title: newTitle, tags: newTags });
         } catch (err) {
-          console.error('Fehler beim Umbenennen', err);
-          await showAlert({ message: 'Das Buch konnte nicht umbenannt werden.' });
+          console.error('Fehler beim Speichern', err);
+          await showAlert({ message: 'Die Änderungen konnten nicht gespeichert werden.' });
           return;
         }
-        book.title = trimmed;
-        titleEl.textContent = trimmed;
-        card.setAttribute('aria-label', `${trimmed} öffnen`);
-        // Under A–Z the new name usually belongs somewhere else on the shelf;
-        // leaving the card where it was would contradict the very order the
-        // user selected. The other modes are unaffected by a title change.
-        if (this.sortMode === 'title') await this.renderGrid();
+        book.title = newTitle;
+        book.tags = newTags;
+        titleEl.textContent = newTitle;
+        card.setAttribute('aria-label', `${newTitle} öffnen`);
+        // Changed tags can add or drop a filter chip, and can push this very
+        // book out of the active filter, so the shelf has to be rebuilt. A new
+        // title only moves the card under A–Z; the other orders keep it where
+        // it is, and leaving it there preserves the scroll position.
+        if (tagsChanged || (titleChanged && this.sortMode === 'title')) await this.renderGrid();
       });
 
       const shareBtn = card.querySelector('.book-share');
