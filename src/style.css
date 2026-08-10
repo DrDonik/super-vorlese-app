@@ -1706,7 +1706,10 @@ button {
   animation: mood-pop 0.35s ease-out both;
 }
 
-.mood-overlay .mood-reveal-ours .mood-reveal-tile {
+/* The celebrated „Wir" glow belongs to the keepsake itself, so the library
+   history shows it too — same picks, same look, wherever they are seen. */
+.mood-overlay .mood-reveal-ours .mood-reveal-tile,
+.mood-history-card .mood-reveal-ours .mood-reveal-tile {
   box-shadow: 0 0 0 3px var(--success);
 }
 
@@ -1759,9 +1762,16 @@ button {
   border-radius: 50%;
 }
 
-/* Completion history modal. */
+/* Completion history modal. The keepsake is the illustrations, so this dialog
+   is sized around them rather than around the 360px text dialogs it borrows its
+   shell from (issue #138): it takes the width up to a cap set by three tiles at
+   their full size, and grows in height with its content until it fills the
+   screen — one finish stays a modest dialog, many turn it into a tall scrolling
+   archive. The narrower side padding buys the tiles ~40px more on a phone. */
 .mood-history-card {
-  max-width: 420px;
+  max-width: 640px;
+  max-height: 100%;
+  padding: 24px 20px;
 }
 
 .mood-history-list {
@@ -1771,9 +1781,29 @@ button {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-height: 60vh;
+  /* The list is the only part that scrolls: the book title above and the close
+     button below stay put, so the way out is always in reach. min-height lets
+     it shrink below its content, which is what makes the card's max-height
+     bite instead of overflowing the screen. */
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
-  text-align: left;
+}
+
+/* A row never holds more than MOOD_PICK_COUNT (3) tiles, so a tile sized to a
+   third of the row fills the card without ever wrapping: ~180px on a tablet or
+   desktop and ~94px on a phone, instead of the compact 72px the rows carry by
+   default. Every tile takes that same width whatever its row holds — as in the
+   reveal, where „Wir" and „Ich" tiles are equals — so the size stays a property
+   of the keepsake rather than of how the picks happened to split. The 22px is
+   the row's two 10px gaps plus a rounding guard, and the 180px cap keeps one
+   entry from swallowing a large screen. The svh term is the same idea applied
+   to height (as in the reveal above): an entry is up to three rows tall, so it
+   keeps the newest finish whole on a short landscape screen instead of pushing
+   „Ich" and „Du" below the fold. Where that would shrink the tiles below the
+   compact 72px, the floor wins and the entry scrolls — as it did before. */
+.mood-history-card .mood-reveal-tile {
+  width: max(72px, min(180px, (100% - 22px) / 3, (100svh - 260px) / 3));
 }
 
 .mood-history-entry {
@@ -1786,8 +1816,15 @@ button {
   padding-bottom: 0;
 }
 
+/* Text scales with the tiles it labels, so the entry keeps the reveal's balance. */
+.mood-history-card .mood-reveal-label {
+  font-size: 15px;
+}
+
+/* Centred with the rows it heads (the dialog's own alignment), so each entry
+   reads as one block rather than a stray label off to the side. */
 .mood-history-date {
-  font-size: 13px;
+  font-size: 14px;
   color: var(--fg-dim);
   margin-bottom: 8px;
 }
