@@ -101,8 +101,16 @@ function bookTags(book) {
   return Array.isArray(book.tags) ? book.tags : [];
 }
 
-function sameCaseInsensitive(a, b) {
-  return a.localeCompare(b, 'de-CH', { sensitivity: 'base' }) === 0;
+// The one definition of "these are the same tag", used everywhere a tag is
+// merged, matched or looked up. Only capitalisation is ignored: „Märchen" and
+// „Marchen" stay distinct, because they are different words and folding them
+// together would silently rewrite what the user typed.
+function tagKey(tag) {
+  return tag.toLocaleLowerCase('de-CH');
+}
+
+function sameTag(a, b) {
+  return tagKey(a) === tagKey(b);
 }
 
 // Compares the tag sets of one book, which hold no duplicates, so equal length
@@ -112,16 +120,16 @@ function sameTags(a, b) {
 }
 
 // Every tag in use, in the same order the A–Z titles get, so „3 Jahre" precedes
-// „5 Jahre" precedes „10 Jahre". Tags that differ only in capitalisation are
-// merged onto the spelling encountered first; the edit dialog prevents them
-// from arising in the first place, but a shelf carrying both must not offer the
-// same filter twice.
+// „5 Jahre" precedes „10 Jahre". Tags sharing a key are merged onto the
+// spelling encountered first; the edit dialog prevents variants from arising in
+// the first place, but a shelf carrying both must not offer the same filter
+// twice — and matchesFilter uses the same key, so the merged chip still finds
+// the books holding the other spelling.
 function collectTags(books) {
   const byKey = new Map();
   for (const book of books) {
     for (const tag of bookTags(book)) {
-      const key = tag.toLocaleLowerCase('de-CH');
-      if (!byKey.has(key)) byKey.set(key, tag);
+      if (!byKey.has(tagKey(tag))) byKey.set(tagKey(tag), tag);
     }
   }
   return [...byKey.values()].sort(titleCollator.compare);
@@ -154,7 +162,8 @@ function matchesFilter(book, isDone, filter) {
   if (!filter) return true;
   if (filter === FILTER_DONE) return isDone;
   if (filter === FILTER_OPEN) return !isDone;
-  return bookTags(book).includes(filter.slice(TAG_FILTER_PREFIX.length));
+  const tag = filter.slice(TAG_FILTER_PREFIX.length);
+  return bookTags(book).some((t) => sameTag(t, tag));
 }
 
 // Collapses whitespace and caps the length, so no chip can stretch the filter
@@ -192,7 +201,7 @@ function showBookEdit({ title, tags, allTags }) {
   // holding the losing spelling would show that chip unpressed — and pressing
   // it would save both spellings at once.
   const selected = new Set(
-    tags.map((tag) => allTags.find((t) => sameCaseInsensitive(t, tag)) ?? tag),
+    tags.map((tag) => allTags.find((t) => sameTag(t, tag)) ?? tag),
   );
   const chips = new Map();
 
@@ -240,7 +249,7 @@ function showBookEdit({ title, tags, allTags }) {
   const commitNewTag = () => {
     const tag = normalizeTag(newInput.value);
     if (tag) {
-      const existing = [...chips.keys()].find((t) => sameCaseInsensitive(t, tag));
+      const existing = [...chips.keys()].find((t) => sameTag(t, tag));
       if (!existing) addChip(tag);
       setSelected(existing ?? tag, true);
     }
@@ -376,7 +385,16 @@ export class LibraryView {
   // brings them back, so there is no separate „Alle" chip to look for (rule 6).
   async setFilter(id) {
     activeFilter = activeFilter === id ? null : id;
+    // renderFilterBar rebuilds the row, so the chip that was just activated is
+    // destroyed and focus would fall back to <body> — leaving a keyboard user
+    // to tab in from the top of the page again. Put focus back on the chip's
+    // replacement, but only if it had focus: on a tap it does not, and forcing
+    // it there would raise a focus ring nobody asked for.
+    const hadFocus = this.root.querySelector('.library-filter .filter-chip:focus') !== null;
     await this.renderGrid();
+    if (hadFocus) {
+      this.root.querySelector(`.library-filter [data-filter="${CSS.escape(id)}"]`)?.focus();
+    }
     const grid = this.root.querySelector('.library-grid');
     if (grid) grid.scrollTop = 0;
   }
@@ -555,11 +573,19 @@ export class LibraryView {
         const titleChanged = newTitle !== book.title;
         const tagsChanged = !sameTags(newTags, bookTags(book));
         if (!titleChanged && !tagsChanged) return;
+        let saved;
         try {
-          await updateBookDetails(book.id, { title: newTitle, tags: newTags });
+          saved = await updateBookDetails(book.id, { title: newTitle, tags: newTags });
         } catch (err) {
           console.error('Fehler beim Speichern', err);
           await showAlert({ message: 'Die Änderungen konnten nicht gespeichert werden.' });
+          return;
+        }
+        // Gone while the dialog was open (deleted in another tab). Nothing was
+        // written, so rebuild the shelf — the card simply goes away, which is
+        // the truth. An error message would be about a book that no longer is.
+        if (!saved) {
+          await this.renderGrid();
           return;
         }
         book.title = newTitle;

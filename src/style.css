@@ -197,9 +197,12 @@ button {
 }
 
 /* The active chip is the only thing on this screen hiding books, so it is the
-   most solid one in the row: the short shelf always has a visible reason. */
+   most solid one in the row: the short shelf always has a visible reason. The
+   fill cannot carry that on its own — --surface on --bg is 1.35:1 — so the
+   state rides on the outline, which reaches 7.3:1 against the background. */
 .filter-chip[aria-pressed='true'] {
   background: var(--surface);
+  border-color: var(--fg-dim);
   color: var(--fg);
   font-weight: 600;
 }
@@ -1444,8 +1447,11 @@ button {
   border-color: var(--fg-dim);
 }
 
+/* Carries its selected state on the outline for the same contrast reason as
+   the filter chips, and so the two read alike. */
 .tag-chip[aria-pressed='true'] {
   background: var(--surface);
+  border-color: var(--fg-dim);
   color: var(--fg);
   font-weight: 600;
 }
