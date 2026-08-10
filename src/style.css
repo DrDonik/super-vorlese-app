@@ -163,6 +163,54 @@ button {
   background: var(--surface-line);
 }
 
+/* Tag filter (issue #140). Same geometry and rhythm as the sort pills directly
+   above, so the two rows read as one family — but outlined rather than flat,
+   because they do different jobs: one arranges the shelf, the other hides part
+   of it. Two identical-looking rows would be a riddle. Absent entirely until
+   something is worth filtering, so an untagged library looks untouched. */
+.library-filter {
+  padding: 0 16px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Same 44px target as the sort pills: quiet is a matter of fill, never of
+   giving a finger less to aim at. */
+.filter-chip {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  padding: 0 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.filter-chip:hover {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
+/* The active chip is the only thing on this screen hiding books, so it is the
+   most solid one in the row: the short shelf always has a visible reason. The
+   fill cannot carry that on its own — --surface on --bg is 1.35:1 — so the
+   state rides on the outline, which reaches 7.3:1 against the background. */
+.filter-chip[aria-pressed='true'] {
+  background: var(--surface);
+  border-color: var(--fg-dim);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.filter-chip[aria-pressed='true']:hover {
+  background: var(--surface-line);
+}
+
 .library-grid {
   padding: 16px 32px 32px;
   display: grid;
@@ -292,7 +340,7 @@ button {
 
 /* Neutral lighten on hover for non-destructive actions; only delete uses
    --danger. Keeps yellow and blue reserved for their single jobs. */
-.book-rename:hover,
+.book-edit:hover,
 .book-share:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
@@ -647,6 +695,8 @@ button {
      target height is kept. */
   .library-sort { padding: 0 4px; padding-left: calc(4px + env(safe-area-inset-left, 0px)); padding-right: calc(4px + env(safe-area-inset-right, 0px)); gap: 4px; }
   .sort-pill { padding: 0 12px; }
+  .library-filter { padding: 0 4px; padding-left: calc(4px + env(safe-area-inset-left, 0px)); padding-right: calc(4px + env(safe-area-inset-right, 0px)); gap: 4px; }
+  .filter-chip { padding: 0 12px; }
   .add-book { padding: 10px 14px; font-size: 14px; }
 }
 
@@ -1349,6 +1399,93 @@ button {
 .dialog-btn-primary:disabled {
   background: var(--surface);
   color: var(--fg-dim);
+  cursor: not-allowed;
+}
+
+/* ---- Book edit dialog: tags (issue #140) -------------------------------- */
+
+.book-edit-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.book-edit-label {
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
+/* Bounded height so a well-organised shelf's tag list can't push the buttons
+   off a phone screen; the picker scrolls instead of the dialog growing. */
+.tag-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-height: 33vh;
+  overflow-y: auto;
+}
+
+/* Deliberately the same pill language as the library's filter chips: the thing
+   you switch on here is the thing you tap on the shelf later (rule 1). */
+.tag-chip {
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  padding: 0 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.tag-chip:hover {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+}
+
+/* Carries its selected state on the outline for the same contrast reason as
+   the filter chips, and so the two read alike. */
+.tag-chip[aria-pressed='true'] {
+  background: var(--surface);
+  border-color: var(--fg-dim);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.tag-new {
+  display: flex;
+  gap: 8px;
+}
+
+.tag-new-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Secondary weight: adding a tag is a step inside the dialog, not the dialog's
+   completing action — that stays the Speichern button below. */
+.tag-add {
+  background: var(--surface);
+  color: var(--fg);
+  border: none;
+  border-radius: 10px;
+  padding: 0 16px;
+  min-height: 44px;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.tag-add:not(:disabled):hover {
+  background: var(--surface-line);
+}
+
+.tag-add:disabled {
+  opacity: 0.5;
   cursor: not-allowed;
 }
 

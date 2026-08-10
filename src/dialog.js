@@ -21,7 +21,14 @@ function enqueue(factory) {
 
 let dialogSeq = 0;
 
-function openDialog({ title, message, input, buttons, cancelValue }) {
+// The shared modal machinery behind showAlert / showConfirm / showPrompt, and
+// exported for the few dialogs that need a field of their own (the library's
+// „Buch bearbeiten"). Callers supplying `content` get their element placed
+// between the message and the buttons; it may hold buttons and inputs of its
+// own, which join the focus trap in DOM order. A button with `getValue` decides
+// the resolved value itself and receives the text input's current value, so a
+// custom dialog can hand back more than a single string.
+export function openDialog({ title, message, input, content, buttons, cancelValue }) {
   return enqueue(() => new Promise((resolve) => {
     const previouslyFocused = document.activeElement;
 
@@ -58,10 +65,12 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       inputEl.type = 'text';
       inputEl.value = input.value ?? '';
       if (input.placeholder) inputEl.placeholder = input.placeholder;
-      inputEl.setAttribute('aria-label', title || 'Eingabe');
+      inputEl.setAttribute('aria-label', input.label || title || 'Eingabe');
       inputEl.autocomplete = 'off';
       card.appendChild(inputEl);
     }
+
+    if (content) card.appendChild(content);
 
     let cleaned = false;
     let onKeyDown;
@@ -86,7 +95,8 @@ function openDialog({ title, message, input, buttons, cancelValue }) {
       el.className = btn.primary ? 'dialog-btn dialog-btn-primary' : 'dialog-btn';
       el.textContent = btn.label;
       el.addEventListener('click', () => {
-        cleanup(inputEl && btn.primary ? inputEl.value : btn.value);
+        if (btn.getValue) cleanup(btn.getValue(inputEl?.value));
+        else cleanup(inputEl && btn.primary ? inputEl.value : btn.value);
       });
       if (btn.primary) primaryBtn = el;
       if (btn.defaultFocus) defaultFocusBtn = el;
