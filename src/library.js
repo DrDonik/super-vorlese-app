@@ -5,15 +5,11 @@ import {
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
-import { exportBook, importBundle, shareOrDownload } from './bundle.js';
+import { importBundle } from './bundle.js';
 import { closeSyncForBook, lookupRoom } from './sync.js';
 import { showAlert, showConfirm, showPrompt, openDialog } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
-
-const ICON_TRASH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></svg>`;
-
-const ICON_SHARE = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v13"/><path d="M7 8l5-5 5 5"/><path d="M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/></svg>`;
 
 function deriveTitle(filename) {
   return filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() || 'Unbenannt';
@@ -174,12 +170,24 @@ function normalizeTag(raw) {
 
 let tagLabelSeq = 0;
 
-// „Buch bearbeiten": title and tags in one dialog, opened by the pencil that
-// used to only rename. Putting tags on the existing button means the card gains
-// no fourth control, so the shelf stays as quiet as it is for everyone who
-// never tags. Tags are created here and nowhere else — there is no separate
-// place to manage them, and one that no book carries any more is simply gone.
-// Resolves with { title, tags }, or null when cancelled.
+// Returned by showBookEdit when the user asks to delete the book instead of
+// saving it. A sentinel rather than a flag on the result object: deleting and
+// saving are opposite outcomes, and identity comparison can't be misread.
+const DELETE_REQUESTED = Symbol('delete-requested');
+
+// „Buch bearbeiten": title, tags and deletion in one dialog, opened by the
+// pencil that used to only rename. Putting tags on the existing button means
+// the card gains no fourth control, so the shelf stays as quiet as it is for
+// everyone who never tags. Tags are created here and nowhere else — there is no
+// separate place to manage them, and one that no book carries any more is
+// simply gone.
+//
+// Deleting lives here too (issue #143): on the cover it sat a fingerwidth from
+// „Buch öffnen", so a child aiming for the book met a red warning instead —
+// and the confirmation that follows is weak protection for someone who taps the
+// bright button to make a surprise dialog go away. Behind the pencil it is
+// reached only on purpose.
+// Resolves with { title, tags }, DELETE_REQUESTED, or null when cancelled.
 function showBookEdit({ title, tags, allTags }) {
   const content = document.createElement('div');
   content.className = 'book-edit-tags';
@@ -278,6 +286,7 @@ function showBookEdit({ title, tags, allTags }) {
     title: 'Buch bearbeiten',
     input: { value: title, placeholder: 'Titel', label: 'Titel' },
     content,
+    dangerButton: { label: 'Buch löschen', value: DELETE_REQUESTED },
     buttons: [
       { label: 'Abbrechen', value: null },
       {
@@ -468,21 +477,24 @@ export class LibraryView {
     fragment.appendChild(this.buildConnectTile());
     for (let i = 0; i < books.length; i++) {
       const book = books[i];
+      // „Buch öffnen" is a real button covering the whole card, with cover,
+      // title and the other controls layered over it (issue #128). The card
+      // itself used to be a div[role="button"] holding buttons — invalid ARIA,
+      // and the reason the click handler had to sort out which of them was
+      // meant. Cover, title and page count carry pointer-events: none, so a tap
+      // anywhere on them still falls through to the open button; the pencil and
+      // the mood strip sit above it and catch their own taps.
       const card = document.createElement('div');
       card.className = 'book-card';
-      card.setAttribute('role', 'button');
-      card.tabIndex = 0;
-      card.setAttribute('aria-label', `${book.title} öffnen`);
       card.innerHTML = `
+        <button class="book-open" type="button"></button>
         <div class="book-cover"></div>
         <div class="book-title"></div>
         <div class="book-meta"></div>
-        <div class="book-actions">
-          <button class="book-action book-share" type="button" aria-label="Buch teilen">${ICON_SHARE}</button>
-          <button class="book-action book-edit" type="button" aria-label="Buch bearbeiten">${ICON_PENCIL}</button>
-          <button class="book-action book-delete" type="button" aria-label="Buch löschen">${ICON_TRASH}</button>
-        </div>
+        <button class="book-action book-edit" type="button" aria-label="Buch bearbeiten">${ICON_PENCIL}</button>
       `;
+      const openBtn = card.querySelector('.book-open');
+      openBtn.setAttribute('aria-label', `${book.title} öffnen`);
       const titleEl = card.querySelector('.book-title');
       titleEl.textContent = book.title;
       card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
@@ -498,7 +510,12 @@ export class LibraryView {
         cover.appendChild(img);
       } else {
         cover.classList.add('no-cover');
-        cover.textContent = '📖';
+        // In a span of its own rather than on the cover, which also holds the
+        // mood strip: aria-hidden on the cover would take that button with it.
+        const glyph = document.createElement('span');
+        glyph.textContent = '📖';
+        glyph.setAttribute('aria-hidden', 'true');
+        cover.appendChild(glyph);
       }
 
       // The most recent shared-reading completion surfaces as a strip of mood
@@ -539,18 +556,10 @@ export class LibraryView {
         cover.appendChild(strip);
       }
 
-      const open = () => this.onOpenBook(book.id);
-      card.addEventListener('click', (e) => {
-        if (e.target.closest('.book-actions')) return;
-        open();
-      });
-      card.addEventListener('keydown', (e) => {
-        if (e.target !== card) return;
-        if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
-          open();
-        }
-      });
+      // A real button needs no keydown handling of its own: Enter and Space
+      // activate it, and the other controls are siblings rather than children,
+      // so nothing has to be filtered back out of this click.
+      openBtn.addEventListener('click', () => this.onOpenBook(book.id));
 
       const editBtn = card.querySelector('.book-edit');
       editBtn.addEventListener('click', async (e) => {
@@ -565,8 +574,22 @@ export class LibraryView {
           });
         } finally {
           editBtn.disabled = false;
+          // The dialog returns focus to whatever had it on opening — this
+          // button — but it does that while the button is still disabled, so
+          // the focus fell to <body> and a keyboard user had to start over at
+          // the top of the page. Now that it can take focus again, put it back.
+          // It matters most on the delete path: the confirmation that follows
+          // would otherwise have nothing to return to either.
+          editBtn.focus();
         }
         if (edited === null) return;
+        // Anything typed in the dialog is dropped on this path on purpose:
+        // renaming a book and deleting it are opposite intents, and the
+        // confirmation names the title the book actually still has.
+        if (edited === DELETE_REQUESTED) {
+          await this.confirmAndDelete(book);
+          return;
+        }
         const newTitle = edited.title.trim();
         if (!newTitle) return;
         const newTags = [...edited.tags].sort(titleCollator.compare);
@@ -591,43 +614,12 @@ export class LibraryView {
         book.title = newTitle;
         book.tags = newTags;
         titleEl.textContent = newTitle;
-        card.setAttribute('aria-label', `${newTitle} öffnen`);
+        openBtn.setAttribute('aria-label', `${newTitle} öffnen`);
         // Changed tags can add or drop a filter chip, and can push this very
         // book out of the active filter, so the shelf has to be rebuilt. A new
         // title only moves the card under A–Z; the other orders keep it where
         // it is, and leaving it there preserves the scroll position.
         if (tagsChanged || (titleChanged && this.sortMode === 'title')) await this.renderGrid();
-      });
-
-      const shareBtn = card.querySelector('.book-share');
-      shareBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        shareBtn.disabled = true;
-        try {
-          const bundle = await exportBook(book.id);
-          await shareOrDownload(bundle);
-        } catch (err) {
-          console.error('Teilen fehlgeschlagen', err);
-          await showAlert({ message: `Das Buch konnte nicht geteilt werden: ${err.message || err}` });
-        } finally {
-          shareBtn.disabled = false;
-        }
-      });
-
-      const delBtn = card.querySelector('.book-delete');
-      delBtn.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        const confirmed = await showConfirm({
-          title: 'Buch löschen',
-          message: `„${book.title}" wirklich löschen?`,
-          confirmLabel: 'Löschen',
-          destructive: true,
-        });
-        if (confirmed) {
-          closeSyncForBook(book.id);
-          await deleteBook(book.id);
-          await this.renderGrid();
-        }
       });
 
       fragment.appendChild(card);
@@ -640,6 +632,24 @@ export class LibraryView {
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
+  }
+
+  // Reached from the „Buch bearbeiten" dialog, which has closed by the time
+  // this runs — dialogs are serialized and never stack (see dialog.js). The
+  // confirmation stays even though getting here already takes two deliberate
+  // taps: deleting a photographed book destroys the only copy of those pages,
+  // and nothing in the app can bring it back (issue #131).
+  async confirmAndDelete(book) {
+    const confirmed = await showConfirm({
+      title: 'Buch löschen',
+      message: `„${book.title}" wirklich löschen?`,
+      confirmLabel: 'Löschen',
+      destructive: true,
+    });
+    if (!confirmed) return;
+    closeSyncForBook(book.id);
+    await deleteBook(book.id);
+    await this.renderGrid();
   }
 
   // Shows every time this book was finished together, newest first: the date
@@ -695,25 +705,19 @@ export class LibraryView {
   // The permanent first tile in the library: starts a synced reading session
   // with a partner. Framed around the intent ("read together"), not as a third
   // way to import a book — joining may fetch the book, or use a copy you have.
+  // Carries no controls of its own, so unlike a book card it can simply be the
+  // button rather than needing one layered over it (issue #128).
   buildConnectTile() {
-    const tile = document.createElement('div');
+    const tile = document.createElement('button');
+    tile.type = 'button';
     tile.className = 'book-card connect-card';
-    tile.setAttribute('role', 'button');
-    tile.tabIndex = 0;
     tile.setAttribute('aria-label', 'Gemeinsam lesen');
     tile.innerHTML = `
-      <div class="book-cover connect-cover">👥</div>
-      <div class="book-title">Gemeinsam lesen</div>
-      <div class="book-meta">Synchronisations-Code eingeben und mitlesen</div>
+      <span class="book-cover connect-cover" aria-hidden="true">👥</span>
+      <span class="book-title">Gemeinsam lesen</span>
+      <span class="book-meta">Synchronisations-Code eingeben und mitlesen</span>
     `;
     tile.addEventListener('click', () => this.startJoin());
-    tile.addEventListener('keydown', (e) => {
-      if (e.target !== tile) return;
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        this.startJoin();
-      }
-    });
     return tile;
   }
 

@@ -28,7 +28,12 @@ let dialogSeq = 0;
 // own, which join the focus trap in DOM order. A button with `getValue` decides
 // the resolved value itself and receives the text input's current value, so a
 // custom dialog can hand back more than a single string.
-export function openDialog({ title, message, input, content, buttons, cancelValue }) {
+//
+// `dangerButton` is a destructive action on the dialog's subject („Buch
+// löschen"), and gets a row of its own above the accept/cancel pair. It is not
+// one of `buttons` on purpose: those share the row evenly, which would put a
+// delete a fingerwidth from „Speichern".
+export function openDialog({ title, message, input, content, buttons, dangerButton, cancelValue }) {
   return enqueue(() => new Promise((resolve) => {
     const previouslyFocused = document.activeElement;
 
@@ -84,6 +89,18 @@ export function openDialog({ title, message, input, content, buttons, cancelValu
       }
       resolve(value);
     };
+
+    if (dangerButton) {
+      const dangerRow = document.createElement('div');
+      dangerRow.className = 'dialog-danger-row';
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.className = 'dialog-btn dialog-btn-danger';
+      el.textContent = dangerButton.label;
+      el.addEventListener('click', () => cleanup(dangerButton.value));
+      dangerRow.appendChild(el);
+      card.appendChild(dangerRow);
+    }
 
     const row = document.createElement('div');
     row.className = 'dialog-buttons';

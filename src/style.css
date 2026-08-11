@@ -254,6 +254,32 @@ button {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  /* The connect tile is a <button>; a book card is a plain container with one
+     layered over it. Both need to inherit the page's typography. */
+  font: inherit;
+  color: inherit;
+}
+
+/* „Buch öffnen": an invisible button the size of the whole card, so the cover,
+   the title and the padding around them all open the book — exactly the target
+   the card offered when it was a div[role="button"] (issue #128). It comes
+   first in the DOM, so everything painted after it lies on top. */
+.book-open {
+  position: absolute;
+  inset: 0;
+  border: none;
+  padding: 0;
+  background: none;
+  border-radius: inherit;
+  cursor: pointer;
+}
+
+/* Passing the taps through to the button underneath. Without this, the cover
+   and title would swallow them: they are painted over it. */
+.book-cover,
+.book-title,
+.book-meta {
+  pointer-events: none;
 }
 
 .book-card:hover {
@@ -314,34 +340,31 @@ button {
   color: var(--fg-dim);
 }
 
-.book-actions {
+/* The card's only control since sharing left the cover (issue #143) and
+   deleting moved into the edit dialog, which is what makes 44px fit here: three
+   of them did not, on a 140px column. */
+.book-action {
   position: absolute;
   top: 6px;
   right: 6px;
-  display: flex;
-  gap: 6px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.book-card:hover .book-actions,
-.book-card:focus-within .book-actions {
-  opacity: 1;
-}
-
-.book-action {
-  width: 32px;
-  height: 32px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   border: none;
-  padding: 7px;
+  padding: 12px;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s;
+  opacity: 0;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.book-card:hover .book-action,
+.book-card:focus-within .book-action {
+  opacity: 1;
 }
 
 .book-action svg {
@@ -350,25 +373,23 @@ button {
   display: block;
 }
 
-/* Neutral lighten on hover for non-destructive actions; only delete uses
-   --danger. Keeps yellow and blue reserved for their single jobs. */
-.book-edit:hover,
-.book-share:hover {
+/* Neutral lighten on hover: this button opens a dialog, it destroys nothing.
+   Keeps yellow, blue and red reserved for their single jobs. */
+.book-edit:hover {
   background: rgba(255, 255, 255, 0.2);
   color: #fff;
 }
 
-.book-share:disabled {
-  opacity: 0.6;
+/* Held down while its dialog is open. Dims the icon rather than the button:
+   opacity is what reveals this button on hover, and the two would fight. */
+.book-action:disabled {
+  color: rgba(255, 255, 255, 0.5);
   cursor: progress;
 }
 
-.book-delete:hover {
-  background: var(--danger);
-}
-
+/* Nothing hovers on a touch screen, so the button stays out. */
 @media (hover: none) {
-  .book-actions { opacity: 1; }
+  .book-action { opacity: 1; }
 }
 
 /* ============ READER ============ */
@@ -1414,6 +1435,25 @@ button {
   cursor: not-allowed;
 }
 
+/* A destructive action on the dialog's subject („Buch löschen"): its own row,
+   separated by a rule, well away from the primary button it must never be
+   mistaken for. Full width, like the accept/cancel pair below it. */
+.dialog-danger-row {
+  display: flex;
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--surface-line);
+}
+
+.dialog-btn-danger {
+  color: var(--danger);
+}
+
+.dialog-btn-danger:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
 /* ---- Book edit dialog: tags (issue #140) -------------------------------- */
 
 .book-edit-tags {
@@ -1886,7 +1926,11 @@ button {
 
 /* Mood strip on a finished book's cover: the most recent read's moods, tappable
    to open the full history. Overlaid along the bottom of the cover. */
+/* Sits inside the cover, which anchors it to the cover's lower edge — but the
+   cover passes taps through to „Buch öffnen", so this button has to take its
+   own back (issue #128). */
 .book-mood-strip {
+  pointer-events: auto;
   position: absolute;
   left: 0;
   right: 0;
