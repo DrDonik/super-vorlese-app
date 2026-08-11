@@ -159,6 +159,12 @@ export async function importBundle(file, { dedupe = false } = {}) {
   return { id, title };
 }
 
+// Deliberately without a caller since the export button left the book cards
+// (issue #143, ADR 17). exportBook() above is very much alive — it is what a
+// sync session ships to a joining device — but nothing in the UI hands a bundle
+// to the user any more. Kept because it is the piece a local backup of
+// photographed books would need, and because writing it again would cost more
+// than the twenty lines it takes to leave standing.
 export async function shareOrDownload({ blob, filename }) {
   const file = new File([blob], filename, { type: blob.type });
   if (navigator.canShare?.({ files: [file] }) && navigator.share) {
