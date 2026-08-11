@@ -127,6 +127,7 @@ button {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 8px;
 }
 
 /* Quiet, but a full-size target: 44px is what a six-year-old's or a
@@ -149,8 +150,10 @@ button {
 /* Hover brightens the label but adds no fill: the filled pill means "this is the
    current order", and a hover fill would blur that distinction. The selected
    pill deepens on hover the same way the add buttons do. */
-.sort-pill:hover {
-  color: var(--fg);
+@media (hover: hover) {
+  .sort-pill:hover {
+    color: var(--fg);
+  }
 }
 
 .sort-pill[aria-pressed='true'] {
@@ -159,8 +162,10 @@ button {
   font-weight: 600;
 }
 
-.sort-pill[aria-pressed='true']:hover {
-  background: var(--surface-line);
+@media (hover: hover) {
+  .sort-pill[aria-pressed='true']:hover {
+    background: var(--surface-line);
+  }
 }
 
 /* Tag filter (issue #140). Same geometry and rhythm as the sort pills directly
@@ -186,14 +191,16 @@ button {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.filter-chip:hover {
-  color: var(--fg);
-  border-color: var(--fg-dim);
+@media (hover: hover) {
+  .filter-chip:hover {
+    color: var(--fg);
+    border-color: var(--fg-dim);
+  }
 }
 
 /* The active chip is the only thing on this screen hiding books, so it is the
@@ -207,8 +214,10 @@ button {
   font-weight: 600;
 }
 
-.filter-chip[aria-pressed='true']:hover {
-  background: var(--surface-line);
+@media (hover: hover) {
+  .filter-chip[aria-pressed='true']:hover {
+    background: var(--surface-line);
+  }
 }
 
 .library-grid {
@@ -1437,14 +1446,16 @@ button {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-size: 14px;
+  font-size: 12px;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
 
-.tag-chip:hover {
-  color: var(--fg);
-  border-color: var(--fg-dim);
+@media (hover: hover) {
+  .tag-chip:hover {
+    color: var(--fg);
+    border-color: var(--fg-dim);
+  }
 }
 
 /* Carries its selected state on the outline for the same contrast reason as
