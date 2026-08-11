@@ -1,4 +1,4 @@
-# 17. Sync is the only sharing path; the book card carries one control
+# 17. Sync is the only sharing path; the book card keeps one action button
 
 Date: 2026-08-11
 
@@ -59,8 +59,8 @@ visual moved. The hand-written Enter/Space handling and the
 The „Gemeinsam lesen" tile, which has no controls of its own, simply became a
 button.
 
-With one control left on the cover, it fits 44 px: three did not, on a 140-px
-column.
+With one action button left in the cover's top-right corner, it fits 44 px:
+three did not, on a 140-px column.
 
 ## Consequences
 
@@ -71,8 +71,9 @@ column.
 - Deleting a book cannot be reached from the shelf any more, only from a dialog
   the user opened on purpose. It does not make deletion reversible — issue #131
   is untouched, and the confirmation stays for that reason.
-- Per book, three keyboard stops remain instead of five, each a real control with
-  a name.
+- Per book, at most three keyboard stops remain instead of at most five, each a
+  real control with a name: „öffnen" and the pencil always, the mood strip only
+  once the book has been finished together at least once.
 - `openDialog()` gained a `dangerButton` slot: a destructive action on the
   dialog's subject, rendered on its own row above the accept/cancel pair, which
   share their row evenly and would otherwise place a delete beside „Speichern".

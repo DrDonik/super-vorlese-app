@@ -574,6 +574,13 @@ export class LibraryView {
           });
         } finally {
           editBtn.disabled = false;
+          // The dialog returns focus to whatever had it on opening — this
+          // button — but it does that while the button is still disabled, so
+          // the focus fell to <body> and a keyboard user had to start over at
+          // the top of the page. Now that it can take focus again, put it back.
+          // It matters most on the delete path: the confirmation that follows
+          // would otherwise have nothing to return to either.
+          editBtn.focus();
         }
         if (edited === null) return;
         // Anything typed in the dialog is dropped on this path on purpose:
