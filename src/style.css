@@ -127,7 +127,6 @@ button {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  margin-top: 8px;
 }
 
 /* Quiet, but a full-size target: 44px is what a six-year-old's or a
@@ -173,11 +172,15 @@ button {
    because they do different jobs: one arranges the shelf, the other hides part
    of it. Two identical-looking rows would be a riddle. Absent entirely until
    something is worth filtering, so an untagged library looks untouched. */
+/* The top margin has to be visibly larger than the 8px the pills wrap with:
+   at the same value, the filter row would read as a wrapped continuation of
+   the sort row above it rather than as a group of its own (issue #144). */
 .library-filter {
   padding: 0 16px;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  margin-top: 12px;
 }
 
 /* Same 44px target as the sort pills: quiet is a matter of fill, never of
