@@ -7,7 +7,9 @@ set -euo pipefail
 # needs this.
 [ "${CLAUDE_CODE_REMOTE:-}" = "true" ] || exit 0
 
-cd "$CLAUDE_PROJECT_DIR"
+# The harness sets CLAUDE_PROJECT_DIR; fall back to this script's own location
+# so an unset variable installs the dependencies instead of aborting on set -u.
+cd "${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
 # `npm ci`, not `npm install`: the container ships npm 10, while the lockfile is
 # written by npm 11, so `npm install` rewrites package-lock.json on every start
@@ -17,8 +19,20 @@ cd "$CLAUDE_PROJECT_DIR"
 # regenerate and commit the lockfile when adding a dependency.
 #
 # npm writes node_modules/.package-lock.json at the end of every install, so a
-# marker newer than the lockfile means the installed tree is already current.
+# marker newer than both manifests means the installed tree is already current.
+# package.json has to be part of that comparison: editing it alone leaves the
+# lockfile untouched, and skipping on that would hide the very disagreement
+# npm ci exists to report.
 if [ ! -e node_modules/.package-lock.json ] ||
-   [ ! node_modules/.package-lock.json -nt package-lock.json ]; then
-  npm ci --no-audit --no-fund
+   [ ! node_modules/.package-lock.json -nt package-lock.json ] ||
+   [ ! node_modules/.package-lock.json -nt package.json ]; then
+  # A SessionStart hook's stdout becomes context Claude reads, so the install
+  # chatter goes to stderr and only a failure is worth a word. Report that on
+  # both streams: stdout reaches Claude, and exit 2 is the one code that shows
+  # stderr to the user — every other non-zero code is treated like success.
+  if ! npm ci --no-audit --no-fund >&2; then
+    echo "session-start hook: npm ci failed, dependencies are NOT installed."
+    echo "session-start hook: npm ci failed, dependencies are NOT installed." >&2
+    exit 2
+  fi
 fi
