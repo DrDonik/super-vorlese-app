@@ -1,7 +1,8 @@
 import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
+import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom, isCompleteRoomCode } from './sync.js';
+import { applyCodeField } from './code-field.js';
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert, showConfirm } from './dialog.js';
@@ -168,7 +169,7 @@ export class ReaderView {
             <div class="sync-or">— oder —</div>
             <div class="sync-join-section">
               <div class="sync-join-label">Synchronisations-Code von deinem Lesepartner bekommen?</div>
-              <input class="sync-join-input" type="text" placeholder="Synchronisations-Code" aria-label="Synchronisations-Code" maxlength="6" autocomplete="off" spellcheck="false" />
+              <input class="sync-join-input" type="text" placeholder="Synchronisations-Code" aria-label="Synchronisations-Code" />
             </div>
             <div class="sync-active-section" hidden>
               <div class="sync-code-label">Synchronisations-Code des Buches</div>
@@ -1383,12 +1384,13 @@ export class ReaderView {
 
     createBtn.addEventListener('click', () => this.syncCreate());
     joinBtn.addEventListener('click', () => this.syncJoin());
-    // Gray out "Verbinden" until a code is typed (rule 5: prevent errors).
-    const syncJoinAvailability = () => { joinBtn.disabled = joinInput.value.trim() === ''; };
+    applyCodeField(joinInput);
+    // Gray out "Verbinden" until a whole code is typed (rule 5: prevent errors).
+    const syncJoinAvailability = () => { joinBtn.disabled = !isCompleteRoomCode(joinInput.value); };
     joinInput.addEventListener('input', syncJoinAvailability);
     syncJoinAvailability();
     joinInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') this.syncJoin();
+      if (e.key === 'Enter' && !joinBtn.disabled) this.syncJoin();
     });
     stopBtn.addEventListener('click', () => this.syncStop());
   }

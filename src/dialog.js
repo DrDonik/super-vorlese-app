@@ -72,6 +72,10 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       if (input.placeholder) inputEl.placeholder = input.placeholder;
       inputEl.setAttribute('aria-label', input.label || title || 'Eingabe');
       inputEl.autocomplete = 'off';
+      // Lets a caller shape the field for what it asks for (the
+      // Synchronisations-Code brings its own attributes and typing behaviour)
+      // without dialog.js having to know any of those specifics.
+      input.setup?.(inputEl);
       card.appendChild(inputEl);
     }
 
@@ -121,9 +125,12 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
     }
     card.appendChild(row);
 
-    // Prevent confirming an empty required field (gray out, rule 5).
-    if (inputEl && primaryBtn && !input.allowEmpty) {
-      const sync = () => { primaryBtn.disabled = inputEl.value.trim() === ''; };
+    // Prevent confirming a field whose content can't be accepted (gray out,
+    // rule 5). By default that means an empty field; a caller that knows the
+    // shape of a valid entry supplies `validate` instead.
+    const validate = input && (input.validate || (input.allowEmpty ? null : (v) => v.trim() !== ''));
+    if (inputEl && primaryBtn && validate) {
+      const sync = () => { primaryBtn.disabled = !validate(inputEl.value); };
       inputEl.addEventListener('input', sync);
       sync();
     }
@@ -281,7 +288,9 @@ export function showConfirm({ title, message, confirmLabel = 'OK', cancelLabel =
   });
 }
 
-// Resolves with the entered string, or null if cancelled.
+// Resolves with the entered string, or null if cancelled. `setup` receives the
+// input element to shape it, `validate` decides when the confirming button
+// becomes available (default: any non-empty entry).
 export function showPrompt({
   title,
   message,
@@ -290,11 +299,13 @@ export function showPrompt({
   confirmLabel = 'OK',
   cancelLabel = 'Abbrechen',
   allowEmpty = false,
+  setup,
+  validate,
 } = {}) {
   return openDialog({
     title,
     message,
-    input: { value, placeholder, allowEmpty },
+    input: { value, placeholder, allowEmpty, setup, validate },
     buttons: [
       { label: cancelLabel, value: null },
       { label: confirmLabel, primary: true },

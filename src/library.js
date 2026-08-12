@@ -6,7 +6,8 @@ import {
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { importBundle } from './bundle.js';
-import { closeSyncForBook, lookupRoom } from './sync.js';
+import { closeSyncForBook, lookupRoom, isCompleteRoomCode } from './sync.js';
+import { applyCodeField } from './code-field.js';
 import { showAlert, showConfirm, showPrompt, openDialog } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
@@ -727,6 +728,8 @@ export class LibraryView {
       message: 'Frag deinen Lesepartner nach dem Synchronisations-Code des Buches, das ihr gemeinsam lesen wollt.',
       placeholder: 'Synchronisations-Code',
       confirmLabel: 'Verbinden',
+      setup: applyCodeField,
+      validate: isCompleteRoomCode,
     });
     if (entered === null) return;
 

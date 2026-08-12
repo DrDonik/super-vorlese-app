@@ -842,6 +842,23 @@ button {
   color: var(--fg-dim);
 }
 
+/* The Synchronisations-Code's own look, worn by every field that asks for one
+   (reader panel and library dialog alike) on top of that field's box styling:
+   sparse monospace capitals, so six characters can be read out over a video
+   call without a stumble. See applyCodeField in code-field.js. */
+.code-input {
+  font-family: monospace;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  text-align: center;
+}
+
+.code-input::placeholder {
+  letter-spacing: 0;
+  text-transform: none;
+  font-family: inherit;
+}
+
 .sync-join-input {
   width: 100%;
   background: var(--surface);
@@ -850,16 +867,6 @@ button {
   padding: 12px 14px;
   color: var(--fg);
   font-size: 16px;
-  font-family: monospace;
-  letter-spacing: 2px;
-  text-transform: uppercase;
-  text-align: center;
-}
-
-.sync-join-input::placeholder {
-  letter-spacing: 0;
-  text-transform: none;
-  font-family: inherit;
 }
 
 .sync-join-input:focus {

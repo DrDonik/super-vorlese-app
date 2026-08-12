@@ -60,13 +60,29 @@ async function loadFirebase() {
   return firebasePromise;
 }
 
+export const CODE_LENGTH = 6;
+
 function generateRoomCode() {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let code = '';
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < CODE_LENGTH; i++) {
     code += chars[Math.floor(Math.random() * chars.length)];
   }
   return code;
+}
+
+// The one reading of a typed Synchronisations-Code: read aloud over a video
+// call, it arrives with stray spaces and in whatever case the keyboard felt
+// like. Both entry fields normalize as the user types (see code-field.js), and
+// lookupRoom / joinRoom normalize again for callers that pass a raw string.
+export function normalizeRoomCode(code) {
+  return code.toUpperCase().replace(/\s+/g, '');
+}
+
+// Whether a typed code is whole and thus worth looking up — used to gray out
+// „Verbinden" until it is (rule 5: prevent errors).
+export function isCompleteRoomCode(code) {
+  return normalizeRoomCode(code).length === CODE_LENGTH;
 }
 
 const activeSessions = new Map();
@@ -85,8 +101,8 @@ export function getFirebase() {
 // to discover which book a code is for before deciding whether to fetch it.
 export async function lookupRoom(code) {
   const fb = await loadFirebase();
-  const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
-  if (normalizedCode.length !== 6) {
+  const normalizedCode = normalizeRoomCode(code);
+  if (normalizedCode.length !== CODE_LENGTH) {
     throw new Error('Der Synchronisations-Code besteht aus 6 Zeichen.');
   }
   const r = fb.ref(fb.db, `rooms/${normalizedCode}`);
@@ -185,8 +201,8 @@ export class SyncSession {
 
   async joinRoom(code) {
     this.fb = await loadFirebase();
-    const normalizedCode = code.toUpperCase().replace(/\s+/g, '');
-    if (normalizedCode.length !== 6) {
+    const normalizedCode = normalizeRoomCode(code);
+    if (normalizedCode.length !== CODE_LENGTH) {
       throw new Error('Der Synchronisations-Code besteht aus 6 Zeichen.');
     }
     const r = this.fb.ref(this.fb.db, `rooms/${normalizedCode}`);
