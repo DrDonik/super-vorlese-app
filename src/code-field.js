@@ -8,7 +8,6 @@ import { CODE_LENGTH, normalizeRoomCode } from './sync.js';
 
 export function applyCodeField(input) {
   input.classList.add('code-input');
-  input.maxLength = CODE_LENGTH;
   input.autocomplete = 'off';
   input.spellcheck = false;
   // The field shows uppercase; without these the phone keyboard offers
@@ -17,8 +16,10 @@ export function applyCodeField(input) {
   input.setAttribute('autocorrect', 'off');
 
   // Normalize while typing rather than only on lookup: the value then really is
-  // what the field displays, and a code pasted with spaces ("ABC 123") keeps
-  // all six characters instead of being cut short by maxLength.
+  // what the field displays. This is also the only length limit — a maxlength
+  // of six would clip a code pasted with spaces ("ABC 123") to "ABC 12" before
+  // this handler ever sees it, leaving five characters behind and a „Verbinden"
+  // that stays gray for no visible reason.
   input.addEventListener('input', () => {
     const typed = input.value;
     const normalized = normalizeRoomCode(typed).slice(0, CODE_LENGTH);
