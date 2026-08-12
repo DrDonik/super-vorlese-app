@@ -152,19 +152,41 @@ export function pickMoodBoard(count = MOOD_BOARD_COUNT) {
   return shuffle([...picked]).slice(0, Math.min(count, MOODS.length));
 }
 
+// Every rendered zone is put into catalogue order, so both devices show each row
+// identically (issue #139). Without this the two sides disagree, because two
+// different orderings meet: a reader's own picks arrive in *tap* order (a Set,
+// insertion-ordered), while the partner's arrive in *id* order — the wire stores
+// picks as a `{ id: true }` map, and JS hands integer keys back ascending. So the
+// same zone read „tap order" on one device and „id order" on the other, which
+// made discussing the keepsake over the call needlessly hard („das dritte von
+// links …").
+//
+// Catalogue order is the canonical one because it is available everywhere the
+// keepsake is shown, including the library history of long-past finishes — the
+// board's display order would not be, as it is rolled per finish and never
+// stored. Tap order is no loss: it is never surfaced (a pick shows a ring, not a
+// number), the zone split breaks it up anyway, and it already failed to reach the
+// partner. Stored records keep whatever order they were written in; sorting on
+// render means older keepsakes line up too, with nothing to migrate.
+const MOOD_RANK = new Map(MOODS.map((m, i) => [m.id, i]));
+
+function inCatalogueOrder(ids) {
+  return [...ids].sort((a, b) => (MOOD_RANK.get(a) ?? Infinity) - (MOOD_RANK.get(b) ?? Infinity));
+}
+
 // Splits a completed pair of selections into the three zones the reveal shows:
 // `ours` are the moods both readers picked, `mineOnly`/`theirsOnly` are each
 // side's own remaining picks. `mine` is always this device's selection, so the
 // split is computed per device — there is no shared/agreed record to reconcile.
+// Each zone comes back in catalogue order, so both devices render it the same.
 export function splitMoods(mine, theirs) {
   const mineSet = new Set(mine);
   const theirsSet = new Set(theirs);
-  const ours = mine.filter((id) => theirsSet.has(id));
-  const oursSet = new Set(ours);
+  const oursSet = new Set(mine.filter((id) => theirsSet.has(id)));
   return {
-    mineOnly: mine.filter((id) => !oursSet.has(id)),
-    ours,
-    theirsOnly: theirs.filter((id) => !mineSet.has(id)),
+    mineOnly: inCatalogueOrder(mine.filter((id) => !oursSet.has(id))),
+    ours: inCatalogueOrder(oursSet),
+    theirsOnly: inCatalogueOrder(theirs.filter((id) => !mineSet.has(id))),
   };
 }
 
@@ -215,14 +237,15 @@ export function moodRevealRowsHTML(mine, theirs) {
 // picked; `aOnly`/`bOnly` are each child's own remaining picks. Same three-zone
 // shape as splitMoods, so there are always six picks to keep and the record is
 // never empty — honouring divergence (ADR 12) by keeping the whole picture, not
-// just the agreement.
+// just the agreement. Catalogue-ordered like splitMoods, so the witness's rows
+// match the ones the two children see on their own devices.
 export function splitWitness(a, b) {
   const aSet = new Set(a);
   const bSet = new Set(b);
   return {
-    shared: a.filter((id) => bSet.has(id)),
-    aOnly: a.filter((id) => !bSet.has(id)),
-    bOnly: b.filter((id) => !aSet.has(id)),
+    shared: inCatalogueOrder(a.filter((id) => bSet.has(id))),
+    aOnly: inCatalogueOrder(a.filter((id) => !bSet.has(id))),
+    bOnly: inCatalogueOrder(b.filter((id) => !aSet.has(id))),
   };
 }
 
