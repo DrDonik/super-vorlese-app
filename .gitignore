@@ -4,7 +4,13 @@ dist-ssr
 .DS_Store
 *.local
 .vite
-.claude/
+
+# Local Claude Code state stays out of the repo, but the session-start hook and
+# the settings that register it are shared tooling and must be committed. Note
+# the `.claude/*` form: an excluded directory cannot be re-included per file.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 
 # Heavy source illustrations for the mood ritual (~49 MB). Only the small
 # generated WebP tiles in public/mood-icons/ are committed and shipped; this
