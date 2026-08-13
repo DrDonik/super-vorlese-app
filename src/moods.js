@@ -204,6 +204,10 @@ const REVEAL_ROWS = [
   ['theirs', 'Du', 'theirs'],
 ];
 
+// The keepsake shows the illustrations uncaptioned, like the board (ADR 12,
+// 2026-08-13 amendment): „you both picked this one — what was it for you?" is the
+// conversation the reveal is for, and a printed name would close it. `alt` carries
+// the label only so the tile is describable where the image itself cannot be seen.
 function moodRevealTile(id) {
   const mood = moodById(id);
   if (!mood) return '';
