@@ -1076,8 +1076,11 @@ export class ReaderView {
       btn.className = 'mood-icon';
       btn.dataset.id = mood.id;
       btn.setAttribute('aria-pressed', 'false');
-      // The illustration carries the meaning; the label is kept only as the
-      // accessible name (no visible caption), per the screen's design.
+      // Never captioned on screen (ADR 12, 2026-08-13 amendment): the drawings are
+      // a projective prompt, not a vocabulary — the same one honestly means
+      // different things after different books, and a visible word would beat the
+      // picture and turn the ritual into a sorting task. The label serves only as
+      // the accessible name, so the button can be operated at all.
       btn.setAttribute('aria-label', mood.label);
       btn.innerHTML = `
         <span class="mood-image-wrap">

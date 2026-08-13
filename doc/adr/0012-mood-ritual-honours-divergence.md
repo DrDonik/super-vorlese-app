@@ -299,3 +299,68 @@ instead get the ritual's *closure* beat — the cover-close „thunk" → „End
   same ~1.5 s settle window the count band already uses (a `moodSettled` flag): the
   branch is evaluated only after the window elapses, so a paired ritual never
   flashes „Ende" on its first listener tick.
+
+## Amendment (2026-08-13): the illustrations are never named on screen
+
+A universal-design audit (issue #132) read the wordless board as a gap: the
+meaning of a mood is carried by the illustration alone, the label lives only as
+the button's `aria-label`, and anyone who cannot resolve a drawing has no
+fallback — the difficult feelings in particular are finely distinguished
+(„Ganz traurig" / „Echte Tränen" / „Tränen verdrückt", ids 7/35/44). It proposed
+showing the name of the selected mood beneath the board. We **decline** that, and
+record the reason here, because the premise — that each drawing denotes one
+feeling that can be assigned to a book — is the thing we disagree with.
+
+- **The illustrations are a projective prompt, not a vocabulary.** The ritual
+  never asked for a consistent categorisation of the book. The same drawing
+  honestly means different things after different books, and that is the point:
+  it hands the reader something to feel *at*, not a term to file the evening
+  under.
+
+- **A visible word beats the picture, asymmetrically.** Once the text is on
+  screen, the text wins. The question turns from „what does this picture feel
+  like for *this* book?" into „which of these 20 words fits?" — a sorting task.
+  That is the same move this ADR removed when it dropped the overlap gate: a
+  mechanism that ends the conversation. A caption would end it again, one step
+  later. At the reveal, „you both picked this one — what was it for you?" becomes
+  „we both had *Staunen*", agreed and finished.
+
+- **Divergence reaches into the picking, not just the tally.** Two readers may
+  choose the same tile and mean different things by it. Under images that stays a
+  conversation; under words it hardens into an agreement that was never there —
+  precisely the coincidental overlap this ADR set out not to manufacture.
+
+- **The audit's stated benefit does not exist in this app's shape.** It argued the
+  reading adult could confirm what the child hit. Picks are private until the
+  reveal (by design, above) and the readers are on separate devices in different
+  places, so nobody can see the other's board either way.
+
+- **The one real residue is already answered.** A *mechanical* mistap on a
+  neighbouring tile is shown by the selection ring and scale. Under this premise
+  there is no semantically wrong tile to protect against.
+
+- **Nothing on screen changes, because the app already matched this principle.**
+  `label` is rendered nowhere visible today. Issue #132 would have been the first
+  break with the wordless design, not a repair of an inconsistency.
+
+`label` and the accessible name keep their word, deliberately and for reasons
+that are not claims about meaning:
+
+- **`label` is a code-side handle** — it ties a stable wire id to its shipped
+  asset and gives reviewers something to say out loud. It is not the drawing's
+  definition.
+
+- **`aria-label` (board) and `alt` (reveal) solve operability.** A button with no
+  accessible name cannot be operated at all; that is a different problem from what
+  the board *shows*. Naming the drawn pose instead of the feeling
+  („Zusammengesunken, Kopf gesenkt") would be the consistent extension of this
+  decision and was considered — it would hand a blind reader the same raw material
+  a sighted one gets. We do not take it for now: 20 pose phrases are markedly
+  slower to hear than 20 words, and the trade is not clearly a gain. The tension
+  is real and is recorded here so it is not rediscovered as a bug.
+
+Consequence: issue #132's acceptance criteria are consciously not met — there is
+deliberately no visible textual path to a picture's meaning, and the board's
+height budget stays free of a caption line. A future proposal to caption the
+illustrations is out of scope by this decision; reopening it means arguing
+against the projective premise above, not against the `aria-label`.
