@@ -1,5 +1,5 @@
 import {
-  listBooks, saveBook, deleteBook, updateBookDetails, getThumbs, uid,
+  listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, getThumbs, uid,
   findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
@@ -171,9 +171,9 @@ function normalizeTag(raw) {
 
 let tagLabelSeq = 0;
 
-// Returned by showBookEdit when the user asks to delete the book instead of
-// saving it. A sentinel rather than a flag on the result object: deleting and
-// saving are opposite outcomes, and identity comparison can't be misread.
+// The `action` showBookEdit reports when the user wants more than to be done
+// with the dialog. Symbols rather than strings: identity comparison can't be
+// misread, and neither can ever collide with a title.
 const DELETE_REQUESTED = Symbol('delete-requested');
 const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
 
@@ -196,37 +196,97 @@ const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
 // the code somebody was in the middle of reading out. A Synchronisations-Code
 // belongs to the *book*, so the book's own dialog is where it is given up.
 //
-// Resolves with { title, tags }, DELETE_REQUESTED, DISCONNECT_REQUESTED, or null
-// when cancelled.
-function showBookEdit({ title, tags, allTags, syncCode }) {
+// Nothing in here is a draft (ADR 21). A tag is stored the moment its chip is
+// tapped — `onTagsChange(tags)` does that and resolves falsy if it failed — and
+// the title is stored by whoever called us, on every way out. So there is no
+// „Speichern" and no „Abbrechen", only „Fertig".
+//
+// Resolves with { title, action }, where action is DELETE_REQUESTED,
+// DISCONNECT_REQUESTED, or undefined for a plain „Fertig".
+function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
   const content = document.createElement('div');
-  content.className = 'book-edit-tags';
+  content.className = 'book-edit-body';
+
+  const tagSection = document.createElement('div');
+  tagSection.className = 'book-edit-section';
+  content.appendChild(tagSection);
 
   const label = document.createElement('div');
-  label.className = 'book-edit-label';
+  label.className = 'dialog-field-label';
   label.id = `tag-picker-label-${++tagLabelSeq}`;
   label.textContent = 'Tags';
-  content.appendChild(label);
+  tagSection.appendChild(label);
 
   const picker = document.createElement('div');
   picker.className = 'tag-picker';
   picker.setAttribute('role', 'group');
   picker.setAttribute('aria-labelledby', label.id);
-  content.appendChild(picker);
+  tagSection.appendChild(picker);
 
   // Fold this book's tags onto the shelf's canonical spelling. collectTags()
   // merges „Gelesen" and „gelesen" into one chip, so without this a book
   // holding the losing spelling would show that chip unpressed — and pressing
   // it would save both spellings at once.
-  const selected = new Set(
+  let selected = new Set(
     tags.map((tag) => allTags.find((t) => sameTag(t, tag)) ?? tag),
   );
   const chips = new Map();
+  // The last selection the store is known to hold. A write that fails puts the
+  // chips back to it, so what is pressed stays something that was really saved.
+  let committed = new Set(selected);
+  let writeSeq = 0;
+
+  // Says so in the dialog rather than through showAlert: dialogs are serialized
+  // (see dialog.js), so an alert raised from inside this one would only appear
+  // after it closes — long after the chip it is about.
+  const error = document.createElement('div');
+  error.className = 'book-edit-error';
+  error.setAttribute('role', 'status');
+  error.hidden = true;
+
+  // Unhidden before it is filled, so the live region is already in the
+  // accessibility tree when its text changes and the change is announced.
+  const setError = (text) => {
+    error.hidden = !text;
+    error.textContent = text;
+  };
+
+  const paintChips = () => {
+    for (const [tag, chip] of chips) {
+      chip.setAttribute('aria-pressed', String(selected.has(tag)));
+    }
+  };
+
+  // Writing on the tap is what makes the pressed chip a fact instead of a
+  // promise the „Speichern" button used to keep (rule 3, issue #155). The
+  // caller hands the writes to the store in tap order; only the newest of them
+  // may still speak for the chips, because an older one settling afterwards
+  // would paint over a tap that has been made since.
+  const writeTags = async () => {
+    const seq = ++writeSeq;
+    const wanted = new Set(selected);
+    let ok = false;
+    try {
+      ok = (await onTagsChange([...wanted])) !== false;
+    } catch (err) {
+      console.error('Fehler beim Speichern der Tags', err);
+    }
+    if (ok) committed = wanted;
+    if (seq !== writeSeq) return;
+    if (!ok) {
+      selected = new Set(committed);
+      paintChips();
+    }
+    setError(ok ? '' : 'Die Tags konnten nicht gespeichert werden.');
+  };
 
   const setSelected = (tag, on) => {
     if (on) selected.add(tag);
     else selected.delete(tag);
     chips.get(tag)?.setAttribute('aria-pressed', String(on));
+    // Deliberately not awaited: the chip is already showing the new state and
+    // writeTags answers for its own failure.
+    writeTags();
   };
 
   const addChip = (tag) => {
@@ -290,7 +350,8 @@ function showBookEdit({ title, tags, allTags, syncCode }) {
 
   newRow.appendChild(newInput);
   newRow.appendChild(addBtn);
-  content.appendChild(newRow);
+  tagSection.appendChild(newRow);
+  tagSection.appendChild(error);
 
   // Only when there is a code to give up: an empty „Gemeinsam lesen" rubric in
   // every book's dialog would be a permanent question mark for the many books
@@ -298,52 +359,56 @@ function showBookEdit({ title, tags, allTags, syncCode }) {
   let stopBtn = null;
   if (syncCode) {
     const syncSection = document.createElement('div');
-    syncSection.className = 'book-edit-sync';
+    syncSection.className = 'book-edit-section';
 
     const syncLabel = document.createElement('div');
-    syncLabel.className = 'book-edit-label';
-    syncLabel.textContent = 'Synchronisations-Code des Buches';
+    syncLabel.className = 'dialog-field-label';
+    // „des Buches" is dropped: this is the book's own dialog, and the rubric
+    // sits in a column of rubrics that all say what the line under them is.
+    syncLabel.textContent = 'Synchronisations-Code';
     syncSection.appendChild(syncLabel);
 
-    const syncRow = document.createElement('div');
-    syncRow.className = 'book-edit-sync-row';
-
-    const code = document.createElement('span');
+    const code = document.createElement('div');
     code.className = 'book-edit-sync-code';
     code.textContent = syncCode;
+    syncSection.appendChild(code);
+
+    const stopRow = document.createElement('div');
+    stopRow.className = 'book-edit-actions';
 
     stopBtn = document.createElement('button');
     stopBtn.type = 'button';
-    stopBtn.className = 'tag-add book-edit-sync-stop';
-    stopBtn.textContent = 'Trennen';
+    // The language of the buttons that end the dialog, not of the „Hinzufügen"
+    // it used to be an exact twin of one line above (issue #155). Standing on
+    // its own it is outlined rather than bare; see .book-edit-actions.
+    stopBtn.className = 'dialog-btn';
+    stopBtn.textContent = 'Synchronisation trennen';
 
-    syncRow.appendChild(code);
-    syncRow.appendChild(stopBtn);
-    syncSection.appendChild(syncRow);
+    stopRow.appendChild(stopBtn);
+    syncSection.appendChild(stopRow);
     content.appendChild(syncSection);
   }
 
   return openDialog({
     title: 'Buch bearbeiten',
-    input: { value: title, placeholder: 'Titel', label: 'Titel' },
-    // Trennen ends the dialog rather than acting inside it, so „Abbrechen" never
-    // has to mean "undo that too" — the same shape „Buch löschen" has. Anything
-    // typed is dropped with it: giving up the code and renaming the book are
-    // separate errands, and the shelf is one tap from the pencil again.
-    content: (close) => {
-      stopBtn?.addEventListener('click', () => close(DISCONNECT_REQUESTED));
+    // Not focused on opening, and so not selected either: see dialog.js. What
+    // is typed here is saved by every way out of this dialog, „Synchronisation
+    // trennen" included — a way out that quietly dropped it would be the one
+    // surprise this dialog can no longer afford now that „Abbrechen" is gone.
+    // Deleting is the exception, and only because the book goes with it.
+    input: { value: title, labelText: 'Titel', autoFocus: false, allowEmpty: true },
+    content: (close, inputEl) => {
+      stopBtn?.addEventListener('click', () => close({
+        title: inputEl.value,
+        action: DISCONNECT_REQUESTED,
+      }));
       return content;
     },
-    dangerButton: { label: 'Buch löschen', value: DELETE_REQUESTED },
+    dangerButton: { label: 'Buch löschen', value: { action: DELETE_REQUESTED } },
     buttons: [
-      { label: 'Abbrechen', value: null },
-      {
-        label: 'Speichern',
-        primary: true,
-        getValue: (titleValue) => ({ title: titleValue, tags: [...selected] }),
-      },
+      { label: 'Fertig', primary: true, getValue: (titleValue) => ({ title: titleValue }) },
     ],
-    cancelValue: null,
+    cancelValue: (titleValue) => ({ title: titleValue }),
   });
 }
 
@@ -670,13 +735,36 @@ export class LibraryView {
       editBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
         editBtn.disabled = true;
-        let edited = null;
+        const initialTags = bookTags(book);
+        // Every tag tap is written on its own (ADR 21), chained so that two
+        // quick taps reach the store in the order they were made. The chain is
+        // extended the moment a write is asked for, which also makes it the
+        // thing to wait on before rebuilding the shelf from that store.
+        let tagWrites = Promise.resolve();
+        let writtenTags = null;
+        const onTagsChange = (tags) => {
+          const sorted = [...tags].sort(titleCollator.compare);
+          const write = tagWrites.then(async () => {
+            const saved = await updateBookTags(book.id, sorted);
+            if (saved) {
+              writtenTags = sorted;
+              book.tags = sorted;
+            }
+            return saved;
+          });
+          // A failed write must not stall the chain; the dialog hears about it
+          // through the promise handed back to it.
+          tagWrites = write.catch(() => {});
+          return write;
+        };
+        let edited;
         try {
           edited = await showBookEdit({
             title: book.title,
-            tags: bookTags(book),
+            tags: initialTags,
             allTags,
             syncCode: getSavedRoomCode(book.id),
+            onTagsChange,
           });
         } finally {
           editBtn.disabled = false;
@@ -688,51 +776,69 @@ export class LibraryView {
           // would otherwise have nothing to return to either.
           editBtn.focus();
         }
-        if (edited === null) return;
-        // Anything typed in the dialog is dropped on this path on purpose:
-        // renaming a book and deleting it are opposite intents, and the
-        // confirmation names the title the book actually still has.
-        if (edited === DELETE_REQUESTED) {
+        // The title is dropped on this path on purpose: renaming a book and
+        // deleting it are opposite intents, and the confirmation names the
+        // title the book actually still has. Tags written along the way go with
+        // the book itself.
+        if (edited.action === DELETE_REQUESTED) {
           await this.confirmAndDelete(book);
           return;
         }
-        if (edited === DISCONNECT_REQUESTED) {
+        // The last chip tap can still be in flight: the shelf must not be
+        // rebuilt from a store that is one write behind what the user saw.
+        await tagWrites;
+        const tagsChanged = writtenTags !== null && !sameTags(writtenTags, initialTags);
+
+        const newTitle = edited.title.trim();
+        // „Fertig" is never disabled — that would trap whoever cleared the
+        // field (rule 7) — so an emptied field means the book keeps the title
+        // it has, and the unchanged card says so.
+        const titleChanged = newTitle !== '' && newTitle !== book.title;
+        let titleFailed = false;
+        if (titleChanged) {
+          let saved;
+          try {
+            saved = await updateBookTitle(book.id, newTitle);
+          } catch (err) {
+            console.error('Fehler beim Speichern', err);
+            titleFailed = true;
+          }
+          // Gone while the dialog was open (deleted in another tab). Nothing was
+          // written, so rebuild the shelf — the card simply goes away, which is
+          // the truth. An error message would be about a book that no longer is.
+          if (saved === false) {
+            await this.renderGrid();
+            return;
+          }
+          if (!titleFailed) {
+            book.title = newTitle;
+            titleEl.textContent = newTitle;
+            openBtn.setAttribute('aria-label', `${newTitle} öffnen`);
+          }
+        }
+
+        // After the rename, so the line names the book by the title it now
+        // carries. A failed rename does not hold this up: it was asked for
+        // separately and the two have nothing to do with each other.
+        if (edited.action === DISCONNECT_REQUESTED) {
           closeSyncForBook(book.id);
           // Nothing on the shelf shows a book's sync state, so without a word
           // here the tap would have no visible result at all (rule 3).
           this.showStatus(`„${book.title}" ist nicht mehr synchronisiert.`);
-          return;
         }
-        const newTitle = edited.title.trim();
-        if (!newTitle) return;
-        const newTags = [...edited.tags].sort(titleCollator.compare);
-        const titleChanged = newTitle !== book.title;
-        const tagsChanged = !sameTags(newTags, bookTags(book));
-        if (!titleChanged && !tagsChanged) return;
-        let saved;
-        try {
-          saved = await updateBookDetails(book.id, { title: newTitle, tags: newTags });
-        } catch (err) {
-          console.error('Fehler beim Speichern', err);
-          await showAlert({ message: 'Die Änderungen konnten nicht gespeichert werden.' });
-          return;
-        }
-        // Gone while the dialog was open (deleted in another tab). Nothing was
-        // written, so rebuild the shelf — the card simply goes away, which is
-        // the truth. An error message would be about a book that no longer is.
-        if (!saved) {
-          await this.renderGrid();
-          return;
-        }
-        book.title = newTitle;
-        book.tags = newTags;
-        titleEl.textContent = newTitle;
-        openBtn.setAttribute('aria-label', `${newTitle} öffnen`);
+
         // Changed tags can add or drop a filter chip, and can push this very
         // book out of the active filter, so the shelf has to be rebuilt. A new
         // title only moves the card under A–Z; the other orders keep it where
         // it is, and leaving it there preserves the scroll position.
-        if (tagsChanged || (titleChanged && this.sortMode === 'title')) await this.renderGrid();
+        if (tagsChanged || (titleChanged && !titleFailed && this.sortMode === 'title')) {
+          await this.renderGrid();
+        }
+
+        // Last, so the shelf behind the message already shows what did survive.
+        if (titleFailed) {
+          await showAlert({ message: 'Der neue Titel konnte nicht gespeichert werden.' });
+        }
       });
 
       fragment.appendChild(card);

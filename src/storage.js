@@ -265,14 +265,19 @@ export async function getCompletionsMany(ids) {
 // derived from the books carrying them, so a tag removed from its last book
 // simply ceases to exist.
 //
-// Title and tags are written together because the „Buch bearbeiten" dialog
-// offers them as one edit; one call means one transaction and no window in
-// which a book carries the new title but the old tags.
-// Returns whether a book was actually there to update, like the other callers
-// of updateMeta: a book deleted meanwhile must not leave the library showing a
-// freshly renamed card for something that no longer exists.
-export async function updateBookDetails(id, { title, tags }) {
-  return updateMeta(id, (meta) => ({ ...meta, title, tags }));
+// Title and tags are written apart because the „Buch bearbeiten" dialog no
+// longer offers them as one edit: a tag is stored the moment its chip is
+// tapped, while the title waits until the dialog closes (ADR 21). Writing both
+// on every chip tap would mean saving a title still being typed.
+// Both return whether a book was actually there to update, like the other
+// callers of updateMeta: a book deleted meanwhile must not leave the library
+// showing a freshly renamed card for something that no longer exists.
+export async function updateBookTitle(id, title) {
+  return updateMeta(id, (meta) => ({ ...meta, title }));
+}
+
+export async function updateBookTags(id, tags) {
+  return updateMeta(id, (meta) => ({ ...meta, tags }));
 }
 
 export async function deleteBook(id) {

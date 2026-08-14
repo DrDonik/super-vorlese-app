@@ -29,15 +29,22 @@ let dialogSeq = 0;
 // the resolved value itself and receives the text input's current value, so a
 // custom dialog can hand back more than a single string.
 //
-// `content` may also be a function receiving a `close(value)` callback and
-// returning the element. That is for a dialog offering more than one way out —
-// the library's „Gemeinsam lesen", where choosing a book and entering a code are
-// two separate outcomes that would not fit side by side in the button row.
+// `content` may also be a function receiving a `close(value)` callback and the
+// text input, and returning the element. That is for a dialog offering more than
+// one way out — the library's „Gemeinsam lesen", where choosing a book and
+// entering a code are two separate outcomes that would not fit side by side in
+// the button row; „Buch bearbeiten" reads the field because every way out of it
+// saves what the field holds.
+//
+// `input.labelText` puts a visible rubric above the field, and `input.autoFocus:
+// false` leaves focus on the card instead of selecting the field's contents.
+// `cancelValue` may be a function receiving the field's value, for a dialog
+// where dismissing means confirming rather than discarding (ADR 21).
 //
 // `dangerButton` is a destructive action on the dialog's subject („Buch
-// löschen"), and gets a row of its own above the accept/cancel pair. It is not
-// one of `buttons` on purpose: those share the row evenly, which would put a
-// delete a fingerwidth from „Speichern".
+// löschen"), and gets a row of its own above the closing button. It is not one
+// of `buttons` on purpose: those share the row evenly, which would put a delete
+// a fingerwidth from the button that ends the dialog normally.
 export function openDialog({ title, message, input, content, buttons, dangerButton, cancelValue }) {
   return enqueue(() => new Promise((resolve) => {
     const previouslyFocused = document.activeElement;
@@ -75,13 +82,36 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       inputEl.type = 'text';
       inputEl.value = input.value ?? '';
       if (input.placeholder) inputEl.placeholder = input.placeholder;
-      inputEl.setAttribute('aria-label', input.label || title || 'Eingabe');
       inputEl.autocomplete = 'off';
       // Lets a caller shape the field for what it asks for (the
       // Synchronisations-Code brings its own attributes and typing behaviour)
       // without dialog.js having to know any of those specifics.
       input.setup?.(inputEl);
-      card.appendChild(inputEl);
+      if (input.labelText) {
+        // A dialog asking for one thing names it in its title, so its field
+        // needs no rubric of its own. One carrying several („Buch bearbeiten")
+        // does: there the field would be the only part of the form leaving the
+        // reader to work out what it holds, while the blocks around it are
+        // labelled (rule 1). A placeholder cannot do the job — it is gone the
+        // moment the field has a value, which for an existing title is always.
+        const field = document.createElement('div');
+        field.className = 'dialog-field';
+        // A real <label for>, not a div named by aria-labelledby: that would
+        // give the field its name but leave the visible word inert, and a
+        // rubric that does nothing when tapped is a small lie on a touch
+        // screen. This way the word is part of the field's tap target.
+        const labelEl = document.createElement('label');
+        labelEl.className = 'dialog-field-label';
+        inputEl.id = `dialog-field-input-${++dialogSeq}`;
+        labelEl.htmlFor = inputEl.id;
+        labelEl.textContent = input.labelText;
+        field.appendChild(labelEl);
+        field.appendChild(inputEl);
+        card.appendChild(field);
+      } else {
+        inputEl.setAttribute('aria-label', input.label || title || 'Eingabe');
+        card.appendChild(inputEl);
+      }
     }
 
     let cleaned = false;
@@ -97,9 +127,18 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       resolve(value);
     };
 
+    // What Escape and a click on the backdrop resolve with. Usually a fixed
+    // „nothing happened" value; a dialog that saves on the way out passes a
+    // function instead, so every exit — button, key, backdrop — carries the
+    // same value out (rule 7: two ways of dismissing must not differ in what
+    // they leave behind).
+    const dismissValue = () => (
+      typeof cancelValue === 'function' ? cancelValue(inputEl?.value) : cancelValue
+    );
+
     // After cleanup so a content element can be handed the means to close the
     // dialog; still before the buttons, so the DOM order is unchanged.
-    if (content) card.appendChild(typeof content === 'function' ? content(cleanup) : content);
+    if (content) card.appendChild(typeof content === 'function' ? content(cleanup, inputEl) : content);
 
     if (dangerButton) {
       const dangerRow = document.createElement('div');
@@ -155,7 +194,7 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        cleanup(cancelValue);
+        cleanup(dismissValue());
       } else if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
         e.preventDefault();
         if (!primaryBtn.disabled) {
@@ -168,13 +207,23 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
     document.addEventListener('keydown', onKeyDown, false);
 
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) cleanup(cancelValue);
+      if (e.target === overlay) cleanup(dismissValue());
     });
 
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
-    if (inputEl) {
+    if (inputEl && input.autoFocus === false) {
+      // A field holding something the user did not come to retype. Selecting it
+      // would put the whole value one keystroke from gone — and where the
+      // dialog saves on the way out (ADR 21) there is no „Abbrechen" left to
+      // catch that. It also keeps the phone keyboard down, which would
+      // otherwise cover the rest of the form before it has been read.
+      // Focus goes to the card, not to a control: that announces the dialog to
+      // a screen reader and starts the Tab trap at the top of the form.
+      card.tabIndex = -1;
+      card.focus();
+    } else if (inputEl) {
       inputEl.focus();
       inputEl.select();
     } else if (defaultFocusBtn) {
@@ -199,9 +248,14 @@ function trapFocus(e, card) {
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
-  if (!card.contains(document.activeElement)) {
+  if (!card.contains(document.activeElement) || document.activeElement === card) {
     // Focus drifted out of the card (e.g. a click on the backdrop or on
-    // non-focusable text); pull it back in instead of letting Tab escape.
+    // non-focusable text), or is parked on the card itself, which is where a
+    // dialog that does not focus its field starts (`input.autoFocus: false`).
+    // The card is neither `first` nor `last`, so without this the browser was
+    // left to move focus on its own: forwards that lands on the field anyway,
+    // but backwards it steps to whatever precedes the overlay — a control on
+    // the page behind the modal, one Enter away from being pressed.
     e.preventDefault();
     (e.shiftKey ? last : first).focus();
   } else if (e.shiftKey && document.activeElement === first) {
