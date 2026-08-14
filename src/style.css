@@ -1435,6 +1435,22 @@ button {
   width: 100%;
 }
 
+/* A field with a rubric of its own, for a dialog that carries more than one
+   thing to fill in. Left aligned inside the otherwise centred card: a form is
+   read down its left edge, and text-align is inherited, so this is also what
+   stops the typed value from sitting centred in its box. */
+.dialog-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.dialog-field-label {
+  font-size: 13px;
+  color: var(--fg-dim);
+}
+
 /* Progress bar for unattended flows (book transfer). --accent marks the
    in-progress completing action, consistent with other flow feedback. */
 .progress-track {
@@ -1506,7 +1522,7 @@ button {
 
 /* A destructive action on the dialog's subject („Buch löschen"): its own row,
    separated by a rule, well away from the primary button it must never be
-   mistaken for. Full width, like the accept/cancel pair below it. */
+   mistaken for. Full width, like the button row below it. */
 .dialog-danger-row {
   display: flex;
   margin-top: 4px;
@@ -1523,28 +1539,43 @@ button {
   color: #fff;
 }
 
-/* ---- Book edit dialog: tags (issue #140) -------------------------------- */
+/* ---- Book edit dialog: tags (issue #140, #155) --------------------------- */
 
-.book-edit-tags {
+/* Labelled blocks reading down one left edge, at the card's own rhythm: 14px
+   between blocks, 8px within one, so a rubric belongs visibly to what follows
+   it. Before this the dialog stacked centred rubrics, centred chips and
+   full-width rows at one flat spacing, and nothing said where one thing ended
+   and the next began (issue #155). */
+.book-edit-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 14px;
+  text-align: left;
 }
 
-.book-edit-label {
-  font-size: 13px;
-  color: var(--fg-dim);
+.book-edit-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 /* Bounded height so a well-organised shelf's tag list can't push the buttons
-   off a phone screen; the picker scrolls instead of the dialog growing. */
+   off a phone screen; the picker scrolls instead of the dialog growing.
+   The cap falls where it falls, which on a long list is through the middle of a
+   chip row. Fading that edge turns a chip that looks broken against the „Neuer
+   Tag" row beneath it into the ordinary sign that a list goes on (rule 3). The
+   padding is what keeps the fade honest: it sits in the fade zone when there is
+   nothing to scroll, and again once the list is scrolled to its end, so a chip
+   is only ever dimmed while there really is something below it. */
 .tag-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  justify-content: center;
   max-height: 33vh;
   overflow-y: auto;
+  padding-bottom: 14px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 14px), transparent);
 }
 
 /* Deliberately the same pill language as the library's filter chips: the thing
@@ -1612,40 +1643,49 @@ button {
   cursor: not-allowed;
 }
 
-/* „Synchronisations-Code des Buches" and its „Trennen", present only while the
-   book actually carries a code (issue #133, ADR 20). Same column rhythm as the
-   tag block above it. */
-.book-edit-sync {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+/* A tag write that did not go through, said inside the dialog because an alert
+   raised from within one only appears after it closes (see showBookEdit). Red:
+   a chip has just been put back to a state the user did not choose. */
+.book-edit-error {
+  font-size: 13px;
+  color: var(--danger);
 }
 
-.book-edit-sync-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+/* „Synchronisations-Code" and its „Synchronisation trennen", present only while
+   the book actually carries a code (issue #133, ADR 20). */
 
 /* Green, monospace, spaced: the same reading the reader's code display gets, so
-   the six characters are recognisably the same thing in both places. */
+   the six characters are recognisably the same thing in both places. Smaller
+   than there — on the reader's code screen the code is the whole point, here it
+   is one line of three and at 20px it shouted down the title above it. */
 .book-edit-sync-code {
-  flex: 1;
-  min-width: 0;
   font-family: monospace;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 3px;
   color: var(--success);
-  text-align: center;
 }
 
-/* Neutral, though it does take the code away: on this screen the red lettering
-   belongs to „Buch löschen", which destroys the only copy of photographed pages
-   and cannot be undone at all. Giving both controls that colour would flatten
-   the difference, and per ADR 4 each colour has exactly one job. */
-.book-edit-sync-stop {
-  flex: 0 0 auto;
+/* Its own full-width row, like „Buch löschen" below it: both are rare acts that
+   end the dialog, and neither belongs anywhere near the „Hinzufügen" this one
+   used to be a twin of — same class, same size, one line apart (issue #155).
+   Outlined, because unlike the buttons in the closing row it stands alone,
+   where borderless lettering stops reading as something to press; the outline
+   is the same one the chips above it wear. Neutral, though it does take the
+   code away: red belongs to „Buch löschen", which destroys the only copy of
+   photographed pages, and per ADR 4 each colour has exactly one job. */
+.book-edit-actions {
+  display: flex;
+}
+
+.book-edit-actions .dialog-btn {
+  border: 1px solid var(--surface-line);
+}
+
+@media (hover: hover) {
+  .book-edit-actions .dialog-btn:hover {
+    border-color: var(--fg-dim);
+  }
 }
 
 /* ---- Shared reading memory (issue #65) ---------------------------------- */

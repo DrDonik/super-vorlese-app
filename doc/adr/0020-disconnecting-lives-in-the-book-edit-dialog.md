@@ -63,6 +63,10 @@ Details that follow from it:
 - It **ends the dialog**, the same shape „Buch löschen" has, so „Abbrechen" never
   has to mean "and undo that too". Anything typed is dropped with it: giving up
   the code and renaming the book are separate errands.
+  *Superseded by [ADR 21](0021-book-edit-dialog-has-no-draft-state.md): the
+  dialog has no „Abbrechen" any more, and every way out of it — this one
+  included — saves what was typed. The button is now labelled „Synchronisation
+  trennen".*
 - The shelf says so afterwards. Nothing on a book card shows sync state, so
   without a line in the status bar the tap would have no visible result at all
   (rule 3).
