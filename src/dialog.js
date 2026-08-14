@@ -96,11 +96,15 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
         // moment the field has a value, which for an existing title is always.
         const field = document.createElement('div');
         field.className = 'dialog-field';
-        const labelEl = document.createElement('div');
+        // A real <label for>, not a div named by aria-labelledby: that would
+        // give the field its name but leave the visible word inert, and a
+        // rubric that does nothing when tapped is a small lie on a touch
+        // screen. This way the word is part of the field's tap target.
+        const labelEl = document.createElement('label');
         labelEl.className = 'dialog-field-label';
-        labelEl.id = `dialog-field-label-${++dialogSeq}`;
+        inputEl.id = `dialog-field-input-${++dialogSeq}`;
+        labelEl.htmlFor = inputEl.id;
         labelEl.textContent = input.labelText;
-        inputEl.setAttribute('aria-labelledby', labelEl.id);
         field.appendChild(labelEl);
         field.appendChild(inputEl);
         card.appendChild(field);
@@ -244,9 +248,14 @@ function trapFocus(e, card) {
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
-  if (!card.contains(document.activeElement)) {
+  if (!card.contains(document.activeElement) || document.activeElement === card) {
     // Focus drifted out of the card (e.g. a click on the backdrop or on
-    // non-focusable text); pull it back in instead of letting Tab escape.
+    // non-focusable text), or is parked on the card itself, which is where a
+    // dialog that does not focus its field starts (`input.autoFocus: false`).
+    // The card is neither `first` nor `last`, so without this the browser was
+    // left to move focus on its own: forwards that lands on the field anyway,
+    // but backwards it steps to whatever precedes the overlay — a control on
+    // the page behind the modal, one Enter away from being pressed.
     e.preventDefault();
     (e.shiftKey ? last : first).focus();
   } else if (e.shiftKey && document.activeElement === first) {
