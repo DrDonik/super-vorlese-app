@@ -29,6 +29,11 @@ let dialogSeq = 0;
 // the resolved value itself and receives the text input's current value, so a
 // custom dialog can hand back more than a single string.
 //
+// `content` may also be a function receiving a `close(value)` callback and
+// returning the element. That is for a dialog offering more than one way out —
+// the library's „Gemeinsam lesen", where choosing a book and entering a code are
+// two separate outcomes that would not fit side by side in the button row.
+//
 // `dangerButton` is a destructive action on the dialog's subject („Buch
 // löschen"), and gets a row of its own above the accept/cancel pair. It is not
 // one of `buttons` on purpose: those share the row evenly, which would put a
@@ -79,8 +84,6 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       card.appendChild(inputEl);
     }
 
-    if (content) card.appendChild(content);
-
     let cleaned = false;
     let onKeyDown;
     const cleanup = (value) => {
@@ -93,6 +96,10 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       }
       resolve(value);
     };
+
+    // After cleanup so a content element can be handed the means to close the
+    // dialog; still before the buttons, so the DOM order is unchanged.
+    if (content) card.appendChild(typeof content === 'function' ? content(cleanup) : content);
 
     if (dangerButton) {
       const dangerRow = document.createElement('div');
@@ -174,6 +181,15 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       defaultFocusBtn.focus();
     } else if (primaryBtn) {
       primaryBtn.focus();
+    } else {
+      // A dialog whose actions all live in `content` has neither a field nor a
+      // primary button, and focus would stay on whatever opened it — behind the
+      // modal, so a screen reader never announces the dialog and the Tab trap
+      // only rescues someone who presses Tab first. The first enabled control in
+      // DOM order is the right target: in the library's „Gemeinsam lesen" that
+      // is „Buch auswählen", and on an empty shelf, where that path is not
+      // offered, the code field — which is then the only thing to do.
+      card.querySelector('button:not([disabled]), input')?.focus();
     }
   }));
 }

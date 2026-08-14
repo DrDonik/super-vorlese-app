@@ -318,6 +318,35 @@ button {
   background: transparent;
 }
 
+/* The same tile while a book is being picked for „Gemeinsam lesen": it keeps
+   its cell so the shelf does not shift under the finger, but stops being a
+   button and carries the instruction instead. Quiet grey, no signal colour —
+   per ADR 4 green means connected and red means destructive, and an instruction
+   is neither. */
+.connect-prompt {
+  cursor: default;
+  color: var(--fg-dim);
+  border-style: solid;
+}
+
+.connect-prompt:hover {
+  background: var(--surface);
+}
+
+.connect-prompt:active {
+  transform: none;
+}
+
+/* Picking a book is the only thing the shelf does in this mode. The pencil and
+   the mood strip would open a dialog instead of starting the session, so they
+   go — display:none also takes them out of the tab order, which hiding them by
+   opacity would not. The sort pills and filter chips deliberately stay: those
+   help find the book. */
+.library.select-mode .book-action,
+.library.select-mode .book-mood-strip {
+  display: none;
+}
+
 .book-cover img {
   width: 100%;
   height: 100%;
@@ -756,10 +785,12 @@ button {
 }
 
 /* Active = connected state, not an action: green, matching the room code
-   and "Verbunden" status. */
+   and "Verbunden" status. The glyph is the same 👥 the library's „Gemeinsam
+   lesen" tile wears, so the two are recognisably one feature (issue #133); being
+   an emoji it brings its own colours, and the connected state rides on the fill
+   alone. */
 .reader-sync-btn.sync-active {
   background: var(--success);
-  color: #111;
 }
 
 /* Equal specificity to .reader-sync-btn:hover, so the active button needs
@@ -918,21 +949,19 @@ button {
   border-radius: 12px;
 }
 
-.sync-status {
+/* What to do with the code now that it exists. True in every case the panel
+   shows a code — freshly created or reconnected — so it carries no state and
+   needs no second wording. */
+.sync-code-hint {
   font-size: 14px;
-  color: var(--success);
+  color: var(--fg-dim);
 }
 
-.sync-stop-btn {
-  background: var(--danger);
-  color: #fff;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  width: 100%;
-}
+/* No „Verbunden" line and no „Trennen" here any more (issue #133). The green
+   code display already says the sync is live — spelling it out underneath
+   repeated the colour in words, and worse, „Verbunden" reads as "your partner is
+   there" when all it ever meant was "this device is enrolled". Disconnecting
+   moved to the book's „Buch bearbeiten" dialog; see ADR 20. */
 
 /* The dismiss button and "Verbinden" share one row, mirroring the library's
    join dialog. "Verbinden" hides when connected, leaving the dismiss button
@@ -955,6 +984,39 @@ button {
 
 .sync-panel-close:hover {
   color: var(--fg);
+}
+
+/* The library's „Gemeinsam lesen" dialog. It borrows the reader panel's own
+   parts — .sync-create-btn, .sync-or, .sync-join-label, .sync-join-btn — because
+   it asks the same two questions in the same order, and a second set of rules
+   for the same controls would drift apart (rule 1). Only the layout is its own:
+   dialog cards are left-aligned where the reader panel is centred. */
+.shared-start {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.shared-start .sync-or {
+  text-align: center;
+}
+
+/* „Verbinden" sits under the field it confirms rather than in the dialog's
+   button row, which belongs to the dialog as a whole — and which already holds
+   „Abbrechen" for both paths. Stacked rather than side by side so the field
+   keeps the full width at every size: „Synchronisations-Code" is what the
+   placeholder has to be able to say, and a button beside it clips that on a
+   phone. Each path then ends in one full-width button, which is also what the
+   „Buch auswählen" half above looks like. */
+.shared-start-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shared-start-row .sync-join-btn {
+  flex: none;
 }
 
 /* ============ HELP ============ */
@@ -1548,6 +1610,42 @@ button {
 .tag-add:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* „Synchronisations-Code des Buches" and its „Trennen", present only while the
+   book actually carries a code (issue #133, ADR 20). Same column rhythm as the
+   tag block above it. */
+.book-edit-sync {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.book-edit-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Green, monospace, spaced: the same reading the reader's code display gets, so
+   the six characters are recognisably the same thing in both places. */
+.book-edit-sync-code {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--success);
+  text-align: center;
+}
+
+/* Neutral, though it does take the code away: on this screen the red lettering
+   belongs to „Buch löschen", which destroys the only copy of photographed pages
+   and cannot be undone at all. Giving both controls that colour would flatten
+   the difference, and per ADR 4 each colour has exactly one job. */
+.book-edit-sync-stop {
+  flex: 0 0 auto;
 }
 
 /* ---- Shared reading memory (issue #65) ---------------------------------- */

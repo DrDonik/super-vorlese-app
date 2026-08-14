@@ -6,9 +6,9 @@ import {
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { importBundle } from './bundle.js';
-import { closeSyncForBook, lookupRoom, isCompleteRoomCode } from './sync.js';
-import { applyCodeField } from './code-field.js';
-import { showAlert, showConfirm, showPrompt, openDialog } from './dialog.js';
+import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
+import { applyCodeField, bindCodeSubmit } from './code-field.js';
+import { showAlert, showConfirm, openDialog } from './dialog.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
@@ -175,6 +175,7 @@ let tagLabelSeq = 0;
 // saving it. A sentinel rather than a flag on the result object: deleting and
 // saving are opposite outcomes, and identity comparison can't be misread.
 const DELETE_REQUESTED = Symbol('delete-requested');
+const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
 
 // „Buch bearbeiten": title, tags and deletion in one dialog, opened by the
 // pencil that used to only rename. Putting tags on the existing button means
@@ -188,8 +189,16 @@ const DELETE_REQUESTED = Symbol('delete-requested');
 // and the confirmation that follows is weak protection for someone who taps the
 // bright button to make a surprise dialog go away. Behind the pencil it is
 // reached only on purpose.
-// Resolves with { title, tags }, DELETE_REQUESTED, or null when cancelled.
-function showBookEdit({ title, tags, allTags }) {
+// „Trennen" lives here too (issue #133), not on the reader's code screen. It is
+// the same move ADR 17 made for deleting: a control used a few times a year has
+// no business on a surface used every evening — and since that screen now opens
+// by itself after „Gemeinsam lesen", a red one-tap disconnect sat directly under
+// the code somebody was in the middle of reading out. A Synchronisations-Code
+// belongs to the *book*, so the book's own dialog is where it is given up.
+//
+// Resolves with { title, tags }, DELETE_REQUESTED, DISCONNECT_REQUESTED, or null
+// when cancelled.
+function showBookEdit({ title, tags, allTags, syncCode }) {
   const content = document.createElement('div');
   content.className = 'book-edit-tags';
 
@@ -283,10 +292,48 @@ function showBookEdit({ title, tags, allTags }) {
   newRow.appendChild(addBtn);
   content.appendChild(newRow);
 
+  // Only when there is a code to give up: an empty „Gemeinsam lesen" rubric in
+  // every book's dialog would be a permanent question mark for the many books
+  // that are never read together (same principle as the filter row in ADR 16).
+  let stopBtn = null;
+  if (syncCode) {
+    const syncSection = document.createElement('div');
+    syncSection.className = 'book-edit-sync';
+
+    const syncLabel = document.createElement('div');
+    syncLabel.className = 'book-edit-label';
+    syncLabel.textContent = 'Synchronisations-Code des Buches';
+    syncSection.appendChild(syncLabel);
+
+    const syncRow = document.createElement('div');
+    syncRow.className = 'book-edit-sync-row';
+
+    const code = document.createElement('span');
+    code.className = 'book-edit-sync-code';
+    code.textContent = syncCode;
+
+    stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'tag-add book-edit-sync-stop';
+    stopBtn.textContent = 'Trennen';
+
+    syncRow.appendChild(code);
+    syncRow.appendChild(stopBtn);
+    syncSection.appendChild(syncRow);
+    content.appendChild(syncSection);
+  }
+
   return openDialog({
     title: 'Buch bearbeiten',
     input: { value: title, placeholder: 'Titel', label: 'Titel' },
-    content,
+    // Trennen ends the dialog rather than acting inside it, so „Abbrechen" never
+    // has to mean "undo that too" — the same shape „Buch löschen" has. Anything
+    // typed is dropped with it: giving up the code and renaming the book are
+    // separate errands, and the shelf is one tap from the pencil again.
+    content: (close) => {
+      stopBtn?.addEventListener('click', () => close(DISCONNECT_REQUESTED));
+      return content;
+    },
     dangerButton: { label: 'Buch löschen', value: DELETE_REQUESTED },
     buttons: [
       { label: 'Abbrechen', value: null },
@@ -301,14 +348,20 @@ function showBookEdit({ title, tags, allTags }) {
 }
 
 export class LibraryView {
-  constructor(root, { onOpenBook, onAddPhotos, onJoinRoom }) {
+  constructor(root, { onOpenBook, onStartShared, onAddPhotos, onJoinRoom }) {
     this.root = root;
     this.onOpenBook = onOpenBook;
+    this.onStartShared = onStartShared;
     this.onAddPhotos = onAddPhotos;
     this.onJoinRoom = onJoinRoom;
     this.thumbUrls = [];
     this.renderId = 0;
     this.sortMode = loadSortMode();
+    // The shelf doubles as the book picker for „Gemeinsam lesen" (issue #133).
+    // While this is on, a tap on a book starts a shared session with it instead
+    // of opening it to read alone.
+    this.selectMode = false;
+    this.hasBooks = false;
   }
 
   async render() {
@@ -324,6 +377,7 @@ export class LibraryView {
               <input class="import-input" type="file" accept="application/pdf,.pdf,.vorlese,.zip,application/zip,application/octet-stream" multiple hidden />
               <span>📥 Importieren</span>
             </label>
+            <button class="add-book select-cancel" type="button" hidden>Abbrechen</button>
           </div>
         </header>
         <div class="library-status" hidden></div>
@@ -338,6 +392,9 @@ export class LibraryView {
 
     const photoBtn = this.root.querySelector('.add-photos');
     photoBtn.addEventListener('click', () => this.onAddPhotos?.());
+
+    this.root.querySelector('.select-cancel')
+      .addEventListener('click', () => this.setSelectMode(false));
 
     this.buildSortBar();
 
@@ -370,6 +427,37 @@ export class LibraryView {
     // would otherwise look like nothing happened.
     const grid = this.root.querySelector('.library-grid');
     if (grid) grid.scrollTop = 0;
+  }
+
+  // Turns the shelf into the book picker for „Gemeinsam lesen" and back. What
+  // leaves is everything that is not choosing a book: the two add buttons, and
+  // (via CSS) the pencil and the mood strip on every card, which would open a
+  // dialog instead of starting the session. What stays is the sort pills and the
+  // filter chips — arranging and narrowing the shelf *is* finding the book, and
+  // a household that has tagged its books wants those chips exactly now.
+  //
+  // The grid is rebuilt rather than patched so the tile and the cards can never
+  // disagree about which mode they are in; its scroll position is carried over,
+  // because the books must not move under the finger that is about to pick one.
+  async setSelectMode(on) {
+    if (this.selectMode === on) return;
+    this.selectMode = on;
+    this.root.querySelector('.library').classList.toggle('select-mode', on);
+    this.root.querySelector('.select-cancel').hidden = !on;
+    for (const el of this.root.querySelectorAll('.add-photos, .add-import')) el.hidden = on;
+
+    const grid = this.root.querySelector('.library-grid');
+    const scrollTop = grid ? grid.scrollTop : 0;
+    await this.renderGrid();
+    if (grid) grid.scrollTop = scrollTop;
+
+    // Focus would otherwise be stranded on <body>: entering the mode replaces
+    // the „Gemeinsam lesen" tile the dialog returned focus to, and leaving it
+    // replaces the card that was just chosen. Programmatic focus does not raise
+    // a focus ring after a tap (the app rings :focus-visible only), so this
+    // costs a mouse or touch user nothing.
+    if (on) this.root.querySelector('.library-grid .book-open')?.focus();
+    else this.root.querySelector('.connect-card')?.focus();
   }
 
   // Rebuilt on every render rather than once like the sort pills, because the
@@ -421,6 +509,10 @@ export class LibraryView {
 
     const allBooks = sortBooks(await listBooks(), this.sortMode);
     if (isStale()) return;
+    // Read by the „Gemeinsam lesen" dialog, which offers the „choose a book"
+    // path only when there is one to choose. Kept in step here because this is
+    // the render that draws the tile the dialog is opened from.
+    this.hasBooks = allBooks.length > 0;
 
     const sortBar = this.root.querySelector('.library-sort');
     if (sortBar) sortBar.hidden = allBooks.length === 0;
@@ -432,9 +524,12 @@ export class LibraryView {
       grid.appendChild(this.buildConnectTile());
       const empty = document.createElement('div');
       empty.className = 'empty';
+      // No „importiere ein geteiltes Buch": since ADR 17 the app hands out no
+      // book files any more, so the third way to a book is the one the tile
+      // above offers — a Lesepartner sends it over when you join their session.
       empty.innerHTML = `
         <p>Noch keine Bücher.</p>
-        <p>Fotografiere Seiten, lade ein PDF oder importiere ein geteiltes Buch.</p>
+        <p>Fotografiere Seiten oder lade ein PDF. Beim gemeinsamen Lesen bekommst du das Buch von deinem Lesepartner.</p>
       `;
       grid.appendChild(empty);
       this.cleanupThumbUrls();
@@ -495,7 +590,13 @@ export class LibraryView {
         <button class="book-action book-edit" type="button" aria-label="Buch bearbeiten">${ICON_PENCIL}</button>
       `;
       const openBtn = card.querySelector('.book-open');
-      openBtn.setAttribute('aria-label', `${book.title} öffnen`);
+      // The one signal a screen-reader user gets that the shelf is picking a
+      // book rather than opening one — the prompt tile is passive text, and a
+      // live region announcing it would fire unreliably across ATs.
+      openBtn.setAttribute(
+        'aria-label',
+        this.selectMode ? `${book.title} gemeinsam lesen` : `${book.title} öffnen`,
+      );
       const titleEl = card.querySelector('.book-title');
       titleEl.textContent = book.title;
       card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
@@ -560,7 +661,10 @@ export class LibraryView {
       // A real button needs no keydown handling of its own: Enter and Space
       // activate it, and the other controls are siblings rather than children,
       // so nothing has to be filtered back out of this click.
-      openBtn.addEventListener('click', () => this.onOpenBook(book.id));
+      openBtn.addEventListener('click', () => {
+        if (this.selectMode) this.onStartShared?.(book.id);
+        else this.onOpenBook(book.id);
+      });
 
       const editBtn = card.querySelector('.book-edit');
       editBtn.addEventListener('click', async (e) => {
@@ -572,6 +676,7 @@ export class LibraryView {
             title: book.title,
             tags: bookTags(book),
             allTags,
+            syncCode: getSavedRoomCode(book.id),
           });
         } finally {
           editBtn.disabled = false;
@@ -589,6 +694,13 @@ export class LibraryView {
         // confirmation names the title the book actually still has.
         if (edited === DELETE_REQUESTED) {
           await this.confirmAndDelete(book);
+          return;
+        }
+        if (edited === DISCONNECT_REQUESTED) {
+          closeSyncForBook(book.id);
+          // Nothing on the shelf shows a book's sync state, so without a word
+          // here the tap would have no visible result at all (rule 3).
+          this.showStatus(`„${book.title}" ist nicht mehr synchronisiert.`);
           return;
         }
         const newTitle = edited.title.trim();
@@ -633,6 +745,20 @@ export class LibraryView {
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
+  }
+
+  // One-shot message in the status line above the shelf, cleared after a few
+  // seconds unless something newer has taken its place. The import flows drive
+  // the same element step by step; this is for an action that simply happened
+  // and would otherwise leave no trace on screen.
+  showStatus(message) {
+    const status = this.root.querySelector('.library-status');
+    if (!status) return;
+    status.hidden = false;
+    status.textContent = message;
+    setTimeout(() => {
+      if (status.textContent === message) status.hidden = true;
+    }, 4000);
   }
 
   // Reached from the „Buch bearbeiten" dialog, which has closed by the time
@@ -708,7 +834,23 @@ export class LibraryView {
   // way to import a book — joining may fetch the book, or use a copy you have.
   // Carries no controls of its own, so unlike a book card it can simply be the
   // button rather than needing one layered over it (issue #128).
+  //
+  // While a book is being picked it stays in place and becomes the instruction
+  // instead. Taking it out would shift the whole shelf by one cell, moving the
+  // book the reader was just looking at; and its corner is where „Gemeinsam
+  // lesen" always sits, so it is the one spot where the explanation is looked
+  // for. Quiet grey rather than a signal colour: per ADR 4 green means connected
+  // and red means destructive, and this is neither.
   buildConnectTile() {
+    if (this.selectMode) {
+      const prompt = document.createElement('div');
+      prompt.className = 'book-card connect-card connect-prompt';
+      prompt.innerHTML = `
+        <span class="book-cover connect-cover" aria-hidden="true">👥</span>
+        <span class="book-title">Wähle das Buch, das ihr lesen wollt</span>
+      `;
+      return prompt;
+    }
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.className = 'book-card connect-card';
@@ -718,33 +860,110 @@ export class LibraryView {
       <span class="book-title">Gemeinsam lesen</span>
       <span class="book-meta">Synchronisations-Code eingeben und mitlesen</span>
     `;
-    tile.addEventListener('click', () => this.startJoin());
+    tile.addEventListener('click', () => this.startShared());
     return tile;
   }
 
-  async startJoin() {
-    const entered = await showPrompt({
-      title: 'Gemeinsam lesen',
-      message: 'Frag deinen Lesepartner nach dem Synchronisations-Code des Buches, das ihr gemeinsam lesen wollt.',
-      placeholder: 'Synchronisations-Code',
-      confirmLabel: 'Verbinden',
-      setup: applyCodeField,
-      validate: isCompleteRoomCode,
-    });
-    if (entered === null) return;
-
-    let room;
-    try {
-      room = await lookupRoom(entered);
-    } catch (err) {
-      await showAlert({ title: 'Gemeinsam lesen', message: err.message || 'Verbindung fehlgeschlagen.' });
+  // „Gemeinsam lesen" used to ask for a Synchronisations-Code and nothing else,
+  // which only ever served the person who had been given one. Whoever holds the
+  // book — often the grandparent — was sent away empty-handed, because a code
+  // can only be created inside a book, behind a control in the reader nothing
+  // in the library points at (issue #133). Both ways out now stand side by side
+  // here, in the reader panel's order so the two screens read alike (rule 1).
+  //
+  // A wrong code returns to this same dialog with what was typed still in the
+  // field, rather than dropping back to the shelf: a mistyped character should
+  // cost one keystroke to repair, not six (rule 5).
+  async startShared() {
+    let code = '';
+    for (;;) {
+      const chosen = await this.askShared(code);
+      if (!chosen) return;
+      if (chosen.select) {
+        await this.setSelectMode(true);
+        return;
+      }
+      code = chosen.code;
+      let room;
+      try {
+        room = await lookupRoom(code);
+      } catch (err) {
+        await showAlert({ title: 'Gemeinsam lesen', message: err.message || 'Verbindung fehlgeschlagen.' });
+        continue;
+      }
+      // Fetching the book (or reusing a local copy) and opening the reader
+      // synced to the room is shared with the reader's own "Verbinden" field —
+      // see openRoom in main.js.
+      await this.onJoinRoom?.(room);
       return;
     }
+  }
 
-    // Fetching the book (or reusing a local copy) and opening the reader synced
-    // to the room is shared with the reader's own "Verbinden" field — see
-    // openRoom in main.js.
-    await this.onJoinRoom?.(room);
+  // Resolves with { select: true }, { code }, or null when cancelled. Both ways
+  // out live in the content area because the dialog's button row cannot hold
+  // them: three buttons abreast do not fit a phone, and the "— oder —" between
+  // the two paths is the whole point. „Verbinden" therefore sits under the field
+  // it acts on, which is also where it belongs — it confirms the code, while the
+  // row below belongs to the dialog as a whole and carries „Abbrechen" for both
+  // paths.
+  askShared(prefill) {
+    const content = document.createElement('div');
+    content.className = 'shared-start';
+
+    // The classes are the reader panel's: this is the same control doing the
+    // same job on another screen, and a second set of rules would drift.
+    const selectBtn = document.createElement('button');
+    selectBtn.type = 'button';
+    selectBtn.className = 'sync-create-btn';
+    selectBtn.textContent = 'Buch auswählen und Code erstellen';
+
+    const or = document.createElement('div');
+    or.className = 'sync-or';
+    or.textContent = '— oder —';
+
+    const label = document.createElement('div');
+    label.className = 'sync-join-label';
+    label.textContent = 'Synchronisations-Code von deinem Lesepartner bekommen?';
+
+    const row = document.createElement('div');
+    row.className = 'shared-start-row';
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'dialog-input';
+    input.value = prefill;
+    input.placeholder = 'Synchronisations-Code';
+    input.setAttribute('aria-label', 'Synchronisations-Code');
+    applyCodeField(input);
+
+    const connectBtn = document.createElement('button');
+    connectBtn.type = 'button';
+    connectBtn.className = 'sync-join-btn';
+    connectBtn.textContent = 'Verbinden';
+
+    row.appendChild(input);
+    row.appendChild(connectBtn);
+
+    // Nothing to pick from on an empty shelf, so that path is not offered — it
+    // could only lead to a picker with no books in it (rule 5).
+    if (this.hasBooks) {
+      content.appendChild(selectBtn);
+      content.appendChild(or);
+    }
+    content.appendChild(label);
+    content.appendChild(row);
+
+    return openDialog({
+      title: 'Gemeinsam lesen',
+      message: 'Einer von euch beiden erstellt den Code und sagt ihn dem anderen am Telefon.',
+      content: (close) => {
+        selectBtn.addEventListener('click', () => close({ select: true }));
+        bindCodeSubmit(input, connectBtn, () => close({ code: input.value }));
+        return content;
+      },
+      buttons: [{ label: 'Abbrechen', value: null }],
+      cancelValue: null,
+    });
   }
 
   async handleImport(fileList) {

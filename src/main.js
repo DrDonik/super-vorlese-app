@@ -35,15 +35,20 @@ function mount(view) {
 function showLibrary() {
   mount(new LibraryView(app, {
     onOpenBook: (id) => showReader(id),
+    // The library's „Gemeinsam lesen" → „Buch auswählen" path: open the book and
+    // put its Synchronisations-Code on screen, so the code can be read out
+    // without first having to find the sync control inside the reader.
+    onStartShared: (id) => showReader(id, { startShared: true }),
     onAddPhotos: () => showCamera(),
     onJoinRoom: (room) => openRoom(room),
   }));
 }
 
-function showReader(bookId, joinCode = null) {
+function showReader(bookId, { joinCode = null, startShared = false } = {}) {
   mount(new ReaderView(app, {
     bookId,
     joinCode,
+    startShared,
     onClose: () => showLibrary(),
     onJoinRoom: (room) => openRoom(room),
   }));
@@ -70,7 +75,7 @@ async function openRoom(room) {
     pageCount: room.book.pageCount,
   });
   if (local) {
-    showReader(local.id, room.code);
+    showReader(local.id, { joinCode: room.code });
     return;
   }
 
@@ -93,7 +98,7 @@ async function openRoom(room) {
       throw new Error('integrity');
     }
     progress.close();
-    showReader(id, room.code);
+    showReader(id, { joinCode: room.code });
   } catch (err) {
     progress.close();
     if (newBookId) await deleteBook(newBookId).catch(() => {});

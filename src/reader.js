@@ -1,8 +1,8 @@
 import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom, isCompleteRoomCode } from './sync.js';
-import { applyCodeField } from './code-field.js';
+import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
+import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert, showConfirm } from './dialog.js';
@@ -94,12 +94,15 @@ async function createSource(meta) {
 }
 
 export class ReaderView {
-  constructor(root, { bookId, onClose, onJoinRoom, joinCode = null }) {
+  constructor(root, { bookId, onClose, onJoinRoom, joinCode = null, startShared = false }) {
     this.root = root;
     this.bookId = bookId;
     this.onClose = onClose;
     this.onJoinRoom = onJoinRoom;
     this.joinCode = joinCode;
+    // Opened from the library to hand a Synchronisations-Code out: make sure
+    // there is one and put it on screen (see ensureSharedCode).
+    this.startShared = startShared;
     this.serveStop = null;
     this.source = null;
     this.currentPage = 1;
@@ -153,7 +156,7 @@ export class ReaderView {
       <div class="reader">
         <div class="reader-chrome">
           <button class="reader-back" type="button">← Bibliothek</button>
-          <button class="reader-sync-btn" type="button" aria-label="Gemeinsam lesen">⇄</button>
+          <button class="reader-sync-btn" type="button" aria-label="Gemeinsam lesen">👥</button>
           <div class="reader-title"></div>
           <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
           <div class="reader-page-indicator"></div>
@@ -174,8 +177,7 @@ export class ReaderView {
             <div class="sync-active-section" hidden>
               <div class="sync-code-label">Synchronisations-Code des Buches</div>
               <div class="sync-code-display"></div>
-              <div class="sync-status">Verbunden</div>
-              <button class="sync-stop-btn" type="button">Trennen</button>
+              <div class="sync-code-hint">Sag ihn deinem Lesepartner am Telefon.</div>
             </div>
             <div class="sync-panel-actions">
               <button class="sync-panel-close" type="button">Abbrechen</button>
@@ -311,6 +313,26 @@ export class ReaderView {
       } else {
         this.syncSession = null;
       }
+    }
+
+    if (this.startShared) await this.ensureSharedCode();
+  }
+
+  // The tail of the library's „Buch auswählen" path: the book is open, so all
+  // that is left is to have a Synchronisations-Code and show it.
+  //
+  // Deliberately after the reconnect above, and only creating when that came up
+  // empty. A book already carrying a code keeps it: creating a second one runs
+  // syncCreate's syncStop first, which leaves the room — and deletes it outright
+  // when this device is its last member — pulling it out from under a partner
+  // who is still in it. Whether the code was made minutes or weeks ago is
+  // nothing the reader has to think about, so the screen is the same either way.
+  async ensureSharedCode() {
+    if (!this.syncSession?.roomCode) await this.syncCreate();
+    // syncCreate reports its own failures and leaves no session behind; showing
+    // an empty panel on top of that alert would only be a second thing to close.
+    if (this.syncSession?.roomCode) {
+      this.root.querySelector('.sync-panel').hidden = false;
     }
   }
 
@@ -1370,7 +1392,6 @@ export class ReaderView {
     const createBtn = reader.querySelector('.sync-create-btn');
     const joinInput = reader.querySelector('.sync-join-input');
     const joinBtn = reader.querySelector('.sync-join-btn');
-    const stopBtn = reader.querySelector('.sync-stop-btn');
     const closeBtn = reader.querySelector('.sync-panel-close');
 
     syncBtn.addEventListener('click', () => {
@@ -1386,16 +1407,11 @@ export class ReaderView {
     });
 
     createBtn.addEventListener('click', () => this.syncCreate());
-    joinBtn.addEventListener('click', () => this.syncJoin());
     applyCodeField(joinInput);
-    // Gray out "Verbinden" until a whole code is typed (rule 5: prevent errors).
-    const syncJoinAvailability = () => { joinBtn.disabled = !isCompleteRoomCode(joinInput.value); };
-    joinInput.addEventListener('input', syncJoinAvailability);
-    syncJoinAvailability();
-    joinInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !joinBtn.disabled) this.syncJoin();
-    });
-    stopBtn.addEventListener('click', () => this.syncStop());
+    // Graying "Verbinden" out until a whole code is typed, and Enter from the
+    // field, both live in code-field.js — the library's dialog asks for the
+    // same code and must behave identically (rule 1).
+    bindCodeSubmit(joinInput, joinBtn, () => this.syncJoin());
   }
 
   async syncCreate() {

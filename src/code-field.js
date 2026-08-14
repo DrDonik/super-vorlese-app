@@ -4,7 +4,7 @@
 // look and behave identically (rule 1) and neither can produce an unusable code
 // (rule 5).
 
-import { CODE_LENGTH, normalizeRoomCode } from './sync.js';
+import { CODE_LENGTH, normalizeRoomCode, isCompleteRoomCode } from './sync.js';
 
 export function applyCodeField(input) {
   input.classList.add('code-input');
@@ -32,4 +32,25 @@ export function applyCodeField(input) {
     input.value = normalized;
     input.setSelectionRange(caret, caret);
   });
+}
+
+// Ties the field to the button that acts on it: gray while fewer than six
+// characters stand (rule 5 — nothing to press that could only fail), and Enter
+// from within the field does what the button does. Here rather than at the two
+// call sites for the same reason applyCodeField is: the field's behaviour has
+// one definition, so the reader panel and the library dialog cannot drift apart.
+export function bindCodeSubmit(input, button, onSubmit) {
+  const sync = () => { button.disabled = !isCompleteRoomCode(input.value); };
+  input.addEventListener('input', sync);
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' || button.disabled) return;
+    // While the cursor is in this field, Enter belongs to it. Stopping it here
+    // also keeps it from reaching the dialog machinery when the field sits in
+    // one, where it would mean "confirm the dialog" — a different action.
+    e.preventDefault();
+    e.stopPropagation();
+    onSubmit();
+  });
+  button.addEventListener('click', onSubmit);
+  sync();
 }
