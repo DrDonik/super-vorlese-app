@@ -6,7 +6,7 @@ import {
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { importBundle } from './bundle.js';
-import { closeSyncForBook, lookupRoom } from './sync.js';
+import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { showAlert, showConfirm, openDialog } from './dialog.js';
 
@@ -175,6 +175,7 @@ let tagLabelSeq = 0;
 // saving it. A sentinel rather than a flag on the result object: deleting and
 // saving are opposite outcomes, and identity comparison can't be misread.
 const DELETE_REQUESTED = Symbol('delete-requested');
+const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
 
 // „Buch bearbeiten": title, tags and deletion in one dialog, opened by the
 // pencil that used to only rename. Putting tags on the existing button means
@@ -188,8 +189,16 @@ const DELETE_REQUESTED = Symbol('delete-requested');
 // and the confirmation that follows is weak protection for someone who taps the
 // bright button to make a surprise dialog go away. Behind the pencil it is
 // reached only on purpose.
-// Resolves with { title, tags }, DELETE_REQUESTED, or null when cancelled.
-function showBookEdit({ title, tags, allTags }) {
+// „Trennen" lives here too (issue #133), not on the reader's code screen. It is
+// the same move ADR 17 made for deleting: a control used a few times a year has
+// no business on a surface used every evening — and since that screen now opens
+// by itself after „Gemeinsam lesen", a red one-tap disconnect sat directly under
+// the code somebody was in the middle of reading out. A Synchronisations-Code
+// belongs to the *book*, so the book's own dialog is where it is given up.
+//
+// Resolves with { title, tags }, DELETE_REQUESTED, DISCONNECT_REQUESTED, or null
+// when cancelled.
+function showBookEdit({ title, tags, allTags, syncCode }) {
   const content = document.createElement('div');
   content.className = 'book-edit-tags';
 
@@ -283,10 +292,48 @@ function showBookEdit({ title, tags, allTags }) {
   newRow.appendChild(addBtn);
   content.appendChild(newRow);
 
+  // Only when there is a code to give up: an empty „Gemeinsam lesen" rubric in
+  // every book's dialog would be a permanent question mark for the many books
+  // that are never read together (same principle as the filter row in ADR 16).
+  let stopBtn = null;
+  if (syncCode) {
+    const syncSection = document.createElement('div');
+    syncSection.className = 'book-edit-sync';
+
+    const syncLabel = document.createElement('div');
+    syncLabel.className = 'book-edit-label';
+    syncLabel.textContent = 'Synchronisations-Code des Buches';
+    syncSection.appendChild(syncLabel);
+
+    const syncRow = document.createElement('div');
+    syncRow.className = 'book-edit-sync-row';
+
+    const code = document.createElement('span');
+    code.className = 'book-edit-sync-code';
+    code.textContent = syncCode;
+
+    stopBtn = document.createElement('button');
+    stopBtn.type = 'button';
+    stopBtn.className = 'tag-add book-edit-sync-stop';
+    stopBtn.textContent = 'Trennen';
+
+    syncRow.appendChild(code);
+    syncRow.appendChild(stopBtn);
+    syncSection.appendChild(syncRow);
+    content.appendChild(syncSection);
+  }
+
   return openDialog({
     title: 'Buch bearbeiten',
     input: { value: title, placeholder: 'Titel', label: 'Titel' },
-    content,
+    // Trennen ends the dialog rather than acting inside it, so „Abbrechen" never
+    // has to mean "undo that too" — the same shape „Buch löschen" has. Anything
+    // typed is dropped with it: giving up the code and renaming the book are
+    // separate errands, and the shelf is one tap from the pencil again.
+    content: (close) => {
+      stopBtn?.addEventListener('click', () => close(DISCONNECT_REQUESTED));
+      return content;
+    },
     dangerButton: { label: 'Buch löschen', value: DELETE_REQUESTED },
     buttons: [
       { label: 'Abbrechen', value: null },
@@ -629,6 +676,7 @@ export class LibraryView {
             title: book.title,
             tags: bookTags(book),
             allTags,
+            syncCode: getSavedRoomCode(book.id),
           });
         } finally {
           editBtn.disabled = false;
@@ -646,6 +694,13 @@ export class LibraryView {
         // confirmation names the title the book actually still has.
         if (edited === DELETE_REQUESTED) {
           await this.confirmAndDelete(book);
+          return;
+        }
+        if (edited === DISCONNECT_REQUESTED) {
+          closeSyncForBook(book.id);
+          // Nothing on the shelf shows a book's sync state, so without a word
+          // here the tap would have no visible result at all (rule 3).
+          this.showStatus(`„${book.title}" ist nicht mehr synchronisiert.`);
           return;
         }
         const newTitle = edited.title.trim();
@@ -690,6 +745,20 @@ export class LibraryView {
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
+  }
+
+  // One-shot message in the status line above the shelf, cleared after a few
+  // seconds unless something newer has taken its place. The import flows drive
+  // the same element step by step; this is for an action that simply happened
+  // and would otherwise leave no trace on screen.
+  showStatus(message) {
+    const status = this.root.querySelector('.library-status');
+    if (!status) return;
+    status.hidden = false;
+    status.textContent = message;
+    setTimeout(() => {
+      if (status.textContent === message) status.hidden = true;
+    }, 4000);
   }
 
   // Reached from the „Buch bearbeiten" dialog, which has closed by the time

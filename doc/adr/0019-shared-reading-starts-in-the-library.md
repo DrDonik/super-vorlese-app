@@ -81,8 +81,9 @@ books with different grandchildren work perfectly, which is the common shape.
 while the other participant is still enrolled in it: by
 [ADR 7](0007-presence-based-room-lifetime.md) the room survives, so they get no
 "the room was closed" message — just a session where nothing happens any more.
-The honest way out remains „Trennen" in the reader, which removes this device's
-membership properly.
+The honest way out remains „Trennen", which removes this device's membership
+properly — in the book's edit dialog, per
+[ADR 20](0020-disconnecting-lives-in-the-book-edit-dialog.md).
 
 ### Alternatives considered
 
@@ -133,7 +134,8 @@ not need to make, at the price noted below.
 - The reader's sync button now wears the same 👥 as the library tile instead of
   „⇄", so the two are recognisably one feature. Being an emoji it brings its own
   colours, and the connected state rides on the green fill alone.
-- The code screen is the reader's existing sync panel, which puts a red „Trennen"
-  in front of people who have just created their first code. It ends the session
-  with no confirmation. That button predates this change, but this change is what
-  routes newcomers past it; it is worth its own look.
+- The code screen is the reader's existing sync panel, which put a red „Trennen"
+  in front of people who had just created their first code and ended the session
+  on one tap. That button predates this change, but this change is what routes
+  newcomers past it — so it moved into the book's edit dialog, along with the
+  redundant „Verbunden" line. See [ADR 20](0020-disconnecting-lives-in-the-book-edit-dialog.md).

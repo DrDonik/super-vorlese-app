@@ -178,8 +178,6 @@ export class ReaderView {
               <div class="sync-code-label">Synchronisations-Code des Buches</div>
               <div class="sync-code-display"></div>
               <div class="sync-code-hint">Sag ihn deinem Lesepartner am Telefon.</div>
-              <div class="sync-status">Verbunden</div>
-              <button class="sync-stop-btn" type="button">Trennen</button>
             </div>
             <div class="sync-panel-actions">
               <button class="sync-panel-close" type="button">Abbrechen</button>
@@ -1394,7 +1392,6 @@ export class ReaderView {
     const createBtn = reader.querySelector('.sync-create-btn');
     const joinInput = reader.querySelector('.sync-join-input');
     const joinBtn = reader.querySelector('.sync-join-btn');
-    const stopBtn = reader.querySelector('.sync-stop-btn');
     const closeBtn = reader.querySelector('.sync-panel-close');
 
     syncBtn.addEventListener('click', () => {
@@ -1415,7 +1412,6 @@ export class ReaderView {
     // field, both live in code-field.js — the library's dialog asks for the
     // same code and must behave identically (rule 1).
     bindCodeSubmit(joinInput, joinBtn, () => this.syncJoin());
-    stopBtn.addEventListener('click', () => this.syncStop());
   }
 
   async syncCreate() {

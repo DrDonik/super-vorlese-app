@@ -957,21 +957,11 @@ button {
   color: var(--fg-dim);
 }
 
-.sync-status {
-  font-size: 14px;
-  color: var(--success);
-}
-
-.sync-stop-btn {
-  background: var(--danger);
-  color: #fff;
-  padding: 10px 18px;
-  border: none;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-  width: 100%;
-}
+/* No „Verbunden" line and no „Trennen" here any more (issue #133). The green
+   code display already says the sync is live — spelling it out underneath
+   repeated the colour in words, and worse, „Verbunden" reads as "your partner is
+   there" when all it ever meant was "this device is enrolled". Disconnecting
+   moved to the book's „Buch bearbeiten" dialog; see ADR 20. */
 
 /* The dismiss button and "Verbinden" share one row, mirroring the library's
    join dialog. "Verbinden" hides when connected, leaving the dismiss button
@@ -1620,6 +1610,42 @@ button {
 .tag-add:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* „Synchronisations-Code des Buches" and its „Trennen", present only while the
+   book actually carries a code (issue #133, ADR 20). Same column rhythm as the
+   tag block above it. */
+.book-edit-sync {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.book-edit-sync-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Green, monospace, spaced: the same reading the reader's code display gets, so
+   the six characters are recognisably the same thing in both places. */
+.book-edit-sync-code {
+  flex: 1;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--success);
+  text-align: center;
+}
+
+/* Neutral, though it does take the code away: on this screen the red lettering
+   belongs to „Buch löschen", which destroys the only copy of photographed pages
+   and cannot be undone at all. Giving both controls that colour would flatten
+   the difference, and per ADR 4 each colour has exactly one job. */
+.book-edit-sync-stop {
+  flex: 0 0 auto;
 }
 
 /* ---- Shared reading memory (issue #65) ---------------------------------- */
