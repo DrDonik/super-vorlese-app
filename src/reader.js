@@ -622,8 +622,15 @@ export class ReaderView {
     // (it must not fall through and close the whole reader); every other key
     // then acts as usual, mirroring how a tap closes the help and still
     // performs the tapped action.
+    //
+    // The „?" button is the one exception, for exactly the reason openHelp's
+    // dismiss listener skips its pointerdown: the button toggles the help
+    // itself, so closing it here would only let its own activation reopen it a
+    // moment later. Enter and Space on it are left to the button.
     if (this.helpOpen) {
-      this.closeHelp();
+      const closesHelpItself = (e.key === 'Enter' || e.key === ' ')
+        && e.target.closest?.('.reader-help-btn');
+      if (!closesHelpItself) this.closeHelp();
       if (e.key === 'Escape') return;
     }
     // These shortcuts belong to the page, not to whatever control has focus:
