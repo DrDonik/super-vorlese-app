@@ -155,7 +155,7 @@ export class ReaderView {
     this.root.innerHTML = `
       <div class="reader">
         <div class="reader-chrome">
-          <button class="reader-back" type="button">← Bibliothek</button>
+          <button class="reader-back" type="button" aria-label="Zurück zur Bibliothek">←<span class="reader-back-label">Bibliothek</span></button>
           <button class="reader-sync-btn" type="button" aria-label="Gemeinsam lesen">👥</button>
           <div class="reader-title"></div>
           <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
@@ -719,10 +719,25 @@ export class ReaderView {
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
   }
 
+  // „Seite" rides in its own span so the phone stylesheet can drop the word and
+  // keep the numbers, which is what lets every control in the bar reach 44px on
+  // a narrow screen (issue #130). The accessible name keeps the full wording, so
+  // dropping the word costs nothing to a screen reader.
+  writeIndicator(page) {
+    const ind = this.root.querySelector('.reader-page-indicator');
+    const word = document.createElement('span');
+    word.className = 'page-indicator-word';
+    word.textContent = 'Seite';
+    ind.replaceChildren(word, document.createTextNode(`${page} / ${this.totalPages}`));
+    // Same wording as the „?" overlay's callout for this control, so the two
+    // descriptions of it agree.
+    ind.setAttribute('aria-label', `Seite ${page} von ${this.totalPages}, zu einer Seite springen`);
+  }
+
   updateIndicator() {
     const ind = this.root.querySelector('.reader-page-indicator');
     if (ind.querySelector('.page-jump-input')) return;
-    ind.textContent = `Seite ${this.currentPage} / ${this.totalPages}`;
+    this.writeIndicator(this.currentPage);
   }
 
   openPageJump() {
@@ -734,6 +749,7 @@ export class ReaderView {
 
     ind.removeAttribute('role');
     ind.removeAttribute('tabindex');
+    ind.removeAttribute('aria-label');
     ind.textContent = '';
     const input = document.createElement('input');
     input.className = 'page-jump-input';
@@ -747,7 +763,7 @@ export class ReaderView {
 
     const suffix = document.createElement('span');
     suffix.className = 'page-jump-suffix';
-    suffix.textContent = ` / ${this.totalPages}`;
+    suffix.textContent = `/ ${this.totalPages}`;
     ind.appendChild(suffix);
 
     input.focus();
@@ -774,8 +790,7 @@ export class ReaderView {
     this.pageJumpOpen = false;
     ind.setAttribute('role', 'button');
     ind.setAttribute('tabindex', '0');
-    const displayPage = page !== undefined ? page : this.currentPage;
-    ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
+    this.writeIndicator(page !== undefined ? page : this.currentPage);
     this.showChrome();
     if (shouldFocus) ind.focus();
   }
