@@ -13,6 +13,11 @@
      --surface-glass  Secondary control layered over photos or book pages
                 (reader & camera chrome); dark so light text stays legible
                 over white pages. --surface-glass-hover on hover.
+                The alpha is a contrast floor, not a taste: a picture book with
+                white pages is the normal case, and over white this is the only
+                thing standing between --fg and the page. At 0.65 that pairing
+                measures 6.4:1; below ~0.56 it drops under WCAG AA. Darker only
+                ever helps — over a dark page the text is well clear either way.
      --danger   Destructive action (delete, disconnect).
      --success  Connected / "on" state (active sync, room code, status).
      --focus    Keyboard-focus ring on every interactive element, and the
@@ -20,8 +25,8 @@
   --accent: #ffb340;
   --surface: #2c2c2e;
   --surface-line: #3a3a3c;
-  --surface-glass: rgba(0, 0, 0, 0.5);
-  --surface-glass-hover: rgba(0, 0, 0, 0.65);
+  --surface-glass: rgba(0, 0, 0, 0.65);
+  --surface-glass-hover: rgba(0, 0, 0, 0.78);
   --danger: #ff453a;
   --success: #30d158;
   --focus: #0a84ff;
@@ -436,12 +441,20 @@ button {
   position: absolute;
   inset: 0 0 auto 0;
   z-index: 10;
-  padding: 16px 24px;
-  padding: calc(16px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) 16px calc(24px + env(safe-area-inset-left, 0px));
+  padding: 16px 24px 56px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) 56px calc(24px + env(safe-area-inset-left, 0px));
   display: flex;
   align-items: center;
   gap: 16px;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7), transparent);
+  /* The title is the one control here with no glass of its own, so this
+     gradient is its entire background. It has to be dark where the row of
+     controls actually sits and only then fade out — hence the flat stretch to
+     55% and the 56px of padding below the row, which give the fade somewhere
+     to happen that isn't behind the text. Over a white page the title lands
+     around 8:1 this way; with a plain 0.7-to-transparent ramp it sat near the
+     midpoint of the fade at about 2.2:1. The padding costs nothing: the bar is
+     pointer-events: none and only its children take input. */
+  background: linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.72) 55%, transparent 100%);
   /* Slide rather than fade: animating opacity isolates the bar into its own
      group, which disables the children's backdrop-filter until opacity hits 1
      and makes the blur pop in abruptly (a visible flicker). A transform keeps
@@ -567,13 +580,15 @@ button {
   transform: translateX(-50%) rotate(45deg);
 }
 
-/* The only way to jump to a page, and it used to be the smallest thing in the
-   bar at ~30px (issue #130). Padding alone cannot carry the 44px — the text
-   inside changes size when the page-jump input opens — so the floor is a
-   min-height, with the content centred in it. */
+/* Full --fg, not --fg-dim: „Seite 3 / 20" is the answer to where we are in the
+   book, which is the reader's central state and not an aside. Dimmed, at 14px
+   over glass on a white page, it was also the weakest contrast in the app.
+   It was also the smallest thing in the bar at ~30px (issue #130). Padding
+   alone cannot carry the 44px — the text inside changes size when the
+   page-jump input opens — so the floor is a min-height, content centred. */
 .reader-page-indicator {
   font-variant-numeric: tabular-nums;
-  color: var(--fg-dim);
+  color: var(--fg);
   font-size: 14px;
   padding: 6px 12px;
   min-height: 44px;
@@ -594,10 +609,15 @@ button {
   background: var(--surface-glass-hover);
 }
 
+/* Both the underline and the „/ 20" suffix used to be --fg-dim, which over
+   glass on a white page sits near 2.7:1. Neither is a hint: the suffix is the
+   very text the indicator shows when it is not being edited, so dimming it
+   contradicted the state it came from. The editing state is carried by the
+   caret and the underline instead — the suffix simply inherits the indicator. */
 .page-jump-input {
   background: transparent;
   border: none;
-  border-bottom: 1px solid var(--fg-dim);
+  border-bottom: 1px solid var(--fg);
   color: inherit;
   font: inherit;
   font-variant-numeric: tabular-nums;
@@ -615,10 +635,6 @@ button {
 .page-jump-input::-webkit-outer-spin-button {
   -webkit-appearance: none;
   margin: 0;
-}
-
-.page-jump-suffix {
-  color: var(--fg-dim);
 }
 
 .reader-stage {

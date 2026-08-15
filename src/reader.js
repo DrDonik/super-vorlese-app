@@ -622,10 +622,35 @@ export class ReaderView {
     // (it must not fall through and close the whole reader); every other key
     // then acts as usual, mirroring how a tap closes the help and still
     // performs the tapped action.
+    //
+    // The „?" button is the one exception, for exactly the reason openHelp's
+    // dismiss listener skips its pointerdown: the button toggles the help
+    // itself, so closing it here would only let its own activation reopen it a
+    // moment later. Enter and Space on it are left to the button.
     if (this.helpOpen) {
-      this.closeHelp();
+      const closesHelpItself = (e.key === 'Enter' || e.key === ' ')
+        && e.target.closest?.('.reader-help-btn');
+      if (!closesHelpItself) this.closeHelp();
       if (e.key === 'Escape') return;
     }
+    // These shortcuts belong to the page, not to whatever control has focus:
+    // space on „← Bibliothek" must press that button (the preventDefault below
+    // would otherwise swallow its activation), and the arrow keys inside the
+    // sync-code field must move the caret. Solved once at the root instead of
+    // a stopPropagation() on every field.
+    //
+    // .reader-page-indicator is named on top of [role="button"] because it
+    // changes shape mid-event: its own space handler swaps the label for the
+    // page-jump input and strips role/tabindex in the process, so by the time
+    // this listener runs on window the role is already gone and the key would
+    // fall through to goNext() — opening the jump and turning the page at once.
+    //
+    // Escape is the deliberate exception — it is the only keyboard way out of
+    // the reader, so it must reach here from anywhere. Controls that need it
+    // for something nearer (the page-jump field aborts its own editing) stop
+    // it on their way past.
+    const OWNED_BY_A_CONTROL = 'input, textarea, select, button, [contenteditable], [role="button"], .reader-page-indicator';
+    if (e.key !== 'Escape' && e.target.closest?.(OWNED_BY_A_CONTROL)) return;
     if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
       e.preventDefault();
       this.goNext();
@@ -633,6 +658,15 @@ export class ReaderView {
       e.preventDefault();
       this.goPrev();
     } else if (e.key === 'Escape') {
+      // Escape peels off one layer at a time: an open sync panel is what the
+      // reader wants closed first, and only a reader with nothing on top of it
+      // closes the book. Anything else would make the same key mean „leave the
+      // book" in one overlay and „close the overlay" in the next (rule 1).
+      const panel = this.root.querySelector('.sync-panel');
+      if (panel && !panel.hidden) {
+        this.closeSyncPanel();
+        return;
+      }
       this.close();
     }
   }
@@ -721,17 +755,17 @@ export class ReaderView {
 
   // „Seite" rides in its own span so the phone stylesheet can drop the word and
   // keep the numbers, which is what lets every control in the bar reach 44px on
-  // a narrow screen (issue #130). The accessible name keeps the full wording, so
-  // dropping the word costs nothing to a screen reader.
+  // a narrow screen (issue #130). Written from one place because the page jump
+  // rewrites the indicator when it closes, and the two must not disagree about
+  // its shape. Deliberately no aria-label mirroring the page number here: a
+  // label that has to be kept in step with the page inside this method is the
+  // exact drift ADR 22 declines to take on.
   writeIndicator(page) {
     const ind = this.root.querySelector('.reader-page-indicator');
     const word = document.createElement('span');
     word.className = 'page-indicator-word';
     word.textContent = 'Seite';
     ind.replaceChildren(word, document.createTextNode(`${page} / ${this.totalPages}`));
-    // Same wording as the „?" overlay's callout for this control, so the two
-    // descriptions of it agree.
-    ind.setAttribute('aria-label', `Seite ${page} von ${this.totalPages}, zu einer Seite springen`);
   }
 
   updateIndicator() {
@@ -749,7 +783,6 @@ export class ReaderView {
 
     ind.removeAttribute('role');
     ind.removeAttribute('tabindex');
-    ind.removeAttribute('aria-label');
     ind.textContent = '';
     const input = document.createElement('input');
     input.className = 'page-jump-input';
@@ -1401,6 +1434,17 @@ export class ReaderView {
     this.updateMoodCue();
   }
 
+  // One way out of the sync panel for all three of its exits (Abbrechen, a tap
+  // on the backdrop, Escape). Hiding the panel while the focus sits on the code
+  // field inside it would drop the focus onto <body>, so it goes back to the
+  // button that opened the panel — the place the reader was before.
+  closeSyncPanel() {
+    const panel = this.root.querySelector('.sync-panel');
+    if (!panel || panel.hidden) return;
+    panel.hidden = true;
+    this.root.querySelector('.reader-sync-btn')?.focus();
+  }
+
   setupSync(reader) {
     const syncBtn = reader.querySelector('.reader-sync-btn');
     const panel = reader.querySelector('.sync-panel');
@@ -1410,15 +1454,14 @@ export class ReaderView {
     const closeBtn = reader.querySelector('.sync-panel-close');
 
     syncBtn.addEventListener('click', () => {
-      panel.hidden = !panel.hidden;
+      if (panel.hidden) panel.hidden = false;
+      else this.closeSyncPanel();
     });
 
-    closeBtn.addEventListener('click', () => {
-      panel.hidden = true;
-    });
+    closeBtn.addEventListener('click', () => this.closeSyncPanel());
 
     panel.addEventListener('click', (e) => {
-      if (e.target === panel) panel.hidden = true;
+      if (e.target === panel) this.closeSyncPanel();
     });
 
     createBtn.addEventListener('click', () => this.syncCreate());
