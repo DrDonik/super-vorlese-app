@@ -222,7 +222,11 @@ export class ReaderView {
     indicator.addEventListener('pointerdown', (e) => {
       const input = indicator.querySelector('.page-jump-input');
       if (input && e.target !== input) {
+        // preventDefault keeps the tap from blurring the field (which would
+        // close the jump); the focus then makes the whole 44px box behave like
+        // the field it contains, rather than a border of dead pixels around it.
         e.preventDefault();
+        input.focus();
       }
     });
 

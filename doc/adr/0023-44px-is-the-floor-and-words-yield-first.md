@@ -54,9 +54,13 @@ cannot hold both, the words go and the targets stay.**
   pseudo-element.** The camera's discard ✕ sits on a 64px preview and a 44px
   disc would bury the photo it exists to let you check, so the ✕ keeps its 20px
   and a 44px field reaches down into the thumbnail behind it.
-- **Below 600px the reader's chrome drops its words**: „← Bibliothek" becomes
-  „←", „Seite 12 / 148" becomes „12 / 148". Tablets and desktops keep the full
-  labels.
+- **At 600px and below the reader's chrome drops its words**: „← Bibliothek"
+  becomes „←", „Seite 12 / 148" becomes „12 / 148". Tablets and desktops keep
+  the full labels. That is the file's one existing phone breakpoint, shared with
+  the library grid, the pills and the add buttons, rather than a second boundary
+  of its own — the words would still fit between ~436px and 600px, but a chrome
+  bar that rearranges itself twice on the way down is a worse answer than one
+  that matches every other phone rule in the file (rule 1).
 
 What justifies dropping the words is what is on the screen, not what a screen
 reader would be told. Per [ADR 18](0018-library-is-an-adult-surface.md) the
