@@ -38,6 +38,15 @@
   outline-offset: 2px;
 }
 
+/* …with one exception: the app container, which mount() focuses after every
+   change of view so the next Tab starts inside the new view. Coming from the
+   keyboard it would match :focus-visible and ring the entire screen — a border
+   around everything says nothing about where the keys go, and the ring on the
+   first control does that job a Tab later. */
+#app:focus-visible {
+  outline: none;
+}
+
 [hidden] {
   display: none !important;
 }
