@@ -652,9 +652,28 @@ button {
 .reader-canvas {
   max-width: 100%;
   max-height: 100%;
+  /* The stage is a flex row, so without this a page wider than the stage would
+     be squeezed back into it instead of hanging over the edges — which is
+     exactly what a magnified page is meant to do. */
+  flex: none;
   display: block;
   background: #fff;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Magnified (issue #117): the page is rendered larger than the stage and is
+   then free to overhang it, so the fit-the-stage caps have to come off. What
+   overhangs is clipped by the stage and brought into view by dragging. The
+   grab cursor shows in the strip between the two turn zones, which keep their
+   pointer — a click there still turns the page, a drag still moves it. */
+.reader.zoomed .reader-canvas {
+  max-width: none;
+  max-height: none;
+  cursor: grab;
+}
+
+.reader.zoomed .reader-canvas:active {
+  cursor: grabbing;
 }
 
 .reader-zone {
@@ -687,6 +706,90 @@ button {
 .reader.nav-off .reader-zone {
   pointer-events: none;
   cursor: default;
+}
+
+/* The page loupe (issue #117). It floats over the page instead of joining the
+   chrome row: that row is measured to the pixel (ADR 23) and a seventh 44px
+   target would push it off the edge of a narrow phone. Down here it is also
+   under the thumb and right beside the thing it acts on, and the corner is
+   free — the finish cue sits bottom *centre*.
+
+   Glass like every other control layered over a book page (see --surface-glass:
+   the alpha is the contrast floor that keeps light text legible over a white
+   page). The factor rides inside the button, so the control and its state are
+   one thing rather than two. */
+.reader-zoom {
+  position: absolute;
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  /* Over the page, the turn zones and the pointers; below the finish cue (15),
+     which it steps aside for anyway (see below). */
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 999px;
+  background: var(--surface-glass);
+  color: var(--fg);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: opacity 0.4s, background 0.15s;
+}
+
+.reader-zoom:hover {
+  background: var(--surface-glass-hover);
+}
+
+.reader-zoom-glyph {
+  font-size: 17px;
+}
+
+/* At 1× there is no factor to show, and an empty flex item would still claim
+   the gap beside the glyph. */
+.reader-zoom-factor:empty {
+  display: none;
+}
+
+/* The loupe comes and goes with the rest of the chrome — a settled reading
+   screen is just the page. It fades where the bar slides, because there is
+   nothing above it to slide out to. Focus brings it back for the same reason
+   the bar returns on focus: a control that can be tabbed to must be visible. */
+.reader.chrome-hidden .reader-zoom {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.reader.chrome-hidden .reader-zoom:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Magnified, it stays put: it is the way back to 1×, and a way back that hides
+   itself after four seconds is not one. It doubles as the standing reminder of
+   which step is in force. */
+.reader.zoomed .reader-zoom {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* On the last page the finish cue takes the bottom of the screen, and on a
+   narrow phone its pill reaches into this corner — measured at 320px, where its
+   label wraps to two lines and it stands 83px tall, so it comes within 13px of
+   this offset. The loupe steps above it rather than being sat on. */
+.reader:has(.reader-finish-cue:not([hidden])) .reader-zoom {
+  bottom: calc(120px + env(safe-area-inset-bottom, 0px));
 }
 
 /* "Point at the page" overlay: a peer's long press paints four chevrons that
@@ -1156,7 +1259,8 @@ button {
 /* Lift the labelled controls above the scrim so they stay bright while
    everything else dims. */
 .reader.help-open .reader-chrome,
-.reader.help-open .reader-finish-cue {
+.reader.help-open .reader-finish-cue,
+.reader.help-open .reader-zoom {
   z-index: 19;
 }
 
@@ -1255,6 +1359,18 @@ button {
   top: 60%;
   transform: translate(-50%, -50%);
   max-width: 240px;
+}
+
+/* The loupe's callout sits above the button, in the same corner. Right-aligned
+   with it and narrow enough that it never reaches across the page. */
+.help-hint-zoom {
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(80px + env(safe-area-inset-bottom, 0px));
+  max-width: 190px;
+}
+
+.reader:has(.reader-finish-cue:not([hidden])) .help-hint-zoom {
+  bottom: calc(176px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Navigation switched off: the zones do nothing right now, so their bands and

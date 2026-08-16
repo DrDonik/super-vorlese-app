@@ -27,6 +27,40 @@ function loadNavEnabled() {
 function saveNavEnabled(enabled) {
   try { localStorage.setItem(NAV_ENABLED_KEY, enabled ? 'true' : 'false'); } catch {}
 }
+// The loupe's steps (issue #117). Steps rather than a continuous zoom: every
+// one is reachable and leavable with a single tap, the button can show which is
+// in force, and there is no gesture to learn. The last step wraps back to 1×,
+// so the way out is never more than one tap away.
+//
+// One of the two magnified steps gives way to „fills the width" where that is a
+// different thing — see zoomSteps and ADR 24.
+const ZOOM_STEPS = [1, 1.5, 2];
+
+// Two rungs closer together than this are the same rung with a wasted tap
+// between them, so the computed one absorbs the fixed one. It is also what
+// decides that a page which already fills the width (a phone held upright,
+// where the factor comes out at about 1) contributes no rung at all.
+const STEP_MERGE_RATIO = 1.12;
+
+// Beyond this the page is a sliver in a wide stage and „fills the width" would
+// be a wild rung nobody asked for — a panorama page, say. It then drops out and
+// the plain ladder stands.
+const FILL_WIDTH_MAX = 3;
+
+// Rungs are compared as factors, and a factor is a float. This is the „the same
+// rung" margin for those comparisons, far below anything the eye could tell.
+const SAME_STEP = 1.001;
+
+// Overhang below this counts as none at all; see panPlay.
+const PAN_SLACK_PX = 2;
+
+// The factor as it goes on the button. One decimal, German comma, and no
+// trailing „,0": the full-width step lands on whatever the page and the screen
+// make of it, and „2,1×" is as much of that as anyone needs to read.
+function formatZoom(factor) {
+  return `${String(Math.round(factor * 10) / 10).replace('.', ',')}×`;
+}
+
 // How long the book-closing intro runs (cover held, then settling into the
 // header) before the mood board accepts taps. Must match the CSS choreography.
 const MOOD_INTRO_MS = 1500;
@@ -62,6 +96,9 @@ class PdfSource {
     this.pdf = pdf;
     this.numPages = pdf.numPages;
   }
+  // The zoom factor the reader passes as a fifth argument is only of interest
+  // to a source made of pixels (see PhotoSource): a PDF page is redrawn from
+  // its vectors at whatever size the box asks for, and stays sharp doing so.
   async renderPage(n, canvas, w, h) {
     await renderPageToCanvas(this.pdf, n, canvas, w, h);
   }
@@ -75,10 +112,10 @@ class PhotoSource {
     this.bookId = bookId;
     this.numPages = numPages;
   }
-  async renderPage(n, canvas, w, h) {
+  async renderPage(n, canvas, w, h, zoom) {
     const blob = await getPhotoPage(this.bookId, n);
     if (!blob) throw new Error(`Seite ${n} fehlt`);
-    await renderImageToCanvas(blob, canvas, w, h);
+    await renderImageToCanvas(blob, canvas, w, h, zoom);
   }
   destroy() {}
 }
@@ -116,6 +153,15 @@ export class ReaderView {
     this.helpOverlay = null;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
+    // Page loupe (issue #117): the factor the page is magnified by (see
+    // cycleZoom for why the factor and not a rung number) plus the offset, in
+    // CSS pixels, by which it is shifted out of its centred resting position.
+    // Both are local to this device and to this reading — ADR 24.
+    this.zoom = 1;
+    this.panX = 0;
+    this.panY = 0;
+    // Renders run one after another on this chain; see renderCurrent.
+    this.renderQueue = Promise.resolve();
     this.syncSession = null;
     this.isSyncing = false;
     // Local page-navigation toggle (zones + swipe). Default on; persisted
@@ -191,6 +237,7 @@ export class ReaderView {
           <button class="reader-zone reader-zone-next" type="button" aria-label="Vor"></button>
           <div class="pointer-layer" aria-hidden="true"><div class="pointer-page"></div></div>
         </div>
+        <button class="reader-zoom" type="button" aria-label="Seite vergrössern"><span class="reader-zoom-glyph" aria-hidden="true">🔍</span><span class="reader-zoom-factor"></span></button>
         <button class="reader-finish-cue" type="button" hidden>
           <span class="reader-finish-cue-icon" aria-hidden="true">📖</span>
           Fertig? Buch schliessen
@@ -207,7 +254,9 @@ export class ReaderView {
     reader.querySelector('.reader-finish-cue').addEventListener('click', () => this.openMood(true));
     reader.querySelector('.reader-nav-toggle').addEventListener('click', () => this.toggleNav());
     reader.querySelector('.reader-help-btn').addEventListener('click', () => this.toggleHelp());
+    reader.querySelector('.reader-zoom').addEventListener('click', () => this.cycleZoom());
     this.applyNavState();
+    this.applyZoomState();
 
     const indicator = reader.querySelector('.reader-page-indicator');
     indicator.setAttribute('role', 'button');
@@ -347,7 +396,12 @@ export class ReaderView {
   //   • long press (≥700ms)  → "point at the page": four chevrons converge on
   //                            the finger and follow it until release; the
   //                            chrome stays hidden so pointing is unobstructed
-  //   • horizontal swipe     → turn the page
+  //   • drag                 → turn the page, as a horizontal swipe always has,
+  //                            unless the loupe has magnified the page and the
+  //                            page can actually move that way, in which case
+  //                            it follows the finger (issue #117). This is the
+  //                            only gesture the loupe changes, and tapping a
+  //                            turn zone still turns the page either way.
   attachStageGestures(stage) {
     // Captured once: the canvas element is reused across page renders, so a
     // pointer can be measured against the page without a per-touchmove DOM query.
@@ -363,6 +417,12 @@ export class ReaderView {
     let startTime = 0;
     let onZone = false;
     let aborted = false; // multi-touch (e.g. pinch) cancels the gesture
+    // Moving the magnified page: latched once the finger has travelled far
+    // enough to rule out a tap, with the offset the page started from, so the
+    // page follows the finger from where it stood rather than jumping.
+    let panning = false;
+    let panFromX = 0;
+    let panFromY = 0;
 
     // Instance property (not a closure local) so destroy() can clear a press
     // still pending in its 700ms window and it never fires on a torn-down view.
@@ -378,6 +438,7 @@ export class ReaderView {
       if (e.touches.length !== 1) {
         clearTimer();
         finishPointer();
+        panning = false;
         aborted = true;
         return;
       }
@@ -387,6 +448,7 @@ export class ReaderView {
       startTime = Date.now();
       onZone = !!e.target.closest('.reader-zone');
       aborted = false;
+      panning = false;
       clearTimer();
       this.longPressTimer = setTimeout(() => {
         this.longPressTimer = null;
@@ -396,6 +458,19 @@ export class ReaderView {
     }, { passive: true });
 
     stage.addEventListener('touchmove', (e) => {
+      // A second finger anywhere on the screen means a pinch, not a one-finger
+      // gesture — and `touches` counts them all, including one that came down on
+      // a chrome button, whose touchstart never reaches this listener. Bow out
+      // here rather than only there, because the way out matters: falling
+      // through would call preventDefault on the way and suppress the very
+      // native pinch this app deliberately leaves alone (ADR 24).
+      if (e.touches.length !== 1) {
+        clearTimer();
+        finishPointer();
+        panning = false;
+        aborted = true;
+        return;
+      }
       if (aborted || startX == null) return;
       const t = e.touches[0];
       if (!t) return;
@@ -408,9 +483,22 @@ export class ReaderView {
         this.moveLocalPointer(pos.x, pos.y);
         return;
       }
-      if (Math.abs(t.clientX - startX) > MOVE_CANCEL_PX ||
-          Math.abs(t.clientY - startY) > MOVE_CANCEL_PX) {
+      const dx = t.clientX - startX;
+      const dy = t.clientY - startY;
+      const travelled = Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX;
+      if (travelled) {
         clearTimer(); // moved too far to be a long press (likely a swipe)
+        if (!panning && this.canPanAlong(dx, dy)) {
+          panning = true;
+          panFromX = this.panX;
+          panFromY = this.panY;
+        }
+      }
+      if (panning) {
+        // Same reason as while pointing: keep the browser from scrolling,
+        // rubber-banding, or reading the drag as a back-swipe.
+        if (e.cancelable) e.preventDefault();
+        this.panTo(panFromX + dx, panFromY + dy);
       }
     }, { passive: false });
 
@@ -422,6 +510,14 @@ export class ReaderView {
         // Suppress the synthetic click the browser would otherwise fire on the
         // page-turn zone underneath, so pointing near an edge and releasing
         // doesn't accidentally turn the page.
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
+      if (panning) {
+        panning = false;
+        startX = startY = null;
+        // As when pointing: swallow the synthetic click, so letting go of the
+        // page over a turn zone doesn't also turn the page.
         if (e.cancelable) e.preventDefault();
         return;
       }
@@ -449,7 +545,70 @@ export class ReaderView {
       finishPointer();
       startX = startY = null;
       aborted = false;
+      panning = false;
     });
+
+    this.attachMousePan(stage);
+  }
+
+  // The same "drag the magnified page" for mouse and trackpad, which the touch
+  // recogniser above never sees. Kept apart from it rather than folded in: it
+  // shares none of the tap / long-press / swipe arbitration — a mouse either
+  // drags the page or it doesn't — and mixing pointer events into that
+  // recogniser would double up every touch it already handles.
+  attachMousePan(stage) {
+    const DRAG_START_PX = 3; // a mouse is precise; this only sorts drag from click
+    let from = null;
+
+    stage.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      if (this.zoomFactor() === 1) return;
+      from = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY, moved: false };
+    });
+
+    // On the window, not the stage: a drag that leaves the stage — or ends
+    // outside the window entirely — must still move the page and must still
+    // end, rather than leaving the page stuck to the cursor.
+    this._mousePanMove = (e) => {
+      if (!from) return;
+      // The button was released somewhere we never heard about (a drag ended
+      // over browser chrome, say). Drop the drag instead of resuming it.
+      if (!(e.buttons & 1)) { from = null; return; }
+      const dx = e.clientX - from.x;
+      const dy = e.clientY - from.y;
+      if (!from.moved) {
+        if (Math.abs(dx) < DRAG_START_PX && Math.abs(dy) < DRAG_START_PX) return;
+        // Nothing to move this way (see canPanAlong): let go of the gesture so
+        // it ends as the ordinary click it looks like — over a turn zone that
+        // is a page turn, which is what the same drag does on a touchscreen.
+        if (!this.canPanAlong(dx, dy)) { from = null; return; }
+        from.moved = true;
+      }
+      this.panTo(from.panX + dx, from.panY + dy);
+    };
+    this._mousePanUp = () => {
+      if (!from) return;
+      const dragged = from.moved;
+      from = null;
+      if (dragged) this.swallowNextClick();
+    };
+    window.addEventListener('pointermove', this._mousePanMove);
+    window.addEventListener('pointerup', this._mousePanUp);
+    window.addEventListener('pointercancel', this._mousePanUp);
+  }
+
+  // A mouse drag that ends over a page-turn zone still delivers a click to it.
+  // Consume that one click on the way down. The listener is dropped again on
+  // the next turn of the event loop, by which time the click has either been
+  // dispatched or was never coming (a drag that ended outside the window), so
+  // it can never lie in wait for an unrelated click later on.
+  swallowNextClick() {
+    const swallow = (e) => {
+      e.stopPropagation();
+      e.preventDefault();
+    };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => window.removeEventListener('click', swallow, true), 0);
   }
 
   // Position of a viewport point as a fraction (0..1) of the page image, so a
@@ -655,6 +814,20 @@ export class ReaderView {
     // it on their way past.
     const OWNED_BY_A_CONTROL = 'input, textarea, select, button, [contenteditable], [role="button"], .reader-page-indicator';
     if (e.key !== 'Escape' && e.target.closest?.(OWNED_BY_A_CONTROL)) return;
+    // The loupe's keyboard equivalent. „=" comes along because it shares its
+    // key with „+" on the common layouts, so it lands whether or not Shift was
+    // held. These two walk the ladder rather than wrapping around it: „−" on a
+    // page that is already at 1× should do nothing, not jump it to 2×.
+    if (e.key === '+' || e.key === '=') {
+      e.preventDefault();
+      this.stepZoom(true);
+      return;
+    }
+    if (e.key === '-') {
+      e.preventDefault();
+      this.stepZoom(false);
+      return;
+    }
     if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
       e.preventDefault();
       this.goNext();
@@ -722,6 +895,177 @@ export class ReaderView {
     });
   }
 
+  // --- Page loupe (issue #117) --------------------------------------------
+
+  // How much the page would have to grow to fill the stage's width exactly.
+  // Derived from the page's own proportions, which no zoom step changes, so it
+  // reads the same at every step and cannot chase itself. Greater than 1 only
+  // while the page is letterboxed sideways — a portrait page on a landscape
+  // screen, which is a grandparent holding an iPad the usual way round.
+  fillWidthFactor() {
+    const canvas = this.root.querySelector('.reader-canvas');
+    const stage = this.root.querySelector('.reader-stage');
+    if (!canvas || !stage) return 1;
+    // Measured with getBoundingClientRect, not offsetWidth: those are whole
+    // pixels, and a proportion taken from rounded numbers is off by enough that
+    // the factor derived from it lands a pixel beside full width — and, because
+    // the next reading is then taken from that page, wanders back and forth by
+    // a pixel each time the step is revisited. The fractional rect is exact, so
+    // the factor is the same number however often it is worked out.
+    const r = canvas.getBoundingClientRect();
+    const widthAtFullHeight = r.height ? stage.clientHeight * (r.width / r.height) : 0;
+    if (!widthAtFullHeight) return 1;
+    return Math.max(1, stage.clientWidth / widthAtFullHeight);
+  }
+
+  // The ladder in force for the page on screen. „Fills the width" is the most
+  // useful magnification there is on a landscape screen: as large as the page
+  // can be while still only ever moving in one direction, with no screen left
+  // over at the sides. It takes its place among the fixed rungs and absorbs any
+  // neighbour it nearly coincides with, so no two rungs are a hand's breadth
+  // apart. Where it is not a different thing at all — a page already filling
+  // the width, or a sliver of a page whose full width would be a wild jump —
+  // it drops out and the plain ladder stands.
+  //
+  // Computed rather than stored because it depends on the page and the stage:
+  // turning the iPad, or turning to a page of different proportions, changes
+  // what „full width" means, and the rung should mean it on the page in hand.
+  zoomSteps() {
+    const fill = this.fillWidthFactor();
+    if (fill < STEP_MERGE_RATIO || fill > FILL_WIDTH_MAX) return ZOOM_STEPS;
+    const steps = ZOOM_STEPS.filter((step) => (
+      Math.max(step, fill) / Math.min(step, fill) >= STEP_MERGE_RATIO
+    ));
+    steps.push(fill);
+    return steps.sort((a, b) => a - b);
+  }
+
+  zoomFactor() {
+    return this.zoom;
+  }
+
+  // The loupe holds a factor, not a rung number. The ladder is not a fixed
+  // series — turning the device changes what „fills the width" means, and with
+  // it the ladder — so a stored position on it would silently come to mean
+  // something else and resize the page under the reader's hands. Holding the
+  // factor instead leaves the page exactly as large as it was, and the next tap
+  // simply takes the next rung of the ladder now in force.
+  cycleZoom() {
+    const steps = this.zoomSteps();
+    this.applyZoom(steps.find((step) => step > this.zoom * SAME_STEP) ?? steps[0]);
+  }
+
+  // „+" and „−" walk the same ladder without wrapping, which is what those keys
+  // mean everywhere else: at the top „+" does nothing, at 1× „−" does nothing.
+  stepZoom(up) {
+    const steps = this.zoomSteps();
+    const next = up
+      ? steps.find((step) => step > this.zoom * SAME_STEP)
+      : steps.findLast((step) => step < this.zoom / SAME_STEP);
+    if (next) this.applyZoom(next);
+  }
+
+  applyZoom(factor) {
+    if (!factor || factor === this.zoom) return;
+    // The offset is measured in page pixels, so growing it with the page keeps
+    // whatever the reader is looking at in the middle of the screen instead of
+    // sliding the view back towards the page's centre on every step.
+    const ratio = factor / this.zoom;
+    this.zoom = factor;
+    this.panX *= ratio;
+    this.panY *= ratio;
+    this.applyZoomState();
+    this.showChrome();
+    this.renderCurrent();
+  }
+
+  // Single source of truth for the magnified state: the `zoomed` class on the
+  // reader root frees the canvas from its fit-the-stage sizing (CSS) and keeps
+  // the loupe on screen while the rest of the chrome slides away, so the way
+  // back to 1× is always in reach. The factor rides in the button itself rather
+  // than in a separate indicator — the control and its state in one place.
+  applyZoomState() {
+    const reader = this.readerEl;
+    if (!reader) return;
+    const zoom = this.zoomFactor();
+    reader.classList.toggle('zoomed', zoom > 1);
+    const factor = reader.querySelector('.reader-zoom-factor');
+    if (factor) factor.textContent = zoom > 1 ? formatZoom(zoom) : '';
+  }
+
+  // How far the page can travel from its resting position, per axis: half its
+  // overhang, which is exactly the offset that brings one of its edges to the
+  // matching edge of the stage (the page rests centred). Zero on an axis where
+  // the page fits — an unmagnified page has no play at all, and a magnified one
+  // often still has none sideways, because a portrait page on a landscape
+  // screen stays letterboxed for a step or two.
+  panPlay() {
+    const canvas = this.root.querySelector('.reader-canvas');
+    const stage = this.root.querySelector('.reader-stage');
+    if (!canvas || !stage) return { x: 0, y: 0 };
+    // A couple of pixels of overhang are not room to move, they are a rounding
+    // remainder — these are whole layout pixels, and the full-width rung lands
+    // on exactly that kind of remainder. Left in, it would be enough to latch a
+    // drag and swallow the swipe that should have turned the page, so the one
+    // rung meant to make sideways swiping reliable would be the one that broke
+    // it. Nothing is lost: the last two pixels of a page are not a view.
+    const room = (page, view) => {
+      const half = (page - view) / 2;
+      return half > PAN_SLACK_PX ? half : 0;
+    };
+    return {
+      x: room(canvas.offsetWidth, stage.clientWidth),
+      y: room(canvas.offsetHeight, stage.clientHeight),
+    };
+  }
+
+  // Holds the page against its own edges. Also what snaps the offset back to
+  // zero when the loupe returns to 1×, and what takes in a page turn to a page
+  // with less room to give.
+  clampPan() {
+    const play = this.panPlay();
+    this.panX = Math.min(play.x, Math.max(-play.x, this.panX));
+    this.panY = Math.min(play.y, Math.max(-play.y, this.panY));
+  }
+
+  // Whether a drag this way has anywhere to go — asked of the direction the
+  // finger is actually taking, not just of the axis. A page with no sideways
+  // play cannot be moved sideways at all, and a page already held against its
+  // right edge cannot be moved further right either; rather than let the drag
+  // come to nothing, it stays what it was before the loupe existed: a page
+  // turn. That makes the far edge of a magnified page the place where swiping
+  // on turns the page, which is what a reader who has just read to the edge is
+  // reaching for anyway.
+  canPanAlong(dx, dy) {
+    if (this.zoomFactor() === 1) return false;
+    const play = this.panPlay();
+    // A drag to the right (dx > 0) carries the page right, raising panX towards
+    // +play.x; a drag to the left lowers it towards -play.x. Same for dy.
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return dx > 0 ? this.panX < play.x : this.panX > -play.x;
+    }
+    return dy > 0 ? this.panY < play.y : this.panY > -play.y;
+  }
+
+  // Writes the offset onto the page and drags the pointer coordinate space
+  // along with it, so a partner's pointer stays glued to its spot on the page
+  // while the page moves under it.
+  applyPan() {
+    const canvas = this.root.querySelector('.reader-canvas');
+    if (!canvas) return;
+    canvas.style.transform = (this.panX || this.panY)
+      ? `translate(${this.panX}px, ${this.panY}px)`
+      : '';
+    this.syncPointerPageGeometry();
+  }
+
+  panTo(x, y) {
+    this.panX = x;
+    this.panY = y;
+    this.clampPan();
+    this.applyPan();
+  }
+
   scheduleRender() {
     // The help callouts were positioned for the old layout; a resize (e.g. an
     // orientation change) invalidates them, so the help simply closes.
@@ -730,14 +1074,36 @@ export class ReaderView {
     this._resizeT = setTimeout(() => this.renderCurrent(), 120);
   }
 
-  async renderCurrent() {
-    if (!this.source) return;
+  // Renders queue rather than overlap. renderPage only takes effect at the end
+  // of an await, and every render writes the same canvas, so two in flight land
+  // in whatever order their page data happens to arrive: the loser's dimensions
+  // are the ones that stay. Tapping the loupe twice in quick succession is
+  // exactly that case, and it would leave the page at 1,5× while the button
+  // says 2× — renderToken alone cannot prevent it, because by the time it is
+  // checked the canvas has already been written. Queued, each render has the
+  // canvas to itself, and one that a newer render has overtaken in the meantime
+  // steps aside before touching anything.
+  renderCurrent() {
     const token = ++this.renderToken;
+    this.renderQueue = this.renderQueue
+      .then(() => this.renderPass(token))
+      .catch(() => {}); // keep the queue alive for the next render
+    return this.renderQueue;
+  }
+
+  async renderPass(token) {
+    if (token !== this.renderToken) return;
+    if (!this.source) return;
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
     if (stage.clientWidth === 0 || stage.clientHeight === 0) return;
+    // The magnified page is rendered at its magnified size rather than scaled
+    // up afterwards, so the print gets genuinely sharper and not merely bigger
+    // (issue #117). What sticks out past the stage is clipped there and brought
+    // into view by panning.
+    const zoom = this.zoomFactor();
     try {
-      await this.source.renderPage(this.currentPage, canvas, stage.clientWidth, stage.clientHeight);
+      await this.source.renderPage(this.currentPage, canvas, stage.clientWidth * zoom, stage.clientHeight * zoom, zoom);
     } catch (err) {
       if (token !== this.renderToken) return;
       console.error('Render-Fehler', err);
@@ -745,7 +1111,11 @@ export class ReaderView {
     if (token !== this.renderToken) return;
     // Re-overlay the pointer space onto the (possibly resized) page before any
     // pointer is placed, so positions are page-relative on this render too.
-    this.syncPointerPageGeometry();
+    // The offset is kept across page turns and resizes — the loupe lies on the
+    // book, not on one page (ADR 24) — but a new page may have less room to
+    // give, so it is held against the new page's edges first.
+    this.clampPan();
+    this.applyPan();
     // Clear pointers only when the page actually changes, not on a re-render
     // from a resize, so a pointer survives an orientation change mid-gesture.
     if (this.lastRenderedPage !== this.currentPage) {
@@ -908,6 +1278,12 @@ export class ReaderView {
     this.addHelpHint('help-hint-zone help-hint-zone-next', 'Weiter', { glyph: '▶' });
     this.addHelpHint('help-hint-center', 'Finger gedrückt halten: auf die Seite zeigen', {
       sub: 'beim gemeinsamen Lesen',
+    });
+    // Placed in CSS above the loupe rather than through addChromeHelpHints:
+    // that one hangs its bubbles below their control, which for a button in the
+    // bottom corner would put the label off the screen.
+    this.addHelpHint('help-hint-zoom', 'Seite vergrössern', {
+      sub: 'vergrössert: mit dem Finger verschieben',
     });
     this.addChromeHelpHints();
 
@@ -1727,6 +2103,13 @@ export class ReaderView {
   destroy() {
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
+    if (this._mousePanMove) {
+      window.removeEventListener('pointermove', this._mousePanMove);
+      window.removeEventListener('pointerup', this._mousePanUp);
+      window.removeEventListener('pointercancel', this._mousePanUp);
+      this._mousePanMove = null;
+      this._mousePanUp = null;
+    }
     this.closeHelp(); // also detaches its window pointerdown listener
     clearTimeout(this.hideTimer);
     clearTimeout(this.cursorTimer);

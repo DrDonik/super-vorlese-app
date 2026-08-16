@@ -1,3 +1,5 @@
+import { deviceScaleFor } from './canvas-scale.js';
+
 export function loadImageFromBlob(blob) {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
@@ -14,16 +16,21 @@ export function loadImageFromBlob(blob) {
   });
 }
 
-export async function renderImageToCanvas(blob, canvas, maxWidth, maxHeight) {
+// Photographed pages are pixels, not vectors, so a photo is never drawn larger
+// than it was taken — except when the reader is zoomed (issue #117), where the
+// point is a bigger picture even at the cost of sharpness. `maxUpscale` is that
+// permission: it carries the zoom factor, so the page grows by exactly the
+// factor the loupe promises whether the photo has detail left to give or not.
+export async function renderImageToCanvas(blob, canvas, maxWidth, maxHeight, maxUpscale = 1) {
   const img = await loadImageFromBlob(blob);
   const scale = Math.min(
     maxWidth / img.naturalWidth,
     maxHeight / img.naturalHeight,
-    1,
+    maxUpscale,
   );
-  const dpr = window.devicePixelRatio || 1;
   const cssWidth = img.naturalWidth * scale;
   const cssHeight = img.naturalHeight * scale;
+  const dpr = deviceScaleFor(cssWidth, cssHeight);
   canvas.width = Math.round(cssWidth * dpr);
   canvas.height = Math.round(cssHeight * dpr);
   canvas.style.width = `${cssWidth}px`;
