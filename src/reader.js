@@ -131,6 +131,8 @@ export class ReaderView {
     this.zoomIndex = 0;
     this.panX = 0;
     this.panY = 0;
+    // Renders run one after another on this chain; see renderCurrent.
+    this.renderQueue = Promise.resolve();
     this.syncSession = null;
     this.isSyncing = false;
     // Local page-navigation toggle (zones + swipe). Default on; persisted
@@ -918,15 +920,23 @@ export class ReaderView {
     this.panY = Math.min(play.y, Math.max(-play.y, this.panY));
   }
 
-  // Whether a drag this way has anywhere to go. A page with no sideways play
-  // cannot be moved sideways, and rather than let the drag come to nothing, a
-  // sideways drag on such a page stays what it was before the loupe existed: a
-  // page turn. Only the dominant direction is asked, so the answer matches the
-  // gesture the reader is making rather than some diagonal remainder of it.
+  // Whether a drag this way has anywhere to go — asked of the direction the
+  // finger is actually taking, not just of the axis. A page with no sideways
+  // play cannot be moved sideways at all, and a page already held against its
+  // right edge cannot be moved further right either; rather than let the drag
+  // come to nothing, it stays what it was before the loupe existed: a page
+  // turn. That makes the far edge of a magnified page the place where swiping
+  // on turns the page, which is what a reader who has just read to the edge is
+  // reaching for anyway.
   canPanAlong(dx, dy) {
     if (this.zoomFactor() === 1) return false;
     const play = this.panPlay();
-    return Math.abs(dx) > Math.abs(dy) ? play.x > 0 : play.y > 0;
+    // A drag to the right (dx > 0) carries the page right, raising panX towards
+    // +play.x; a drag to the left lowers it towards -play.x. Same for dy.
+    if (Math.abs(dx) > Math.abs(dy)) {
+      return dx > 0 ? this.panX < play.x : this.panX > -play.x;
+    }
+    return dy > 0 ? this.panY < play.y : this.panY > -play.y;
   }
 
   // Writes the offset onto the page and drags the pointer coordinate space
@@ -956,9 +966,26 @@ export class ReaderView {
     this._resizeT = setTimeout(() => this.renderCurrent(), 120);
   }
 
-  async renderCurrent() {
-    if (!this.source) return;
+  // Renders queue rather than overlap. renderPage only takes effect at the end
+  // of an await, and every render writes the same canvas, so two in flight land
+  // in whatever order their page data happens to arrive: the loser's dimensions
+  // are the ones that stay. Tapping the loupe twice in quick succession is
+  // exactly that case, and it would leave the page at 1,5× while the button
+  // says 2× — renderToken alone cannot prevent it, because by the time it is
+  // checked the canvas has already been written. Queued, each render has the
+  // canvas to itself, and one that a newer render has overtaken in the meantime
+  // steps aside before touching anything.
+  renderCurrent() {
     const token = ++this.renderToken;
+    this.renderQueue = this.renderQueue
+      .then(() => this.renderPass(token))
+      .catch(() => {}); // keep the queue alive for the next render
+    return this.renderQueue;
+  }
+
+  async renderPass(token) {
+    if (token !== this.renderToken) return;
+    if (!this.source) return;
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
     if (stage.clientWidth === 0 || stage.clientHeight === 0) return;
