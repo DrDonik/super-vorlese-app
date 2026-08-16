@@ -46,19 +46,32 @@ The reader gets a loupe of its own, and the native pinch is left alone.
   bottom-right corner of the stage. Every step is one tap away from every other,
   including the way back. The button shows the factor in force, so the state
   lives in the control rather than in the reader's memory (rule 8).
-- **One of the magnified steps fills the width exactly.** On a landscape screen a
-  portrait page is letterboxed at the sides, and the most useful magnification
-  there is the largest one that still only ever moves in one direction: the page
-  as wide as the stage, nothing left over beside it, scrolling up and down and
-  swiping to turn (the swipe survives because a page with no sideways play keeps
-  it — see above). That factor depends on the page and the screen — 2,1× on an
-  iPad held sideways, 2,5× on a 16:9 laptop — so it is computed rather than
-  fixed, and it replaces whichever of 1,5× / 2× it comes nearest. The ladder
-  stays three rungs long and rising, one rung is always exactly full width, and
-  a page that already fills the width (a phone held upright) keeps the plain
-  1,5× / 2×. It is deliberately *width*, not „the letterboxed side": filling the
-  height on an upright phone would force the reader to scroll across the lines
-  of text, which is the one direction reading cannot spare.
+- **A computed rung fills the width exactly.** On a landscape screen a portrait
+  page is letterboxed at the sides, and the most useful magnification there is
+  the largest one that still only ever moves in one direction: the page as wide
+  as the stage, nothing left over beside it, scrolling up and down and swiping
+  to turn (the swipe survives because a page with no sideways play keeps it —
+  see above). That factor depends on the page and the screen — about 2,1× on an
+  iPad held sideways, 2,5× on a 16:9 laptop — so it is computed, takes its place
+  among the fixed rungs, and absorbs any neighbour within 12 %, so that no two
+  rungs are a hand's breadth apart:
+
+  | | ladder |
+  | --- | --- |
+  | iPad sideways | 1 · 1,5 · **2,1** (absorbs 2×) |
+  | a screen where it lands mid-gap | 1 · 1,5 · **1,7** · 2 (four rungs) |
+  | phone or iPad upright | 1 · 1,5 · 2 (it is ~1× and drops out) |
+  | a sliver of a page, over 3× | 1 · 1,5 · 2 (it would be a wild jump) |
+
+  It is deliberately *width*, not „whichever side is letterboxed": on an upright
+  phone that side is the height, and filling it would force the reader to scroll
+  across the lines of text — the one direction reading cannot spare.
+- **The loupe holds a factor, not a rung number.** The ladder is not a fixed
+  series, so a stored position on it would come to mean something else the
+  moment the device is turned, and the page would resize under the reader's
+  hands. Holding the factor leaves the page exactly as large as it was through a
+  rotation; the next tap takes the next rung of the ladder now in force, or
+  returns to 1× when there is none above.
 - **Not in the chrome row.** After [ADR 23](0023-44px-is-the-floor-and-words-yield-first.md)
   that row measures ~312px on a phone with nothing left to give; a seventh 44px
   target would run it off a 320px screen. The corner also puts the control under
@@ -104,9 +117,10 @@ The reader gets a loupe of its own, and the native pinch is left alone.
 - The factor is deliberately *not* persisted across books or sessions: it belongs
   to a reading, not to the device. If it turns out that the same step is chosen
   every single time, `localStorage` — as in ADR 14 — is the obvious next step.
-- The full-width step is recomputed from the page in hand, so turning the device
-  — or turning to a page of different proportions — can shift it slightly. That
-  is the point: the step means „this page, this screen". A photographed page
+- The full-width rung is computed from the page in hand, so turning the device —
+  or turning to a page of different proportions — can shift it, and on some
+  screens the ladder is four rungs rather than three. That is the point: the
+  rung means „this page, this screen". A photographed page
   whose own pixels run out first (a photo smaller than the stage, which a camera
   does not produce) simply stops where its resolution does; it is then no longer
   exactly full width, but it still moves in only one direction, so the promise

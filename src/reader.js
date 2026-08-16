@@ -36,9 +36,23 @@ function saveNavEnabled(enabled) {
 // different thing — see zoomSteps and ADR 24.
 const ZOOM_STEPS = [1, 1.5, 2];
 
-// A page that already fills the width (a phone held upright) needs no such
-// step; below this factor it would be a rung that does nothing.
-const FILL_WIDTH_MIN = 1.05;
+// Two rungs closer together than this are the same rung with a wasted tap
+// between them, so the computed one absorbs the fixed one. It is also what
+// decides that a page which already fills the width (a phone held upright,
+// where the factor comes out at about 1) contributes no rung at all.
+const STEP_MERGE_RATIO = 1.12;
+
+// Beyond this the page is a sliver in a wide stage and „fills the width" would
+// be a wild rung nobody asked for — a panorama page, say. It then drops out and
+// the plain ladder stands.
+const FILL_WIDTH_MAX = 3;
+
+// Rungs are compared as factors, and a factor is a float. This is the „the same
+// rung" margin for those comparisons, far below anything the eye could tell.
+const SAME_STEP = 1.001;
+
+// Overhang below this counts as none at all; see panPlay.
+const PAN_SLACK_PX = 2;
 
 // The factor as it goes on the button. One decimal, German comma, and no
 // trailing „,0": the full-width step lands on whatever the page and the screen
@@ -139,10 +153,11 @@ export class ReaderView {
     this.helpOverlay = null;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
-    // Page loupe (issue #117): an index into ZOOM_STEPS plus the offset, in CSS
-    // pixels, by which the magnified page is shifted out of its centred resting
-    // position. Both are local to this device and to this reading — ADR 24.
-    this.zoomIndex = 0;
+    // Page loupe (issue #117): the factor the page is magnified by (see
+    // cycleZoom for why the factor and not a rung number) plus the offset, in
+    // CSS pixels, by which it is shifted out of its centred resting position.
+    // Both are local to this device and to this reading — ADR 24.
+    this.zoom = 1;
     this.panX = 0;
     this.panY = 0;
     // Renders run one after another on this chain; see renderCurrent.
@@ -792,12 +807,12 @@ export class ReaderView {
     // page that is already at 1× should do nothing, not jump it to 2×.
     if (e.key === '+' || e.key === '=') {
       e.preventDefault();
-      this.setZoom(this.zoomIndex + 1);
+      this.stepZoom(true);
       return;
     }
     if (e.key === '-') {
       e.preventDefault();
-      this.setZoom(this.zoomIndex - 1);
+      this.stepZoom(false);
       return;
     }
     if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
@@ -893,42 +908,57 @@ export class ReaderView {
   // The ladder in force for the page on screen. „Fills the width" is the most
   // useful magnification there is on a landscape screen: as large as the page
   // can be while still only ever moving in one direction, with no screen left
-  // over at the sides. It replaces whichever of the two magnified steps it
-  // comes nearest, so the ladder stays three rungs long and rising, and one of
-  // them is always exactly full width. Where the page already fills the width
-  // the plain steps stand as they are.
+  // over at the sides. It takes its place among the fixed rungs and absorbs any
+  // neighbour it nearly coincides with, so no two rungs are a hand's breadth
+  // apart. Where it is not a different thing at all — a page already filling
+  // the width, or a sliver of a page whose full width would be a wild jump —
+  // it drops out and the plain ladder stands.
   //
-  // Recomputed rather than stored because it depends on the page and the stage:
+  // Computed rather than stored because it depends on the page and the stage:
   // turning the iPad, or turning to a page of different proportions, changes
-  // what „full width" means, and the step should mean it on the page in hand.
+  // what „full width" means, and the rung should mean it on the page in hand.
   zoomSteps() {
     const fill = this.fillWidthFactor();
-    if (fill < FILL_WIDTH_MIN) return ZOOM_STEPS;
-    const steps = [...ZOOM_STEPS];
-    const i = Math.abs(fill - steps[1]) <= Math.abs(fill - steps[2]) ? 1 : 2;
-    steps[i] = fill;
-    return steps;
+    if (fill < STEP_MERGE_RATIO || fill > FILL_WIDTH_MAX) return ZOOM_STEPS;
+    const steps = ZOOM_STEPS.filter((step) => (
+      Math.max(step, fill) / Math.min(step, fill) >= STEP_MERGE_RATIO
+    ));
+    steps.push(fill);
+    return steps.sort((a, b) => a - b);
   }
 
   zoomFactor() {
-    return this.zoomSteps()[this.zoomIndex];
+    return this.zoom;
   }
 
-  // The button steps through the factors and wraps around; „+" and „−" walk the
-  // same ladder without wrapping, which is what those keys mean everywhere else.
+  // The loupe holds a factor, not a rung number. The ladder is not a fixed
+  // series — turning the device changes what „fills the width" means, and with
+  // it the ladder — so a stored position on it would silently come to mean
+  // something else and resize the page under the reader's hands. Holding the
+  // factor instead leaves the page exactly as large as it was, and the next tap
+  // simply takes the next rung of the ladder now in force.
   cycleZoom() {
-    this.setZoom((this.zoomIndex + 1) % ZOOM_STEPS.length);
+    const steps = this.zoomSteps();
+    this.applyZoom(steps.find((step) => step > this.zoom * SAME_STEP) ?? steps[0]);
   }
 
-  setZoom(index) {
-    const next = Math.min(ZOOM_STEPS.length - 1, Math.max(0, index));
-    if (next === this.zoomIndex) return;
-    const before = this.zoomFactor();
-    this.zoomIndex = next;
+  // „+" and „−" walk the same ladder without wrapping, which is what those keys
+  // mean everywhere else: at the top „+" does nothing, at 1× „−" does nothing.
+  stepZoom(up) {
+    const steps = this.zoomSteps();
+    const next = up
+      ? steps.find((step) => step > this.zoom * SAME_STEP)
+      : steps.findLast((step) => step < this.zoom / SAME_STEP);
+    if (next) this.applyZoom(next);
+  }
+
+  applyZoom(factor) {
+    if (!factor || factor === this.zoom) return;
     // The offset is measured in page pixels, so growing it with the page keeps
     // whatever the reader is looking at in the middle of the screen instead of
     // sliding the view back towards the page's centre on every step.
-    const ratio = this.zoomFactor() / before;
+    const ratio = factor / this.zoom;
+    this.zoom = factor;
     this.panX *= ratio;
     this.panY *= ratio;
     this.applyZoomState();
@@ -960,13 +990,15 @@ export class ReaderView {
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
     if (!canvas || !stage) return { x: 0, y: 0 };
-    // A pixel of overhang is not room to move, it is a rounding remainder — and
-    // the full-width step lands on exactly that kind of remainder. Left in, it
-    // would be enough to latch a drag and swallow the swipe that should have
-    // turned the page.
+    // A couple of pixels of overhang are not room to move, they are a rounding
+    // remainder — these are whole layout pixels, and the full-width rung lands
+    // on exactly that kind of remainder. Left in, it would be enough to latch a
+    // drag and swallow the swipe that should have turned the page, so the one
+    // rung meant to make sideways swiping reliable would be the one that broke
+    // it. Nothing is lost: the last two pixels of a page are not a view.
     const room = (page, view) => {
       const half = (page - view) / 2;
-      return half > 1 ? half : 0;
+      return half > PAN_SLACK_PX ? half : 0;
     };
     return {
       x: room(canvas.offsetWidth, stage.clientWidth),
