@@ -9,6 +9,9 @@ This web app's purpose is remote bedtime reading for grandparents and their gran
 5. All new will be carefully reviewed by an expert for correctness, security, edge cases, maintainability, and fit with the existing codebase. Implement with a goal of a single positive review and no iterations needed.
 6. Backwards compatibility is never required. This is a personal app and the maintainer controls all instances, so changes may freely break older clients or stored data without migration paths or fallbacks.
 
+# Pull Requests
+Write the body in German as usual, but close issues with an English keyword: GitHub only auto-closes on `Closes #123` / `Fixes #123` / `Resolves #123`. German wording like „Behebt #123" is just a mention, and the issue stays open after the merge — that is how #119 and #124 survived their fix in #157. Name every issue the PR finishes on its own `Closes` line at the end of the body; the German prose above it may still explain what was fixed.
+
 Significant architecture and product-scope decisions are recorded as ADRs in `doc/adr/`; consult them for context and add a new one when making such a decision.
 
 Do not propose adding automated tests or a linter — see [ADR 8](doc/adr/0008-no-tests-or-linter.md) for the reasoning.
