@@ -27,11 +27,25 @@ function loadNavEnabled() {
 function saveNavEnabled(enabled) {
   try { localStorage.setItem(NAV_ENABLED_KEY, enabled ? 'true' : 'false'); } catch {}
 }
-// The loupe's steps (issue #117). Fixed steps rather than a continuous zoom:
-// every stage is reachable and leavable with a single tap, the button can show
-// which one is in force, and there is no gesture to learn. The last step wraps
-// back to 1×, so the way out is never more than one tap away.
+// The loupe's steps (issue #117). Steps rather than a continuous zoom: every
+// one is reachable and leavable with a single tap, the button can show which is
+// in force, and there is no gesture to learn. The last step wraps back to 1×,
+// so the way out is never more than one tap away.
+//
+// One of the two magnified steps gives way to „fills the width" where that is a
+// different thing — see zoomSteps and ADR 24.
 const ZOOM_STEPS = [1, 1.5, 2];
+
+// A page that already fills the width (a phone held upright) needs no such
+// step; below this factor it would be a rung that does nothing.
+const FILL_WIDTH_MIN = 1.05;
+
+// The factor as it goes on the button. One decimal, German comma, and no
+// trailing „,0": the full-width step lands on whatever the page and the screen
+// make of it, and „2,1×" is as much of that as anyone needs to read.
+function formatZoom(factor) {
+  return `${String(Math.round(factor * 10) / 10).replace('.', ',')}×`;
+}
 
 // How long the book-closing intro runs (cover held, then settling into the
 // header) before the mood board accepts taps. Must match the CSS choreography.
@@ -855,8 +869,49 @@ export class ReaderView {
 
   // --- Page loupe (issue #117) --------------------------------------------
 
+  // How much the page would have to grow to fill the stage's width exactly.
+  // Derived from the page's own proportions, which no zoom step changes, so it
+  // reads the same at every step and cannot chase itself. Greater than 1 only
+  // while the page is letterboxed sideways — a portrait page on a landscape
+  // screen, which is a grandparent holding an iPad the usual way round.
+  fillWidthFactor() {
+    const canvas = this.root.querySelector('.reader-canvas');
+    const stage = this.root.querySelector('.reader-stage');
+    if (!canvas || !stage) return 1;
+    // Measured with getBoundingClientRect, not offsetWidth: those are whole
+    // pixels, and a proportion taken from rounded numbers is off by enough that
+    // the factor derived from it lands a pixel beside full width — and, because
+    // the next reading is then taken from that page, wanders back and forth by
+    // a pixel each time the step is revisited. The fractional rect is exact, so
+    // the factor is the same number however often it is worked out.
+    const r = canvas.getBoundingClientRect();
+    const widthAtFullHeight = r.height ? stage.clientHeight * (r.width / r.height) : 0;
+    if (!widthAtFullHeight) return 1;
+    return Math.max(1, stage.clientWidth / widthAtFullHeight);
+  }
+
+  // The ladder in force for the page on screen. „Fills the width" is the most
+  // useful magnification there is on a landscape screen: as large as the page
+  // can be while still only ever moving in one direction, with no screen left
+  // over at the sides. It replaces whichever of the two magnified steps it
+  // comes nearest, so the ladder stays three rungs long and rising, and one of
+  // them is always exactly full width. Where the page already fills the width
+  // the plain steps stand as they are.
+  //
+  // Recomputed rather than stored because it depends on the page and the stage:
+  // turning the iPad, or turning to a page of different proportions, changes
+  // what „full width" means, and the step should mean it on the page in hand.
+  zoomSteps() {
+    const fill = this.fillWidthFactor();
+    if (fill < FILL_WIDTH_MIN) return ZOOM_STEPS;
+    const steps = [...ZOOM_STEPS];
+    const i = Math.abs(fill - steps[1]) <= Math.abs(fill - steps[2]) ? 1 : 2;
+    steps[i] = fill;
+    return steps;
+  }
+
   zoomFactor() {
-    return ZOOM_STEPS[this.zoomIndex];
+    return this.zoomSteps()[this.zoomIndex];
   }
 
   // The button steps through the factors and wraps around; „+" and „−" walk the
@@ -892,7 +947,7 @@ export class ReaderView {
     const zoom = this.zoomFactor();
     reader.classList.toggle('zoomed', zoom > 1);
     const factor = reader.querySelector('.reader-zoom-factor');
-    if (factor) factor.textContent = zoom > 1 ? `${String(zoom).replace('.', ',')}×` : '';
+    if (factor) factor.textContent = zoom > 1 ? formatZoom(zoom) : '';
   }
 
   // How far the page can travel from its resting position, per axis: half its
@@ -905,9 +960,17 @@ export class ReaderView {
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
     if (!canvas || !stage) return { x: 0, y: 0 };
+    // A pixel of overhang is not room to move, it is a rounding remainder — and
+    // the full-width step lands on exactly that kind of remainder. Left in, it
+    // would be enough to latch a drag and swallow the swipe that should have
+    // turned the page.
+    const room = (page, view) => {
+      const half = (page - view) / 2;
+      return half > 1 ? half : 0;
+    };
     return {
-      x: Math.max(0, (canvas.offsetWidth - stage.clientWidth) / 2),
-      y: Math.max(0, (canvas.offsetHeight - stage.clientHeight) / 2),
+      x: room(canvas.offsetWidth, stage.clientWidth),
+      y: room(canvas.offsetHeight, stage.clientHeight),
     };
   }
 

@@ -42,10 +42,23 @@ answer is substantial:
 
 The reader gets a loupe of its own, and the native pinch is left alone.
 
-- **Fixed steps, one button.** 1× → 1,5× → 2× → 1×, on a floating button in the
+- **Three steps, one button.** 1× → 1,5× → 2× → 1×, on a floating button in the
   bottom-right corner of the stage. Every step is one tap away from every other,
   including the way back. The button shows the factor in force, so the state
   lives in the control rather than in the reader's memory (rule 8).
+- **One of the magnified steps fills the width exactly.** On a landscape screen a
+  portrait page is letterboxed at the sides, and the most useful magnification
+  there is the largest one that still only ever moves in one direction: the page
+  as wide as the stage, nothing left over beside it, scrolling up and down and
+  swiping to turn (the swipe survives because a page with no sideways play keeps
+  it — see above). That factor depends on the page and the screen — 2,1× on an
+  iPad held sideways, 2,5× on a 16:9 laptop — so it is computed rather than
+  fixed, and it replaces whichever of 1,5× / 2× it comes nearest. The ladder
+  stays three rungs long and rising, one rung is always exactly full width, and
+  a page that already fills the width (a phone held upright) keeps the plain
+  1,5× / 2×. It is deliberately *width*, not „the letterboxed side": filling the
+  height on an upright phone would force the reader to scroll across the lines
+  of text, which is the one direction reading cannot spare.
 - **Not in the chrome row.** After [ADR 23](0023-44px-is-the-floor-and-words-yield-first.md)
   that row measures ~312px on a phone with nothing left to give; a seventh 44px
   target would run it off a 320px screen. The corner also puts the control under
@@ -91,6 +104,13 @@ The reader gets a loupe of its own, and the native pinch is left alone.
 - The factor is deliberately *not* persisted across books or sessions: it belongs
   to a reading, not to the device. If it turns out that the same step is chosen
   every single time, `localStorage` — as in ADR 14 — is the obvious next step.
+- The full-width step is recomputed from the page in hand, so turning the device
+  — or turning to a page of different proportions — can shift it slightly. That
+  is the point: the step means „this page, this screen". A photographed page
+  whose own pixels run out first (a photo smaller than the stage, which a camera
+  does not produce) simply stops where its resolution does; it is then no longer
+  exactly full width, but it still moves in only one direction, so the promise
+  that matters holds.
 - Keyboard users cannot pan a magnified page; the arrow keys keep turning pages,
   which is the far more frequent action and would be a poor thing to overload.
   Mouse and touch both drag.
