@@ -458,6 +458,19 @@ export class ReaderView {
     }, { passive: true });
 
     stage.addEventListener('touchmove', (e) => {
+      // A second finger anywhere on the screen means a pinch, not a one-finger
+      // gesture — and `touches` counts them all, including one that came down on
+      // a chrome button, whose touchstart never reaches this listener. Bow out
+      // here rather than only there, because the way out matters: falling
+      // through would call preventDefault on the way and suppress the very
+      // native pinch this app deliberately leaves alone (ADR 24).
+      if (e.touches.length !== 1) {
+        clearTimer();
+        finishPointer();
+        panning = false;
+        aborted = true;
+        return;
+      }
       if (aborted || startX == null) return;
       const t = e.touches[0];
       if (!t) return;
