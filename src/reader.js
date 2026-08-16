@@ -155,7 +155,7 @@ export class ReaderView {
     this.root.innerHTML = `
       <div class="reader">
         <div class="reader-chrome">
-          <button class="reader-back" type="button">← Bibliothek</button>
+          <button class="reader-back" type="button" aria-label="Zurück zur Bibliothek">←<span class="reader-back-label">Bibliothek</span></button>
           <button class="reader-sync-btn" type="button" aria-label="Gemeinsam lesen">👥</button>
           <div class="reader-title"></div>
           <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
@@ -222,7 +222,11 @@ export class ReaderView {
     indicator.addEventListener('pointerdown', (e) => {
       const input = indicator.querySelector('.page-jump-input');
       if (input && e.target !== input) {
+        // preventDefault keeps the tap from blurring the field (which would
+        // close the jump); the focus then makes the whole 44px box behave like
+        // the field it contains, rather than a border of dead pixels around it.
         e.preventDefault();
+        input.focus();
       }
     });
 
@@ -753,10 +757,25 @@ export class ReaderView {
     updateLastPage(this.bookId, this.currentPage).catch(() => {});
   }
 
+  // „Seite" rides in its own span so the phone stylesheet can drop the word and
+  // keep the numbers, which is what lets every control in the bar reach 44px on
+  // a narrow screen (issue #130). Written from one place because the page jump
+  // rewrites the indicator when it closes, and the two must not disagree about
+  // its shape. Deliberately no aria-label mirroring the page number here: a
+  // label that has to be kept in step with the page inside this method is the
+  // exact drift ADR 22 declines to take on.
+  writeIndicator(page) {
+    const ind = this.root.querySelector('.reader-page-indicator');
+    const word = document.createElement('span');
+    word.className = 'page-indicator-word';
+    word.textContent = 'Seite';
+    ind.replaceChildren(word, document.createTextNode(`${page} / ${this.totalPages}`));
+  }
+
   updateIndicator() {
     const ind = this.root.querySelector('.reader-page-indicator');
     if (ind.querySelector('.page-jump-input')) return;
-    ind.textContent = `Seite ${this.currentPage} / ${this.totalPages}`;
+    this.writeIndicator(this.currentPage);
   }
 
   openPageJump() {
@@ -781,7 +800,7 @@ export class ReaderView {
 
     const suffix = document.createElement('span');
     suffix.className = 'page-jump-suffix';
-    suffix.textContent = ` / ${this.totalPages}`;
+    suffix.textContent = `/ ${this.totalPages}`;
     ind.appendChild(suffix);
 
     input.focus();
@@ -808,8 +827,7 @@ export class ReaderView {
     this.pageJumpOpen = false;
     ind.setAttribute('role', 'button');
     ind.setAttribute('tabindex', '0');
-    const displayPage = page !== undefined ? page : this.currentPage;
-    ind.textContent = `Seite ${displayPage} / ${this.totalPages}`;
+    this.writeIndicator(page !== undefined ? page : this.currentPage);
     this.showChrome();
     if (shouldFocus) ind.focus();
   }

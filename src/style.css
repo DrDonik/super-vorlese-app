@@ -99,6 +99,7 @@ button {
   background: var(--surface);
   color: var(--fg);
   padding: 12px 20px;
+  min-height: 44px;
   border-radius: 12px;
   font-weight: 600;
   cursor: pointer;
@@ -467,8 +468,14 @@ button {
   pointer-events: none;
 }
 
+/* Nothing in this row may be squeezed below the size it declares. With the
+   default flex-shrink a 375px phone pressed the „?" button down to 23px — under
+   even the WCAG floor, and the opposite of what the declared size promised
+   (issue #130). The title is the single exception: it is a label, not a target,
+   so it is the one item allowed to give way, down to nothing. */
 .reader-chrome > * {
   pointer-events: auto;
+  flex: none;
 }
 
 .reader.chrome-hidden .reader-chrome {
@@ -488,10 +495,21 @@ button {
   cursor: none !important;
 }
 
+/* nowrap because this button used to break „← Bibliothek" across two lines on a
+   phone, which pushed the whole bar to 88px and still left every target too
+   small to hit. */
 .reader-back {
   background: var(--surface-glass);
   border: none;
   padding: 10px 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  /* The arrow and the word are separate flex items, so the space between them
+     has to be a gap — flex trims whitespace at an item's edge. It also vanishes
+     on its own with the word on a phone. */
+  gap: 4px;
+  white-space: nowrap;
   border-radius: 10px;
   cursor: pointer;
   backdrop-filter: blur(10px);
@@ -503,7 +521,10 @@ button {
 }
 
 .reader-title {
-  flex: 1;
+  /* The row's only flexible item (see .reader-chrome > * above); min-width: 0
+     lets it shrink past its text instead of forcing the row wider. */
+  flex: 1 1 0;
+  min-width: 0;
   font-weight: 600;
   font-size: 16px;
   text-overflow: ellipsis;
@@ -520,8 +541,8 @@ button {
   position: relative;
   background: var(--surface-glass);
   border: none;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 16px;
@@ -549,8 +570,10 @@ button {
   content: '';
   position: absolute;
   left: 50%;
-  top: 7px;
-  bottom: 7px;
+  /* Insets grew with the button (40 → 44px) so the strike keeps its length and
+     stays sized to the glyph rather than to the target around it. */
+  top: 9px;
+  bottom: 9px;
   width: 2px;
   border-radius: 1px;
   background: var(--fg-dim);
@@ -559,12 +582,22 @@ button {
 
 /* Full --fg, not --fg-dim: „Seite 3 / 20" is the answer to where we are in the
    book, which is the reader's central state and not an aside. Dimmed, at 14px
-   over glass on a white page, it was also the weakest contrast in the app. */
+   over glass on a white page, it was also the weakest contrast in the app.
+   It was also the smallest thing in the bar at ~30px (issue #130). Padding
+   alone cannot carry the 44px — the text inside changes size when the
+   page-jump input opens — so the floor is a min-height, content centred. */
 .reader-page-indicator {
   font-variant-numeric: tabular-nums;
   color: var(--fg);
   font-size: 14px;
   padding: 6px 12px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  /* Same reason as .reader-back: „Seite", the numbers and the page-jump input
+     are flex items, so their spacing is a gap rather than typed spaces. */
+  gap: 4px;
+  white-space: nowrap;
   background: var(--surface-glass);
   border-radius: 8px;
   backdrop-filter: blur(10px);
@@ -764,9 +797,35 @@ button {
 }
 
 @media (max-width: 600px) {
-  /* The chrome row holds six fixed-width items on a phone; tighter gaps and
-     side padding keep them from squeezing each other. */
-  .reader-chrome { gap: 10px; padding-left: calc(16px + env(safe-area-inset-left, 0px)); padding-right: calc(16px + env(safe-area-inset-right, 0px)); }
+  /* The chrome row holds six items on a phone and every one of them but the
+     title is a 44px target now, which no longer fits with words in it: measured
+     against the widest fallback font, „← Bibliothek" plus „Seite 12 / 148" want
+     436px, more than any phone has. So at this breakpoint the words go and the
+     targets stay — the row falls back to „←", the sync and navigation glyphs, the bare
+     page numbers and „?" (issue #130). That costs nothing the reader needs: per
+     ADR 18 the reader is the surface measured against the child who cannot yet
+     read, every one of these controls is named in the „?" overlay, and the
+     title was already truncated to nothing at this width. Tablets and desktops
+     are untouched and keep the full labels. Measured requirement afterwards:
+     ~312px, i.e. one line from 320px up with room to spare for a phone whose
+     owner has turned the system font size up. */
+  .reader-chrome { gap: 8px; padding-left: calc(12px + env(safe-area-inset-left, 0px)); padding-right: calc(12px + env(safe-area-inset-right, 0px)); }
+  .reader-back { padding: 10px; min-width: 44px; justify-content: center; }
+  .reader-back-label, .page-indicator-word { display: none; }
+  /* The page-jump field is wider than the numbers it replaces — a text box plus
+     „/ 148" against „12 / 148" — and on the narrowest phones a long book pushed
+     the row past the screen edge, taking the „?" button with it. Now that the
+     row cannot squeeze, it buys that width back for the duration of the edit,
+     and only where nothing is lost: the title is a label with nothing to show at
+     this width, and the indicator's own padding tightens around a field that is
+     already the widest thing in the row. Every control, the field and its total
+     stay put. Measured at 320px: a 148-page book went 8px over the screen edge
+     before and now ends 20px inside it; the absurd case of a 1200-page book
+     went 25px over and now lands 3px inside, eating into the side padding but
+     no longer off the screen. */
+  .reader-chrome:has(.page-jump-input) { gap: 6px; }
+  .reader-chrome:has(.page-jump-input) .reader-title { display: none; }
+  .reader-chrome:has(.page-jump-input) .reader-page-indicator { padding: 6px; }
   .library-header { padding: 16px 16px 8px; padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); flex-wrap: wrap; }
   .library-header h1 { font-size: 22px; }
   .library-grid { padding: 12px 16px; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
@@ -776,6 +835,7 @@ button {
   .sort-pill { padding: 0 12px; }
   .library-filter { padding: 0 4px; padding-left: calc(4px + env(safe-area-inset-left, 0px)); padding-right: calc(4px + env(safe-area-inset-right, 0px)); gap: 4px; }
   .filter-chip { padding: 0 12px; }
+  /* Compact type and padding, but the 44px floor from the base rule stays. */
   .add-book { padding: 10px 14px; font-size: 14px; }
 }
 
@@ -784,8 +844,8 @@ button {
 .reader-sync-btn {
   background: var(--surface-glass);
   border: none;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 18px;
@@ -867,6 +927,10 @@ button {
   background: var(--surface);
   color: var(--fg);
   padding: 12px 18px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 10px;
   font-weight: 600;
@@ -927,6 +991,10 @@ button {
   background: var(--surface);
   color: var(--fg);
   padding: 12px 16px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 10px;
   font-weight: 600;
@@ -994,6 +1062,10 @@ button {
   background: transparent;
   color: var(--fg-dim);
   padding: 12px 18px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 10px;
   cursor: pointer;
@@ -1047,8 +1119,8 @@ button {
 .reader-help-btn {
   background: var(--surface-glass);
   border: none;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 18px;
@@ -1233,8 +1305,8 @@ button {
   position: absolute;
   top: max(16px, env(safe-area-inset-top));
   left: 16px;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   background: var(--surface-glass);
   color: #fff;
@@ -1306,6 +1378,9 @@ button {
   display: block;
 }
 
+/* The ✕ stays small on purpose — it sits on a 64px preview and a 44px disc
+   would bury the photo it is meant to let you check. The target underneath it
+   is the full 44px instead, cast by the pseudo-element below. */
 .camera-thumb-del {
   position: absolute;
   top: 2px;
@@ -1322,6 +1397,23 @@ button {
   padding: 0;
 }
 
+/* The real target: 44px anchored to the thumbnail's top-right corner, so it
+   reaches down and left into the photo rather than out over the neighbouring
+   thumbnail — which .camera-thumb's overflow: hidden would clip anyway, and
+   where a stray tap would discard the wrong photo. The thumbnail carries no
+   other action, so the lower-left of it stays deliberately inert: discarding is
+   immediate and unpaid-for (the page has to be photographed again), and the
+   half of the preview furthest from the ✕ is where a finger steadying the strip
+   lands. */
+.camera-thumb-del::after {
+  content: '';
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 44px;
+  height: 44px;
+}
+
 .camera-controls {
   flex: 0 0 auto;
   display: grid;
@@ -1332,12 +1424,17 @@ button {
   background: #000;
 }
 
+/* Small, quiet type — it is the way out for a device whose camera the browser
+   will not open, not the main path — but the target keeps the full 44px. */
 .camera-fallback {
   justify-self: start;
   color: var(--fg-dim);
   font-size: 13px;
   text-decoration: underline;
   cursor: pointer;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 
 .camera-fallback[hidden] {
@@ -1394,6 +1491,10 @@ button {
   font-weight: 600;
   cursor: pointer;
   min-width: 88px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .camera-done:disabled {
@@ -1498,11 +1599,19 @@ button {
   margin-top: 4px;
 }
 
+/* min-height rather than a padding that happens to add up to 44: the padding
+   only reached 43px, and it would drift again with any change of font size or
+   line-height. This is the same construction .sort-pill, .filter-chip and
+   .tag-chip already use (issue #130). */
 .dialog-btn {
   flex: 1;
   background: transparent;
   color: var(--fg-dim);
   padding: 12px 18px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 10px;
   font-weight: 600;
@@ -1724,6 +1833,7 @@ button {
   font-size: 16px;
   font-weight: 600;
   padding: 12px 20px;
+  min-height: 44px;
   border: none;
   border-radius: 999px;
   cursor: pointer;
@@ -1797,8 +1907,8 @@ button {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border-radius: 50%;
   border: none;
   background: var(--surface);
@@ -1822,7 +1932,7 @@ button {
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  padding: 0 44px; /* clear the cancel button on both sides */
+  padding: 0 56px; /* clear the cancel button (12px inset + its 44px) on both sides */
   animation: mood-cover-settle 1.4s ease both;
 }
 
@@ -2075,6 +2185,10 @@ button {
   background: var(--accent);
   color: #111;
   padding: 12px 28px;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
   border-radius: 10px;
   font-weight: 600;
