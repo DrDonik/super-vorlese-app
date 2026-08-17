@@ -656,6 +656,12 @@ button {
   -webkit-touch-callout: none;
   user-select: none;
   -webkit-user-select: none;
+  /* Every touch on the page belongs to the reader's own gesture recogniser —
+     including the two-finger pinch, which now works the loupe instead of the
+     browser's zoom (ADR 24, second amendment). The stage never scrolls, so
+     nothing is given up by saying so. WebKit also needs its gesture events
+     cancelled; see suppressNativePinch. */
+  touch-action: none;
 }
 
 .reader-canvas {
@@ -694,7 +700,13 @@ button {
   border: none;
   cursor: pointer;
   z-index: 5;
-  touch-action: manipulation;
+  /* `none` rather than `manipulation`, matching the stage. In principle the
+     stage's `none` already covers its descendants, but the two zones cover
+     60 % of the page and are where most touches actually land, so the rule that
+     matters is spelled out where it is read rather than left to how a given
+     browser combines the property down the tree. Taps and clicks are untouched
+     by this — only the browser's own touch gestures are. */
+  touch-action: none;
   /* The zones are deliberately invisible. iOS paints a default tap highlight
      on buttons, and in a standalone PWA it latches on and lingers after the
      tap (Safari only flashes it briefly), leaving a grey overlay on the turned
@@ -791,6 +803,20 @@ button {
 .reader.zoomed .reader-zoom {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* While two fingers are on the page it is the only feedback in sight, so it
+   comes up with the gesture and counts along — including at 1×, where the
+   `zoomed` rule above does not hold it. Not tappable meanwhile: one of those
+   fingers may well be resting on it, and a pinch must not double as a tap.
+   After the chrome-hidden rule so it outranks it; same specificity. */
+.reader.pinching .reader-zoom {
+  opacity: 1;
+  pointer-events: none;
+  /* Not the 0.4s fade the chrome uses: a pinch can be over in a third of a
+     second, and a factor that is still fading in when the fingers lift is no
+     feedback at all (rule 3). It fades out again with the chrome as usual. */
+  transition: none;
 }
 
 /* On the last page the finish cue takes the bottom of the screen, and on a
