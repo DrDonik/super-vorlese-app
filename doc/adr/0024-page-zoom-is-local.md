@@ -162,7 +162,7 @@ sideways — nothing moves.
   The code already distinguished the two cases for pointer-clearing, and now
   splits the pan the same way.
 
-## Consequences
+## Amendment consequences
 
 - The offset is no longer a place in the book that has to remain meaningful
   across pages, only a place in the page in hand, which is the only thing it ever
