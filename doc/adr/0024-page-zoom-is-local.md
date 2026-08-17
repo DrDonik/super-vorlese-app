@@ -94,6 +94,9 @@ The reader gets a loupe of its own, and the native pinch is left alone.
   page turn (the offset re-clamped to the new page), so a reader who needs 1,5×
   does not re-establish it on every page. `+` and `−` walk the same ladder for
   keyboard and desktop; a mouse drags the page.
+
+  *Corrected by the 2026-08-17 amendment below: the factor survives a page turn,
+  the offset returns to the top of the new page.*
 - **Zoom is not synchronised.** It is a property of one pair of eyes and one
   screen, like the page-navigation toggle in [ADR 14](0014-local-page-navigation-toggle.md).
 - **The native pinch stays untouched.** Suppressing it would mean fighting iOS
@@ -128,3 +131,43 @@ The reader gets a loupe of its own, and the native pinch is left alone.
 - Keyboard users cannot pan a magnified page; the arrow keys keep turning pages,
   which is the far more frequent action and would be a poor thing to overload.
   Mouse and touch both drag.
+
+## Amendment (2026-08-17): the factor lies on the book, the section on the page
+
+„Factor and offset survive a page turn (the offset re-clamped to the new page)"
+was one decision too many. The factor belongs to a pair of eyes and holds across
+the book, as decided. The *offset* does not: carried over, it sets the reader
+down at the same place in the new page as they left the old one — and the place
+they left the old one is its end. At the full-width rung, where a page is read
+top to bottom, every turn therefore landed at the bottom right of a page not yet
+read, and the reader had to drag back up before starting. Re-clamping made that
+worse rather than better, because it is precisely what pins the offset to the new
+page's bottom edge instead of letting it run out.
+
+**A page turn puts the section at the beginning of the page: its top, and its
+left edge where there is sideways play at all.** The resting position is the
+page's centre, so „the beginning" is the full positive offset on both axes, not
+zero; where an axis has no play — an unmagnified page, or the full-width rung
+sideways — nothing moves.
+
+- **In both directions.** Turning back lands at the top too, although the reader
+  left that page at its foot. Making the landing point depend on the direction of
+  the turn would be a cleverness that costs consistency (rule 1) and surprises
+  (rule 7); a page begins at its beginning whichever way one arrives.
+- **A remote turn counts as a turn.** When the partner turns the page, both
+  readers start at the top of the new one, which is what synchronising the page
+  was for.
+- **A resize or a rotation is not a turn.** There the offset stays and is merely
+  re-clamped, as before: turning the iPad must not take the reader's line away.
+  The code already distinguished the two cases for pointer-clearing, and now
+  splits the pan the same way.
+
+## Consequences
+
+- The offset is no longer a place in the book that has to remain meaningful
+  across pages, only a place in the page in hand, which is the only thing it ever
+  described honestly.
+- Flipping back and forth to compare the same spot on two pages now costs a drag
+  each way. Judged the rarer case by some distance against reading a magnified
+  page front to back, and the factor — the expensive thing to re-establish — is
+  still kept.

@@ -1066,6 +1066,19 @@ export class ReaderView {
     this.applyPan();
   }
 
+  // Puts the magnified section where a page starts: its top, and its left edge
+  // where there is sideways play at all. The page rests centred, so „the
+  // beginning" is the full positive offset on both axes rather than zero — and
+  // zero play (an unmagnified page, or the full-width rung sideways) simply
+  // leaves that axis alone. Used on a page turn, in both directions: a page
+  // begins at its beginning whichever way the reader arrived at it.
+  panToPageStart() {
+    const play = this.panPlay();
+    this.panX = play.x;
+    this.panY = play.y;
+    this.applyPan();
+  }
+
   scheduleRender() {
     // The help callouts were positioned for the old layout; a resize (e.g. an
     // orientation change) invalidates them, so the help simply closes.
@@ -1109,16 +1122,21 @@ export class ReaderView {
       console.error('Render-Fehler', err);
     }
     if (token !== this.renderToken) return;
+    const pageChanged = this.lastRenderedPage !== this.currentPage;
     // Re-overlay the pointer space onto the (possibly resized) page before any
-    // pointer is placed, so positions are page-relative on this render too.
-    // The offset is kept across page turns and resizes — the loupe lies on the
-    // book, not on one page (ADR 24) — but a new page may have less room to
-    // give, so it is held against the new page's edges first.
-    this.clampPan();
-    this.applyPan();
+    // pointer is placed, so positions are page-relative on this render too. The
+    // factor is kept across page turns and resizes — the loupe lies on the book
+    // — but the section does not: a new page begins at its beginning, while a
+    // resize or a rotation leaves the reader where they were reading (ADR 24).
+    if (pageChanged) {
+      this.panToPageStart();
+    } else {
+      this.clampPan();
+      this.applyPan();
+    }
     // Clear pointers only when the page actually changes, not on a re-render
     // from a resize, so a pointer survives an orientation change mid-gesture.
-    if (this.lastRenderedPage !== this.currentPage) {
+    if (pageChanged) {
       this.clearAllPointers();
       this.lastRenderedPage = this.currentPage;
     }
