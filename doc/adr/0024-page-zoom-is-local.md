@@ -231,7 +231,11 @@ over, and low vision (ADR 22) must keep the one magnification those screens have
   installed iPadOS web app really lets `gesturestart` be cancelled can only be
   established on the device; if it does not, the app sees the native zoom take
   hold, steps aside, and the reader is left with exactly what they had before —
-  rather than with two zooms fighting over the same two fingers.
+  rather than with two zooms fighting over the same two fingers. It is asked at
+  every step of a gesture and not only at its start, because a native zoom that
+  takes hold halfway through is the same failure arriving late: the pinch is
+  handed back mid-flight and the loupe returns to the factor the fingers found,
+  instead of freezing a half-finished local zoom underneath the browser's.
 - „Two zoom mechanisms now exist on iOS and can stack" is no longer true in the
   reader, which is where it mattered. It is still true of the library, and there
   it costs nothing: no page, no loupe, no confusion about which one answered.

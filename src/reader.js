@@ -461,6 +461,10 @@ export class ReaderView {
     // factor and the offset are both measured against that moment rather than
     // accumulated frame by frame, which would drift.
     let pinch = null;
+    // Set when the browser's own zoom took the gesture away mid-pinch, and
+    // cleared only when every finger has lifted: two fingers still on the glass
+    // are the gesture the loupe just handed back, not a new one to pick up.
+    let pinchGivenUp = false;
     // Moving the magnified page: latched once the finger has travelled far
     // enough to rule out a tap, with the offset the page started from, so the
     // page follows the finger from where it stood rather than jumping.
@@ -515,8 +519,20 @@ export class ReaderView {
         panning = false;
         aborted = true;
         if (e.touches.length === 2) {
-          if (!pinch) pinch = this.beginPinch(e.touches[0], e.touches[1]);
-          if (pinch) {
+          if (!pinch && !pinchGivenUp) pinch = this.beginPinch(e.touches[0], e.touches[1]);
+          if (pinch && this.nativeZoomActive()) {
+            // The browser is zooming despite the suppression. Stepping aside at
+            // the start of a gesture is not enough if it only takes hold
+            // halfway through: carrying on here is precisely the two zooms on
+            // one pair of fingers this was meant to prevent. So the loupe hands
+            // the gesture back and puts itself where the gesture found it,
+            // leaving the reader with the native zoom alone — what they had
+            // before any of this. Handed back for good until every finger has
+            // lifted, rather than snatched again mid-gesture.
+            this.cancelPinch(pinch);
+            pinch = null;
+            pinchGivenUp = true;
+          } else if (pinch) {
             // Keep the browser from taking the same two fingers as a zoom of
             // its own on top of this one.
             if (e.cancelable) e.preventDefault();
@@ -558,6 +574,7 @@ export class ReaderView {
 
     stage.addEventListener('touchend', (e) => {
       clearTimer();
+      if (e.touches.length === 0) pinchGivenUp = false;
       // The pinch is over as soon as it is down to one finger; what is left on
       // the glass belongs to no gesture (aborted stays set until the last
       // finger lifts), so lingering with one finger neither turns the page nor
@@ -615,6 +632,7 @@ export class ReaderView {
         this.endPinch();
         pinch = null;
       }
+      pinchGivenUp = false;
       startX = startY = null;
       aborted = false;
       panning = false;
@@ -761,6 +779,23 @@ export class ReaderView {
     this.pinching = false;
     this.applyZoomState();
     if (Math.abs(this.zoom - this.renderedZoom) > 0.001) this.renderCurrent();
+  }
+
+  // Undoes a pinch instead of committing it: the factor and the offset go back
+  // to what they were when the fingers went down, which is the only sensible
+  // place to leave them when the browser has taken the gesture over halfway
+  // through — anything else would freeze a half-finished local zoom underneath
+  // the native one. Nothing is re-rendered, because the canvas was never
+  // re-rendered during the gesture in the first place; putting the factor back
+  // is enough to make the stand-in scale 1 again.
+  cancelPinch(pinch) {
+    this.pinching = false;
+    this.zoom = pinch.zoom;
+    this.panX = pinch.panX;
+    this.panY = pinch.panY;
+    this.clampPan();
+    this.applyPan();
+    this.applyZoomState();
   }
 
   // Trackpad pinch and Ctrl+wheel, which every browser reports as a wheel event
@@ -1225,8 +1260,12 @@ export class ReaderView {
     // is, so it stays up and counts along even at 1×, where nothing else on
     // screen would say that a gesture is being heard at all (rule 3).
     reader.classList.toggle('pinching', this.pinching);
+    // At rest 1× shows no factor — an unmagnified page is the ordinary state
+    // and needs no label. Under the fingers it does: the loupe is then a live
+    // readout, and „1×" is how the reader sees that pinching back down has
+    // arrived rather than nearly arrived.
     const factor = reader.querySelector('.reader-zoom-factor');
-    if (factor) factor.textContent = zoom > 1 ? formatZoom(zoom) : '';
+    if (factor) factor.textContent = (zoom > 1 || this.pinching) ? formatZoom(zoom) : '';
   }
 
   // How far the page can travel from its resting position, per axis: half its
