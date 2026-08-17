@@ -54,6 +54,32 @@ const SAME_STEP = 1.001;
 // Overhang below this counts as none at all; see panPlay.
 const PAN_SLACK_PX = 2;
 
+// The pinch works the loupe rather than the browser's own zoom (ADR 24, second
+// amendment), and it reaches past the ladder's top rung on purpose: the native
+// pinch it takes the place of went to about 5×, and swallowing the gesture only
+// to cap it at 2× would take magnification away from exactly the reader the
+// loupe was built for. Past 4× the canvas limit (see deviceScaleFor) starts
+// eating the sharpness that re-rendering the page is for, so it stops here.
+const PINCH_MAX = 4;
+
+// Pinching back down lands on exactly 1× from here — the one magnet in an
+// otherwise free gesture. 1× is not merely a small factor: it is the page
+// fitted to the stage with its offset let go, and „1,03×" would be none of that
+// while still counting as magnified.
+const PINCH_SNAP_TO_ONE = 1.05;
+
+// How fast a wheel notch zooms. Exponential, so every notch is the same
+// *proportional* step and the way back mirrors the way there. One notch of a
+// mouse wheel (deltaY 100) comes to about 1,5× — a rung of the ladder — while a
+// trackpad pinch reports many small deltas and therefore runs smoothly.
+const WHEEL_ZOOM_RATE = 0.004;
+
+// Wheel deltas come in three units; only pixels can be used as they arrive.
+const WHEEL_DELTA_PX = { 0: 1, 1: 16, 2: 100 };
+
+// A wheel zoom renders once the hand comes to rest, not once per notch.
+const WHEEL_COMMIT_MS = 160;
+
 // The factor as it goes on the button. One decimal, German comma, and no
 // trailing „,0": the full-width step lands on whatever the page and the screen
 // make of it, and „2,1×" is as much of that as anyone needs to read.
@@ -160,6 +186,16 @@ export class ReaderView {
     this.zoom = 1;
     this.panX = 0;
     this.panY = 0;
+    // The factor the canvas on screen was actually rendered at. It trails
+    // this.zoom while a render is in flight — and all through a pinch, which
+    // moves the factor sixty times a second and renders once at the end. The
+    // quotient of the two is the CSS scale that stands in for the render until
+    // it lands (see displayScale), so the page follows the fingers at once and
+    // sharpens when the render catches up.
+    this.renderedZoom = 1;
+    // True between the first and the last of a pinch's two fingers, only so the
+    // loupe can stay on screen and count along while the page is being resized.
+    this.pinching = false;
     // Renders run one after another on this chain; see renderCurrent.
     this.renderQueue = Promise.resolve();
     this.syncSession = null;
@@ -402,6 +438,10 @@ export class ReaderView {
   //                            it follows the finger (issue #117). This is the
   //                            only gesture the loupe changes, and tapping a
   //                            turn zone still turns the page either way.
+  //   • two fingers          → work the loupe: the page grows and shrinks with
+  //                            them and moves with their midpoint, instead of
+  //                            leaving the browser to zoom the whole window
+  //                            (ADR 24, second amendment).
   attachStageGestures(stage) {
     // Captured once: the canvas element is reused across page renders, so a
     // pointer can be measured against the page without a per-touchmove DOM query.
@@ -416,7 +456,15 @@ export class ReaderView {
     let startY = null;
     let startTime = 0;
     let onZone = false;
-    let aborted = false; // multi-touch (e.g. pinch) cancels the gesture
+    let aborted = false; // a second finger cancels the one-finger gesture
+    // The pinch in progress, or null. Holds where the fingers started so the
+    // factor and the offset are both measured against that moment rather than
+    // accumulated frame by frame, which would drift.
+    let pinch = null;
+    // Set when the browser's own zoom took the gesture away mid-pinch, and
+    // cleared only when every finger has lifted: two fingers still on the glass
+    // are the gesture the loupe just handed back, not a new one to pick up.
+    let pinchGivenUp = false;
     // Moving the magnified page: latched once the finger has travelled far
     // enough to rule out a tap, with the offset the page started from, so the
     // page follows the finger from where it stood rather than jumping.
@@ -440,6 +488,7 @@ export class ReaderView {
         finishPointer();
         panning = false;
         aborted = true;
+        if (!pinch && e.touches.length === 2) pinch = this.beginPinch(e.touches[0], e.touches[1]);
         return;
       }
       const t = e.touches[0];
@@ -460,15 +509,36 @@ export class ReaderView {
     stage.addEventListener('touchmove', (e) => {
       // A second finger anywhere on the screen means a pinch, not a one-finger
       // gesture — and `touches` counts them all, including one that came down on
-      // a chrome button, whose touchstart never reaches this listener. Bow out
-      // here rather than only there, because the way out matters: falling
-      // through would call preventDefault on the way and suppress the very
-      // native pinch this app deliberately leaves alone (ADR 24).
+      // a chrome button, whose touchstart never reaches this listener. That is
+      // also why the pinch may have to be picked up here rather than in
+      // touchstart: two fingers of which only one landed on the stage are still
+      // a pinch, and the reader means the page by it either way.
       if (e.touches.length !== 1) {
         clearTimer();
         finishPointer();
         panning = false;
         aborted = true;
+        if (e.touches.length === 2) {
+          if (!pinch && !pinchGivenUp) pinch = this.beginPinch(e.touches[0], e.touches[1]);
+          if (pinch && this.nativeZoomActive()) {
+            // The browser is zooming despite the suppression. Stepping aside at
+            // the start of a gesture is not enough if it only takes hold
+            // halfway through: carrying on here is precisely the two zooms on
+            // one pair of fingers this was meant to prevent. So the loupe hands
+            // the gesture back and puts itself where the gesture found it,
+            // leaving the reader with the native zoom alone — what they had
+            // before any of this. Handed back for good until every finger has
+            // lifted, rather than snatched again mid-gesture.
+            this.cancelPinch(pinch);
+            pinch = null;
+            pinchGivenUp = true;
+          } else if (pinch) {
+            // Keep the browser from taking the same two fingers as a zoom of
+            // its own on top of this one.
+            if (e.cancelable) e.preventDefault();
+            this.movePinch(pinch, e.touches[0], e.touches[1]);
+          }
+        }
         return;
       }
       if (aborted || startX == null) return;
@@ -504,6 +574,21 @@ export class ReaderView {
 
     stage.addEventListener('touchend', (e) => {
       clearTimer();
+      if (e.touches.length === 0) pinchGivenUp = false;
+      // The pinch is over as soon as it is down to one finger; what is left on
+      // the glass belongs to no gesture (aborted stays set until the last
+      // finger lifts), so lingering with one finger neither turns the page nor
+      // starts a drag from where the pinch happened to end.
+      if (pinch && e.touches.length < 2) {
+        this.endPinch();
+        pinch = null;
+        startX = startY = null;
+        if (e.touches.length === 0) aborted = false;
+        // Swallow the synthetic click, or a pinch that ended over a turn zone
+        // would also turn the page.
+        if (e.cancelable) e.preventDefault();
+        return;
+      }
       if (this.localPointerActive) {
         finishPointer();
         startX = startY = null;
@@ -543,12 +628,19 @@ export class ReaderView {
     stage.addEventListener('touchcancel', () => {
       clearTimer();
       finishPointer();
+      if (pinch) {
+        this.endPinch();
+        pinch = null;
+      }
+      pinchGivenUp = false;
       startX = startY = null;
       aborted = false;
       panning = false;
     });
 
     this.attachMousePan(stage);
+    this.attachWheelZoom(stage);
+    this.suppressNativePinch(stage);
   }
 
   // The same "drag the magnified page" for mouse and trackpad, which the touch
@@ -595,6 +687,163 @@ export class ReaderView {
     window.addEventListener('pointermove', this._mousePanMove);
     window.addEventListener('pointerup', this._mousePanUp);
     window.addEventListener('pointercancel', this._mousePanUp);
+  }
+
+  // --- Pinch (ADR 24, second amendment) -----------------------------------
+
+  // Whether the document itself is natively zoomed, in which case the pinch is
+  // left alone. Two things ride on this one check. A reader who pinched in the
+  // library — where there is no loupe to take the gesture over — carries that
+  // zoom into the book, and the only way back out of it is the same gesture; a
+  // reader must never be shut inside a state the app then refuses to hear about
+  // (rule 7). And should a platform ignore the suppression below and zoom
+  // anyway, this is where the app stops fighting it: the loupe steps aside and
+  // the reader is left with exactly what they had before, rather than with two
+  // zooms at once.
+  nativeZoomActive() {
+    return (window.visualViewport?.scale ?? 1) > 1.01;
+  }
+
+  // The pinch is free between 1× and PINCH_MAX rather than snapping to the
+  // ladder: a page that jumps back out of the fingers that just placed it is
+  // the app overruling the reader (rule 7), and the loupe holds a factor
+  // anyway, so any value between the rungs is a state it can already show and
+  // step on from. The one magnet is at the bottom, where „nearly 1×" and 1×
+  // are genuinely different things.
+  clampPinch(factor) {
+    if (!(factor > 0)) return this.zoom;
+    if (factor < PINCH_SNAP_TO_ONE) return 1;
+    return Math.min(PINCH_MAX, factor);
+  }
+
+  // Everything the gesture is measured against, taken once: the fingers' first
+  // distance and midpoint, the factor and offset they started from, and the
+  // stage's centre (which cannot move while two fingers are down, so it is
+  // worth not re-measuring sixty times a second).
+  beginPinch(a, b) {
+    const stage = this.root.querySelector('.reader-stage');
+    if (!stage || this.nativeZoomActive()) return null;
+    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (!dist) return null;
+    const r = stage.getBoundingClientRect();
+    const centre = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    this.pinching = true;
+    this.applyZoomState();
+    return {
+      dist,
+      centre,
+      zoom: this.zoom,
+      panX: this.panX,
+      panY: this.panY,
+      midX: (a.clientX + b.clientX) / 2 - centre.x,
+      midY: (a.clientY + b.clientY) / 2 - centre.y,
+    };
+  }
+
+  // Follows the fingers: the factor from how far apart they are now against
+  // where they began, and the offset from the promise that the spot they took
+  // hold of stays under them. That second half is what makes a pinch feel like
+  // handling the page rather than operating a control — and it carries the
+  // two-finger drag along for nothing, because a midpoint that has moved is
+  // only the same page point asking to be somewhere else.
+  //
+  // Both are measured from the start of the gesture rather than from the last
+  // frame, so the page cannot drift away from the fingers over a long pinch,
+  // and pinching back to where one started puts the page back where it was.
+  movePinch(pinch, a, b) {
+    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (!dist) return;
+    const factor = this.clampPinch(pinch.zoom * (dist / pinch.dist));
+    const ratio = factor / pinch.zoom;
+    const midX = (a.clientX + b.clientX) / 2 - pinch.centre.x;
+    const midY = (a.clientY + b.clientY) / 2 - pinch.centre.y;
+    this.zoom = factor;
+    this.panX = midX - (pinch.midX - pinch.panX) * ratio;
+    this.panY = midY - (pinch.midY - pinch.panY) * ratio;
+    this.clampPan();
+    this.applyPan();
+    this.applyZoomState();
+  }
+
+  // On release the factor is already in force and already on the button; what
+  // is left is to make the page sharp at it. The canvas keeps its stand-in
+  // scale until that render lands (see displayScale), so nothing springs back
+  // in between.
+  //
+  // Deliberately without showChrome: the chrome comes up for a tap, and someone
+  // who has just made the page bigger in order to read it is the last person to
+  // want the bar over it. The loupe alone stays — while the fingers are down
+  // because of `pinching`, and afterwards because the page is magnified.
+  endPinch() {
+    if (!this.pinching) return;
+    this.pinching = false;
+    this.applyZoomState();
+    if (Math.abs(this.zoom - this.renderedZoom) > 0.001) this.renderCurrent();
+  }
+
+  // Undoes a pinch instead of committing it: the factor and the offset go back
+  // to what they were when the fingers went down, which is the only sensible
+  // place to leave them when the browser has taken the gesture over halfway
+  // through — anything else would freeze a half-finished local zoom underneath
+  // the native one. Nothing is re-rendered, because the canvas was never
+  // re-rendered during the gesture in the first place; putting the factor back
+  // is enough to make the stand-in scale 1 again.
+  cancelPinch(pinch) {
+    this.pinching = false;
+    this.zoom = pinch.zoom;
+    this.panX = pinch.panX;
+    this.panY = pinch.panY;
+    this.clampPan();
+    this.applyPan();
+    this.applyZoomState();
+  }
+
+  // Trackpad pinch and Ctrl+wheel, which every browser reports as a wheel event
+  // with ctrlKey set. Taken over for the same reason as the touch pinch: left
+  // to the browser it zooms the whole window, chrome and all, so the same
+  // gesture would mean two different things depending on which device the
+  // reader happens to be sitting at (rule 1).
+  attachWheelZoom(stage) {
+    stage.addEventListener('wheel', (e) => {
+      if (!e.ctrlKey || this.nativeZoomActive()) return;
+      e.preventDefault();
+      const r = stage.getBoundingClientRect();
+      const midX = e.clientX - (r.left + r.width / 2);
+      const midY = e.clientY - (r.top + r.height / 2);
+      const delta = e.deltaY * (WHEEL_DELTA_PX[e.deltaMode] ?? 1);
+      const factor = this.clampPinch(this.zoom * Math.exp(-delta * WHEEL_ZOOM_RATE));
+      const ratio = factor / this.zoom;
+      // Same anchoring as the pinch, with the cursor for a midpoint: what is
+      // under the pointer stays under it.
+      this.zoom = factor;
+      this.panX = midX - (midX - this.panX) * ratio;
+      this.panY = midY - (midY - this.panY) * ratio;
+      this.clampPan();
+      this.applyPan();
+      this.applyZoomState();
+      // A trackpad pinch arrives as a stream of small notches; rendering each
+      // one would queue up dozens of renders for a single gesture. Notches that
+      // change nothing — against the ceiling, or back at the factor already on
+      // screen — leave any render already waiting alone rather than pushing it
+      // further away.
+      if (Math.abs(this.zoom - this.renderedZoom) > 0.001) {
+        clearTimeout(this._wheelZoomT);
+        this._wheelZoomT = setTimeout(() => this.renderCurrent(), WHEEL_COMMIT_MS);
+      }
+    }, { passive: false });
+  }
+
+  // WebKit's own pinch, which is what iOS actually fires on two fingers, and
+  // which `touch-action` does not reliably hold back there. Cancelled outright
+  // so the page is zoomed once — by the touch handlers above, which have the
+  // same two fingers — rather than twice.
+  suppressNativePinch(stage) {
+    ['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => {
+      stage.addEventListener(type, (e) => {
+        if (this.nativeZoomActive()) return;
+        if (e.cancelable) e.preventDefault();
+      });
+    });
   }
 
   // A mouse drag that ends over a page-turn zone still delivers a click to it.
@@ -974,9 +1223,22 @@ export class ReaderView {
     this.zoom = factor;
     this.panX *= ratio;
     this.panY *= ratio;
+    this.clampPan();
+    // The page takes the new size at once, stretched from the render in hand,
+    // and sharpens a moment later when the new one arrives (see displayScale).
+    // A button that resizes the page only once the render lands would feel
+    // like a button that sometimes did nothing.
+    this.applyPan();
     this.applyZoomState();
     this.showChrome();
     this.renderCurrent();
+  }
+
+  // What the rendered canvas has to be multiplied by to show the factor in
+  // force: 1 whenever the render has caught up, and something else only while
+  // one is in flight or while a pinch is under way.
+  displayScale() {
+    return this.renderedZoom > 0 ? this.zoom / this.renderedZoom : 1;
   }
 
   // Single source of truth for the magnified state: the `zoomed` class on the
@@ -988,9 +1250,22 @@ export class ReaderView {
     const reader = this.readerEl;
     if (!reader) return;
     const zoom = this.zoomFactor();
-    reader.classList.toggle('zoomed', zoom > 1);
+    // The fit-the-stage caps have to stay off for as long as the canvas is
+    // *laid out* larger than the stage, which outlasts the factor itself:
+    // pinching back to 1× takes effect immediately, while the canvas keeps its
+    // old size until the render catches up, and a cap applied in between would
+    // squeeze the page out of shape for those few frames.
+    reader.classList.toggle('zoomed', Math.max(zoom, this.renderedZoom) > 1);
+    // While the fingers are on the page the loupe is the only feedback there
+    // is, so it stays up and counts along even at 1×, where nothing else on
+    // screen would say that a gesture is being heard at all (rule 3).
+    reader.classList.toggle('pinching', this.pinching);
+    // At rest 1× shows no factor — an unmagnified page is the ordinary state
+    // and needs no label. Under the fingers it does: the loupe is then a live
+    // readout, and „1×" is how the reader sees that pinching back down has
+    // arrived rather than nearly arrived.
     const factor = reader.querySelector('.reader-zoom-factor');
-    if (factor) factor.textContent = zoom > 1 ? formatZoom(zoom) : '';
+    if (factor) factor.textContent = (zoom > 1 || this.pinching) ? formatZoom(zoom) : '';
   }
 
   // How far the page can travel from its resting position, per axis: half its
@@ -1013,9 +1288,14 @@ export class ReaderView {
       const half = (page - view) / 2;
       return half > PAN_SLACK_PX ? half : 0;
     };
+    // Measured against the size the page is *shown* at, not the size it was
+    // rendered at: mid-pinch those differ, and the play has to follow the page
+    // the reader can see, or a page grown under two fingers could not be moved
+    // until its render arrived.
+    const shown = this.displayScale();
     return {
-      x: room(canvas.offsetWidth, stage.clientWidth),
-      y: room(canvas.offsetHeight, stage.clientHeight),
+      x: room(canvas.offsetWidth * shown, stage.clientWidth),
+      y: room(canvas.offsetHeight * shown, stage.clientHeight),
     };
   }
 
@@ -1053,9 +1333,14 @@ export class ReaderView {
   applyPan() {
     const canvas = this.root.querySelector('.reader-canvas');
     if (!canvas) return;
-    canvas.style.transform = (this.panX || this.panY)
-      ? `translate(${this.panX}px, ${this.panY}px)`
-      : '';
+    // Translate before scale, so the offset stays what it has always been:
+    // screen pixels from the page's centred resting position. The scale is the
+    // stand-in for a render still to come (see displayScale) and is 1 — and
+    // absent from the transform — at rest.
+    const shown = this.displayScale();
+    const move = (this.panX || this.panY) ? `translate(${this.panX}px, ${this.panY}px)` : '';
+    const grow = shown === 1 ? '' : `scale(${shown})`;
+    canvas.style.transform = [move, grow].filter(Boolean).join(' ');
     this.syncPointerPageGeometry();
   }
 
@@ -1115,13 +1400,21 @@ export class ReaderView {
     // (issue #117). What sticks out past the stage is clipped there and brought
     // into view by panning.
     const zoom = this.zoomFactor();
+    let rendered = false;
     try {
       await this.source.renderPage(this.currentPage, canvas, stage.clientWidth * zoom, stage.clientHeight * zoom, zoom);
+      rendered = true;
     } catch (err) {
       if (token !== this.renderToken) return;
       console.error('Render-Fehler', err);
     }
     if (token !== this.renderToken) return;
+    // The canvas now carries this factor at its true size, so the stand-in
+    // scale has nothing left to stand in for — unless the render failed, in
+    // which case the page stays stretched, which is the honest picture: the
+    // factor is in force, it is merely not sharp.
+    if (rendered) this.renderedZoom = zoom;
+    this.applyZoomState();
     const pageChanged = this.lastRenderedPage !== this.currentPage;
     // Re-overlay the pointer space onto the (possibly resized) page before any
     // pointer is placed, so positions are page-relative on this render too. The
@@ -2132,6 +2425,7 @@ export class ReaderView {
     clearTimeout(this.hideTimer);
     clearTimeout(this.cursorTimer);
     clearTimeout(this._resizeT);
+    clearTimeout(this._wheelZoomT);
     clearTimeout(this.pointerSendTimer);
     clearTimeout(this.longPressTimer);
     clearTimeout(this._moodIntroT);

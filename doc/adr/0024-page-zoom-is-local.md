@@ -171,3 +171,80 @@ sideways — nothing moves.
   each way. Judged the rarer case by some distance against reading a magnified
   page front to back, and the factor — the expensive thing to re-establish — is
   still kept.
+
+## Second amendment (2026-08-17): the pinch works the loupe
+
+„The native pinch stays untouched" left the reader with two ways to make the page
+bigger that do not behave alike. The loupe re-renders the page, shows the factor,
+comes back in one tap and keeps „← Bibliothek", the turn zones and the page
+indicator on the screen. The pinch does none of that: it stretches the pixels
+already rendered, says nothing about its state, is undone only by its own reverse,
+and carries the controls off the edge of the display. Which one a grandparent
+gets is decided by whether they reached for the corner or for the page.
+
+The list above was written as the case for building a loupe *beside* the pinch.
+Read again, it is the case for the pinch *becoming* the loupe: every one of those
+four failings is a thing the loupe already does properly, and the pinch is the
+gesture people already know. **The reading stage therefore takes the pinch and
+works the loupe with it.** Everywhere else in the app — library, dialogs — the
+browser's own pinch is left exactly as it was; there is no loupe there to take it
+over, and low vision (ADR 22) must keep the one magnification those screens have.
+
+- **Free between 1× and 4×, not snapped to the ladder.** A page that springs
+  back out of the fingers that just placed it is the app overruling the reader
+  (rule 7). Nothing has to be given up for that: the loupe was already built to
+  hold a *factor* rather than a rung, so 1,7× is a state it can show and step on
+  from. The ceiling sits deliberately above the ladder's top rung — the pinch it
+  replaces went to about 5×, and swallowing the gesture only to stop at 2× would
+  take magnification away from exactly the reader this was all for. Past 4× the
+  canvas limit begins eating the sharpness that re-rendering the page is for.
+- **One magnet, at the bottom.** Pinching back down lands on exactly 1× from
+  1,05× on, because 1× is not merely a small factor: it is the fitted page with
+  its offset let go and the loupe out of the way, and „1,03×" is none of that.
+- **The loupe shows itself and counts along.** While two fingers are down it is
+  the only feedback on screen, so it comes up with the gesture — at 1× too — and
+  without the chrome's four-second fade, which a pinch can easily outrun. The
+  rest of the chrome stays away: someone who has just made the page bigger in
+  order to read it is the last person who wants the bar over it.
+- **The page follows the fingers, not a control.** The spot taken hold of stays
+  under them, measured from the start of the gesture rather than accumulated
+  frame by frame, so nothing drifts and pinching back to where one began puts
+  the page back where it was. Moving both fingers pans, which falls out of the
+  same rule for free.
+- **The render comes after.** A factor is committed sixty times a second and a
+  page cannot be re-rendered that often, so the canvas is stretched from the
+  render in hand while the fingers move and re-rendered once they lift. The
+  stand-in scale is held until the sharp render lands, so the page never springs
+  back to its old size in between — and the loupe button now works the same way,
+  which it did not before.
+- **Trackpad and Ctrl+wheel too.** They have the same problem for the same
+  reason — the browser zooms the whole window, chrome and all — and one notch is
+  about a rung of the ladder.
+- **Unless the document is already natively zoomed.** Then the pinch is handed
+  straight back to the browser. A reader who pinched in the library carries that
+  zoom into the book, and the gesture that undoes it must keep working; nobody
+  may be shut inside a state the app then refuses to hear about (rule 7).
+
+## Second amendment consequences
+
+- The `visualViewport.scale` check is also the graceful failure. Whether an
+  installed iPadOS web app really lets `gesturestart` be cancelled can only be
+  established on the device; if it does not, the app sees the native zoom take
+  hold, steps aside, and the reader is left with exactly what they had before —
+  rather than with two zooms fighting over the same two fingers. It is asked at
+  every step of a gesture and not only at its start, because a native zoom that
+  takes hold halfway through is the same failure arriving late: the pinch is
+  handed back mid-flight and the loupe returns to the factor the fingers found,
+  instead of freezing a half-finished local zoom underneath the browser's.
+- „Two zoom mechanisms now exist on iOS and can stack" is no longer true in the
+  reader, which is where it mattered. It is still true of the library, and there
+  it costs nothing: no page, no loupe, no confusion about which one answered.
+- Factors between the rungs are now ordinary, where before every value came off
+  the ladder. Nothing in the app assumed otherwise — the button always looked
+  for the next rung *above the current factor* — but the ladder is now the
+  vocabulary of the tap and the keyboard rather than of the whole feature.
+- The stage takes `touch-action: none`, so the browser's double-tap zoom goes
+  with the pinch. It was never a way anybody reached the page: two of the three
+  double-taps on a reading stage land on a turn zone.
+- Nothing about this is synchronised, and nothing about it is stored: the pinch
+  sets the same local, per-reading factor the button always set.
