@@ -29,6 +29,18 @@ let currentView = null;
 function mount(view) {
   if (currentView?.destroy) currentView.destroy();
   currentView = view;
+  // Replacing the container's innerHTML below drops the focus onto <body>, so
+  // the next Tab would start over at the top of the document after every
+  // change of view. Parking the focus on the container instead keeps it inside
+  // the app: the first Tab lands on the new view's first control (issue #129).
+  //
+  // The container, not anything inside the view: it exists before render()
+  // paints and survives the innerHTML swap, so the focus is already right
+  // while a book is still loading — render() is async and the reader builds up
+  // in several steps. And it must not be a control: the reader's shortcuts
+  // yield to whatever has focus (see handleKey), so focusing a button here
+  // would stop Space and the arrow keys from turning the page.
+  app.focus({ preventScroll: true });
   return view.render();
 }
 
