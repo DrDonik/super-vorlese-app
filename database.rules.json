@@ -18,7 +18,7 @@
         },
         "members": {
           "$memberId": {
-            ".validate": "$memberId.matches(/^[a-z0-9]{1,40}$/) && newData.isNumber() && newData.val() == now"
+            ".validate": "$memberId.matches(/^[a-z0-9]{1,40}$/) && (newData.isBoolean() || newData.isNumber())"
           }
         },
         "pointers": {

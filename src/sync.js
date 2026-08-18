@@ -39,6 +39,10 @@ function getSavedRoom(bookId) {
   return entry;
 }
 
+function randomId() {
+  return Math.random().toString(36).substring(2, 9);
+}
+
 let firebasePromise = null;
 
 async function loadFirebase() {
@@ -164,7 +168,21 @@ export class SyncSession {
     this.onRemotePageChange = null;
     this.onRoomDeleted = null;
     this.isCreator = false;
-    this.clientId = Math.random().toString(36).substring(2, 9);
+    // Two identifiers, deliberately independent (ADR 26).
+    //
+    // memberId is durable: it keys this device's entry in the room's member set,
+    // is persisted alongside the room code and reused on every reconnect, so a
+    // device that comes back refreshes its membership instead of orphaning it.
+    // It is drawn fresh per book — two books mean two rooms and two unrelated
+    // ids, so the database never shows that one device holds both.
+    //
+    // senderId is drawn fresh for every app run and never stored. Its only job
+    // is the echo test in listen(): "was that page write my own?" A stable value
+    // would answer that no better, and would leave `senderId` + `updatedAt`
+    // standing in the room as "this device turned a page yesterday at 20:14",
+    // readable by anyone holding the code.
+    this.memberId = randomId();
+    this.senderId = randomId();
     this.fb = null;
     this.pointersUnsub = null;
     this.pointerDisconnect = null;
@@ -183,7 +201,7 @@ export class SyncSession {
     }
     const payload = {
       page: initialPage,
-      senderId: this.clientId,
+      senderId: this.senderId,
       updatedAt: this.fb.serverTimestamp(),
     };
     // The book descriptor lets a partner who joins from the library recognise
@@ -193,7 +211,7 @@ export class SyncSession {
     this.roomCode = code;
     this.isCreator = true;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, code, true, this.clientId);
+    saveRoomForBook(this.bookId, code, true, this.memberId);
     this.enrollMember();
     this.listen();
     return code;
@@ -218,7 +236,7 @@ export class SyncSession {
     this.roomCode = normalizedCode;
     this.isCreator = false;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, normalizedCode, false, this.clientId);
+    saveRoomForBook(this.bookId, normalizedCode, false, this.memberId);
     this.enrollMember();
     this.listen();
     return normalizedCode;
@@ -228,10 +246,15 @@ export class SyncSession {
   // "I still have this sync set up" — it is deliberately NOT tied to the live
   // connection (no onDisconnect), so closing the app or losing the network
   // leaves it intact and the sync is still there on the next reconnect.
+  //
+  // The value is `true`, not a timestamp. Only the key is ever read (leaveRoom
+  // asks whether any member is left; the reaper works off the room's own
+  // updatedAt), and a per-device timestamp would be a record of when someone
+  // last opened the book — see ADR 26.
   enrollMember() {
     if (!this.roomCode || !this.fb) return;
-    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/members/${this.clientId}`);
-    this.fb.set(r, this.fb.serverTimestamp()).catch(() => {});
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/members/${this.memberId}`);
+    this.fb.set(r, true).catch(() => {});
   }
 
   listen() {
@@ -250,7 +273,7 @@ export class SyncSession {
         }
         return;
       }
-      if (data.senderId !== this.clientId && this.onRemotePageChange) {
+      if (data.senderId !== this.senderId && this.onRemotePageChange) {
         this.onRemotePageChange(data.page);
       }
     };
@@ -289,9 +312,9 @@ export class SyncSession {
     // Reuse the persisted member id so reconnecting refreshes our existing
     // membership instead of orphaning it under a fresh id. Legacy saved rooms
     // have none yet, so we adopt this session's id and persist it now.
-    if (saved.memberId) this.clientId = saved.memberId;
+    if (saved.memberId) this.memberId = saved.memberId;
     activeSessions.set(this.bookId, this);
-    saveRoomForBook(this.bookId, saved.code, saved.isCreator, this.clientId);
+    saveRoomForBook(this.bookId, saved.code, saved.isCreator, this.memberId);
     this.enrollMember();
     this.listen();
     return saved.code;
@@ -315,20 +338,20 @@ export class SyncSession {
     // descriptor or an in-flight WebRTC signalling handshake.
     await this.fb.update(r, {
       page,
-      senderId: this.clientId,
+      senderId: this.senderId,
       updatedAt: this.fb.serverTimestamp(),
     });
   }
 
   // --- Pointer ("point at the page") presence ----------------------------
-  // A pointer lives at rooms/{code}/pointers/{clientId} = { x, y } where x and
+  // A pointer lives at rooms/{code}/pointers/{memberId} = { x, y } where x and
   // y are fractions (0..1) of the reader stage. It exists only while a finger
   // is held down, so unlike room membership it IS tied to the live connection:
   // an onDisconnect handler removes it if the device drops mid-gesture.
 
   async sendPointer(x, y) {
     if (!this.roomCode || !this.fb) return;
-    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers/${this.clientId}`);
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers/${this.memberId}`);
     if (!this.pointerDisconnect) {
       this.pointerDisconnect = this.fb.onDisconnect(r);
       this.pointerDisconnect.remove().catch(() => {});
@@ -342,13 +365,13 @@ export class SyncSession {
       this.pointerDisconnect = null;
     }
     if (!this.roomCode || !this.fb) return;
-    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers/${this.clientId}`);
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/pointers/${this.memberId}`);
     await this.fb.remove(r);
   }
 
   // Streams the other participants' pointers (our own slot is filtered out, as
   // the pointing device shows its own pointer locally with no round-trip). The
-  // callback receives a map of senderId -> { x, y }.
+  // callback receives a map of memberId -> { x, y }.
   listenPointers(cb) {
     if (!this.roomCode || !this.fb) return;
     this.stopListeningPointers();
@@ -358,7 +381,7 @@ export class SyncSession {
       const others = {};
       if (data && typeof data === 'object') {
         for (const [id, val] of Object.entries(data)) {
-          if (id === this.clientId) continue;
+          if (id === this.memberId) continue;
           if (val && typeof val.x === 'number' && typeof val.y === 'number') {
             others[id] = { x: val.x, y: val.y };
           }
@@ -385,7 +408,7 @@ export class SyncSession {
   //   mood/order           : [iconId…] — the random subset of moods this finish
   //                          shows, in display order. The initiator rolls it once
   //                          so both devices render the identical board.
-  //   mood/picks/{clientId}: { iconId: true } — that side's current selection
+  //   mood/picks/{memberId}: { iconId: true } — that side's current selection
   // There is no shared "lock": once both sides have picked, each device reveals
   // and stores its own perspective ({ mine, theirs }) locally, so nothing about
   // the agreement needs to be reconciled over the wire.
@@ -406,7 +429,7 @@ export class SyncSession {
     // this very set; the fresh whole-node write also clears any stale `present`
     // (and picks) from an earlier finish, so the count reflects *this* ritual
     // only. Followers add themselves via announceMoodPresence when they open.
-    await this.fb.set(this.moodRef(), { open: true, order, present: { [this.clientId]: true } });
+    await this.fb.set(this.moodRef(), { open: true, order, present: { [this.memberId]: true } });
   }
 
   // A follower opening the ritual in response to the `open` flag adds itself to
@@ -416,12 +439,12 @@ export class SyncSession {
   // (no onDisconnect): it is wiped per-ritual by startMood, never by a drop.
   async announceMoodPresence() {
     if (!this.roomCode || !this.fb) return;
-    await this.fb.set(this.moodRef('present/' + this.clientId), true);
+    await this.fb.set(this.moodRef('present/' + this.memberId), true);
   }
 
   async setMoodPicks(iconIds) {
     if (!this.roomCode || !this.fb) return;
-    const r = this.moodRef(`picks/${this.clientId}`);
+    const r = this.moodRef(`picks/${this.memberId}`);
     if (!iconIds.length) {
       await this.fb.remove(r);
       return;
@@ -438,9 +461,9 @@ export class SyncSession {
 
   // Streams the whole mood node, parsed into { open, order, picks, present }.
   // `order` is the shared board (icon ids in display order), or null before the
-  // initiator has written it. `picks` maps each participant's clientId to its
+  // initiator has written it. `picks` maps each participant's memberId to its
   // array of selected icon ids (our own slot included, so the caller can
-  // reconcile after a reconnect). `present` is the list of clientIds that have
+  // reconcile after a reconnect). `present` is the list of memberIds that have
   // announced themselves this ritual — used only to count participants (#82).
   listenMood(cb) {
     if (!this.roomCode || !this.fb) return;
@@ -479,7 +502,7 @@ export class SyncSession {
     }
     // Drop our membership; the room is deleted only once nobody is left in it.
     if (this.roomCode && this.fb) {
-      leaveRoom(this.fb, this.roomCode, this.clientId).catch(() => {});
+      leaveRoom(this.fb, this.roomCode, this.memberId).catch(() => {});
     }
     activeSessions.delete(this.bookId);
     removeRoomForBook(this.bookId);

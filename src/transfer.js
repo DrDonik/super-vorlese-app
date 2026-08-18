@@ -78,6 +78,7 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
     const subscriptions = [];
     let settled = false;
     let remoteSet = false;
+    let disconnectHandle = null;
     const pendingIce = [];
     let expected = 0;
     let received = 0;
@@ -99,6 +100,13 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
       }
       try { channel.close(); } catch {}
       try { pc.close(); } catch {}
+      // Cancel the standing onDisconnect before removing by hand: the socket
+      // stays open for the rest of the session, and a handler left registered
+      // on this path would fire later, once the id has long been forgotten.
+      if (disconnectHandle) {
+        disconnectHandle.cancel().catch(() => {});
+        disconnectHandle = null;
+      }
       // Remove only our own subtree, so a sibling joiner's in-flight handshake
       // in the same room is left untouched.
       fb.remove(signalRef('')).catch(() => {});
@@ -176,6 +184,16 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
       else pc.addIceCandidate(candidate).catch(() => {});
     });
     subscriptions.push(offIce);
+
+    // Have the server drop this subtree if we vanish. teardown() removes it on
+    // every path this code controls, but a killed tab or a dead battery is not
+    // one of those, and what would stay behind is the handshake: SDP and ICE
+    // candidates, which carry the public IP address of both households (the
+    // holder answers inside *our* subtree, so this one registration covers both
+    // sides). Left lying in the room, that is readable for up to the room's
+    // 30-day life by anyone holding the code — see ADR 26.
+    disconnectHandle = fb.onDisconnect(signalRef(''));
+    disconnectHandle.remove().catch(() => {});
 
     // Clear any stale handshake, then publish our offer.
     fb.remove(signalRef(''))

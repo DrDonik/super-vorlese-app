@@ -100,6 +100,11 @@ new emission of "this device has this book open". It also only ever *skips* the
 dialog decided here — the dialog is the floor it falls back to when nobody is
 there, so building the floor first is the right order.
 
+*Superseded by [ADR 26](0026-the-room-records-that-reading-happened.md): live
+presence is now declined outright, not merely postponed. It would make one
+household's activity continuously legible to the other, which is not a cost this
+app pays for a shortcut past the dialog.*
+
 **A „?" help in the library** — see
 [ADR 18](0018-library-is-an-adult-surface.md): callouts would repeat labels that
 are already on screen.
