@@ -36,7 +36,10 @@ only when the last participant **explicitly** leaves.
 
 - **Member set.** Each room carries `rooms/$roomCode/members/$memberId`, written
   when a participant creates, joins, or reconnects. The value is a server
-  timestamp, validated by the database rules.
+  timestamp, validated by the database rules. *(Amended by
+  [ADR 26](0026-the-room-records-that-reading-happened.md): the value is now
+  `true`. Nothing ever read it, and a per-device timestamp recorded when someone
+  last opened the book.)*
 - **Durable, not live.** There is no `onDisconnect()` handler. Closing the app,
   losing the network, or backgrounding leaves the member entry in place, so the
   participant rejoins the still-alive room on their next reconnect via the saved
@@ -44,7 +47,10 @@ only when the last participant **explicitly** leaves.
 - **Stable member id.** The id is persisted alongside the saved room code in
   `localStorage` and reused on reconnect (it also serves as the page-exchange
   `senderId`), so reconnecting refreshes the same membership instead of
-  orphaning it under a fresh random id.
+  orphaning it under a fresh random id. *(Amended by
+  [ADR 26](0026-the-room-records-that-reading-happened.md): the page exchange
+  now carries its own per-run id. Membership stays durable and stable, which is
+  what this decision is about.)*
 - **Last one out cleans up.** Only an explicit disconnect — tapping "Trennen" or
   deleting the book — removes that device's member entry. If the member set is
   then empty, that same client deletes the whole room node. A lone creator who
@@ -64,7 +70,11 @@ only when the last participant **explicitly** leaves.
 - The creator leaving no longer ends the session for everyone; the room lives as
   long as anyone still has it set up.
 - No new infrastructure or billing: the member set is a few small timestamps in
-  the existing room node, and signalling/page paths are untouched.
+  the existing room node, and signalling/page paths are untouched. *(Amended by
+  [ADR 26](0026-the-room-records-that-reading-happened.md): the entries hold
+  `true` rather than timestamps, the page path carries its own per-run id, and
+  the signalling subtree gained an `onDisconnect` cleanup. The point of this
+  bullet — that membership costs no new infrastructure — still holds.)*
 - A room with no page activity for 30+ days is still reaped even if a member is
   nominally enrolled. The intended "next day / next week" usage is well within
   that window, and the TTL is the deliberate backstop against rooms that would

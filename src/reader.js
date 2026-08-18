@@ -204,9 +204,9 @@ export class ReaderView {
     // Local page-navigation toggle (zones + swipe). Default on; persisted
     // per-device. Read synchronously so the first render is already correct.
     this.navEnabled = loadNavEnabled();
-    // Remote/local "point at the page" overlays, keyed by senderId ('local'
-    // for this device's own pointer). See attachStageGestures + the pointer
-    // helpers below.
+    // Remote/local "point at the page" overlays, keyed by the pointing device's
+    // memberId ('local' for this device's own pointer). See attachStageGestures
+    // + the pointer helpers below.
     this.pointerEls = new Map();
     this.localPointerActive = false;
     this.lastRenderedPage = 0;
@@ -216,7 +216,7 @@ export class ReaderView {
     this.longPressTimer = null;
     // Shared reading memory (issue #65). The mood overlay is built on demand;
     // mySelection is this device's authoritative picks, moodPartnerPicks mirrors
-    // the other participants' picks from Firebase, keyed by clientId. The
+    // the other participants' picks from Firebase, keyed by memberId. The
     // partner's picks stay hidden until the reveal, so neither reader steers the
     // other toward a match.
     this.moodOpen = false;
@@ -224,7 +224,7 @@ export class ReaderView {
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
     this.moodRevealed = false;
-    // clientIds present this ritual, used only to count participants (issue #82):
+    // memberIds present this ritual, used only to count participants (issue #82):
     // three shows an advisory so the reading adult abstains, four or more bows out.
     this.moodPresentIds = [];
     // Gates the present-count branch until the ~1.5 s grace window has elapsed
@@ -963,7 +963,7 @@ export class ReaderView {
     this.pendingPointer = null;
     const existing = this.pointerEls.get('local');
     if (existing) existing.remove();
-    const el = this.createPointerEl(session.clientId, x, y);
+    const el = this.createPointerEl(session.memberId, x, y);
     this.pointerEls.set('local', el);
     this.lastPointerSend = Date.now();
     session.sendPointer(x, y).catch(() => {});
@@ -2038,9 +2038,9 @@ export class ReaderView {
       this.syncSession?.setMoodPicks([]).catch(() => {});
     }
     this.moodPartnerPicks = {};
-    for (const [clientId, ids] of Object.entries(data.picks)) {
-      if (clientId === this.syncSession?.clientId) continue;
-      this.moodPartnerPicks[clientId] = ids;
+    for (const [memberId, ids] of Object.entries(data.picks)) {
+      if (memberId === this.syncSession?.memberId) continue;
+      this.moodPartnerPicks[memberId] = ids;
     }
     this.moodPresentIds = Array.isArray(data.present) ? data.present : [];
     this.renderMoodSelections();
