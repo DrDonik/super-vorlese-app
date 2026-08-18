@@ -233,6 +233,23 @@ export class SyncSession {
       this.fb.remove(r).catch(() => {});
       throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
+    // This device may already hold a membership for this book — the library's
+    // join path comes straight here without going through reconnect(). Saving
+    // the fresh id over the stored one would strand the old entry in whatever
+    // room it belongs to, and that entry keeps the room alive until the reaper.
+    const saved = getSavedRoom(this.bookId);
+    if (saved?.memberId) {
+      if (saved.code === normalizedCode) {
+        // Same room: keep being the member we already are, and re-enrolling
+        // below simply refreshes that one entry.
+        this.memberId = saved.memberId;
+      } else {
+        // A different room: leave it properly first, which also deletes it if
+        // we were the last one in it.
+        await leaveRoom(this.fb, saved.code, saved.memberId).catch(() => {});
+      }
+    }
+
     this.roomCode = normalizedCode;
     this.isCreator = false;
     activeSessions.set(this.bookId, this);

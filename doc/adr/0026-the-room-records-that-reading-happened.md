@@ -75,7 +75,15 @@ last did.**
     run answers that no better.
 
 - **`members/$id` is `true`.** The key is the whole content; the value carries no
-  time.
+  time, and the database rule permits exactly that value (plus, for the
+  changeover, the number an old client still writes).
+
+- **Joining reuses the membership this device already holds**, or leaves the old
+  room first if the code differs. The library's join path reaches `joinRoom()`
+  without passing `reconnect()`, so a fresh id used to be saved over the stored
+  one — stranding an entry that no „Trennen" could ever remove and that kept its
+  room alive until the reaper. That predates this decision, but a decision about
+  who is recorded in a room has to make sure each device is recorded once.
 
 - **The handshake is removed even when the joiner vanishes.** `receiveBook`
   registers an `onDisconnect().remove()` on its `signal` subtree before

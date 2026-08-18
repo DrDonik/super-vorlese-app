@@ -204,9 +204,9 @@ export class ReaderView {
     // Local page-navigation toggle (zones + swipe). Default on; persisted
     // per-device. Read synchronously so the first render is already correct.
     this.navEnabled = loadNavEnabled();
-    // Remote/local "point at the page" overlays, keyed by senderId ('local'
-    // for this device's own pointer). See attachStageGestures + the pointer
-    // helpers below.
+    // Remote/local "point at the page" overlays, keyed by the pointing device's
+    // memberId ('local' for this device's own pointer). See attachStageGestures
+    // + the pointer helpers below.
     this.pointerEls = new Map();
     this.localPointerActive = false;
     this.lastRenderedPage = 0;

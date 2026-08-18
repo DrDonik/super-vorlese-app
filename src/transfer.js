@@ -100,16 +100,18 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
       }
       try { channel.close(); } catch {}
       try { pc.close(); } catch {}
-      // Cancel the standing onDisconnect before removing by hand: the socket
-      // stays open for the rest of the session, and a handler left registered
-      // on this path would fire later, once the id has long been forgotten.
-      if (disconnectHandle) {
-        disconnectHandle.cancel().catch(() => {});
-        disconnectHandle = null;
-      }
       // Remove only our own subtree, so a sibling joiner's in-flight handshake
-      // in the same room is left untouched.
-      fb.remove(signalRef('')).catch(() => {});
+      // in the same room is left untouched — and only once that has actually
+      // landed, cancel the standing onDisconnect. The other order would leave
+      // the room holding a handshake with nothing registered to clean it up if
+      // the removal is what failed. The handler is cancelled at all because the
+      // socket lives on for the rest of the session, and a registration left on
+      // this path would fire later, on an id long forgotten.
+      const handle = disconnectHandle;
+      disconnectHandle = null;
+      fb.remove(signalRef(''))
+        .then(() => handle?.cancel())
+        .catch(() => {});
     }
 
     function fail(err) {
@@ -192,12 +194,17 @@ export function receiveBook(fb, roomCode, { onProgress } = {}) {
     // holder answers inside *our* subtree, so this one registration covers both
     // sides). Left lying in the room, that is readable for up to the room's
     // 30-day life by anyone holding the code — see ADR 26.
+    //
+    // Registered before the offer goes up, so there is no window in which our
+    // candidates stand in the room unprotected. A registration that fails does
+    // not stop the transfer: a book that never arrives ends the bedtime story,
+    // while the lost guarantee only matters in the narrower case where this tab
+    // is also killed before it can clean up after itself.
     disconnectHandle = fb.onDisconnect(signalRef(''));
-    disconnectHandle.remove().catch(() => {});
-
-    // Clear any stale handshake, then publish our offer.
-    fb.remove(signalRef(''))
-      .catch(() => {})
+    disconnectHandle.remove()
+      .catch(() => { disconnectHandle = null; })
+      // Clear any stale handshake, then publish our offer.
+      .then(() => fb.remove(signalRef('')).catch(() => {}))
       .then(() => pc.createOffer())
       .then((offer) => pc.setLocalDescription(offer).then(() => offer))
       .then((offer) => fb.set(signalRef('/offer'), { from: myId, sdp: offer.sdp }))

@@ -70,7 +70,11 @@ only when the last participant **explicitly** leaves.
 - The creator leaving no longer ends the session for everyone; the room lives as
   long as anyone still has it set up.
 - No new infrastructure or billing: the member set is a few small timestamps in
-  the existing room node, and signalling/page paths are untouched.
+  the existing room node, and signalling/page paths are untouched. *(Amended by
+  [ADR 26](0026-the-room-records-that-reading-happened.md): the entries hold
+  `true` rather than timestamps, the page path carries its own per-run id, and
+  the signalling subtree gained an `onDisconnect` cleanup. The point of this
+  bullet — that membership costs no new infrastructure — still holds.)*
 - A room with no page activity for 30+ days is still reaped even if a member is
   nominally enrolled. The intended "next day / next week" usage is well within
   that window, and the TTL is the deliberate backstop against rooms that would
