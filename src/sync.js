@@ -1,4 +1,4 @@
-import { ROOM_TTL_MS, DATABASE_URL } from './sync-constants.js';
+import { ROOM_TTL_MS, ROOM_LIFE_MAX, ROOM_LIFE_REFRESH_BELOW, DATABASE_URL } from './sync-constants.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDeI6LYnu-34xlnAx7Onjwa_bI52boW8GM",
@@ -41,6 +41,16 @@ function getSavedRoom(bookId) {
 
 function randomId() {
   return Math.random().toString(36).substring(2, 9);
+}
+
+// A room is over when its counter has run out (ADR 27). Rooms from before the
+// counter carry a server timestamp instead, and keep expiring by it — that
+// branch goes once no client writes timestamps any more.
+function roomIsGone(data) {
+  if (!data) return true;
+  if (typeof data.life === 'number') return data.life <= 0;
+  if (typeof data.updatedAt === 'number') return Date.now() - data.updatedAt > ROOM_TTL_MS;
+  return false;
 }
 
 let firebasePromise = null;
@@ -115,7 +125,7 @@ export async function lookupRoom(code) {
     throw new Error('Diesen Synchronisations-Code gibt es nicht.');
   }
   const data = snapshot.val();
-  if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+  if (roomIsGone(data)) {
     fb.remove(r).catch(() => {});
     throw new Error('Diesen Synchronisations-Code gibt es nicht.');
   }
@@ -186,6 +196,7 @@ export class SyncSession {
     this.fb = null;
     this.pointersUnsub = null;
     this.pointerDisconnect = null;
+    this.lifeWriteInFlight = false;
     this.moodUnsub = null;
   }
 
@@ -202,7 +213,7 @@ export class SyncSession {
     const payload = {
       page: initialPage,
       senderId: this.senderId,
-      updatedAt: this.fb.serverTimestamp(),
+      life: ROOM_LIFE_MAX,
     };
     // The book descriptor lets a partner who joins from the library recognise
     // the book and fetch it if they don't already have it.
@@ -229,7 +240,7 @@ export class SyncSession {
       throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
     const data = snapshot.val();
-    if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+    if (roomIsGone(data)) {
       this.fb.remove(r).catch(() => {});
       throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
@@ -274,6 +285,25 @@ export class SyncSession {
     this.fb.set(r, true).catch(() => {});
   }
 
+  // Refills the room's life counter (ADR 27). Called from the room listener, so
+  // the current value is already in hand — being in the room at all is what
+  // keeps it alive, and no extra read is needed for the decision.
+  //
+  // Only below the threshold, so a room read in every night is written to about
+  // once a week rather than every evening. A room with no counter is one from
+  // before this existed: seeding it is what migrates it off the timestamp.
+  topUpLife(data) {
+    if (!this.roomCode || !this.fb || this.lifeWriteInFlight) return;
+    const life = data?.life;
+    if (typeof life === 'number' && life >= ROOM_LIFE_REFRESH_BELOW) return;
+    if (typeof life === 'number' && life <= 0) return; // over; the reaper owns it now
+    this.lifeWriteInFlight = true;
+    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/life`);
+    this.fb.set(r, ROOM_LIFE_MAX)
+      .catch(() => {})
+      .finally(() => { this.lifeWriteInFlight = false; });
+  }
+
   listen() {
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -290,6 +320,7 @@ export class SyncSession {
         }
         return;
       }
+      this.topUpLife(data);
       if (data.senderId !== this.senderId && this.onRemotePageChange) {
         this.onRemotePageChange(data.page);
       }
@@ -315,7 +346,7 @@ export class SyncSession {
       return null;
     }
     const data = snapshot.val();
-    if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+    if (roomIsGone(data)) {
       this.fb.remove(r).catch(() => {});
       removeRoomForBook(this.bookId);
       return null;
@@ -356,7 +387,6 @@ export class SyncSession {
     await this.fb.update(r, {
       page,
       senderId: this.senderId,
-      updatedAt: this.fb.serverTimestamp(),
     });
   }
 

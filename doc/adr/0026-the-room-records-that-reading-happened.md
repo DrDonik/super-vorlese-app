@@ -98,6 +98,10 @@ What deliberately stays:
   client uses it to treat an ancient code as gone. It says "this room saw
   activity", naming no device, and coarsening it would buy little at the price of
   a weaker database rule (`newData.val() == now` would have to become a range).
+  *(Revised by [ADR 27](0027-room-lifetime-is-a-countdown.md): the timestamp is
+  replaced by a life counter, which drops the wall-clock without weakening any
+  rule — the objection above applied to rounding a timestamp, not to abandoning
+  one.)*
 - **`book.title`** in the clear. The library needs it to say whose book is
   arriving before it has been transferred ([ADR 5](0005-webrtc-book-transfer.md)).
   Removing it is a separate decision about the joining flow, not a side effect of
