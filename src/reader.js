@@ -7,6 +7,7 @@ import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
 import { showAlert, showConfirm } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
+import { keepAwake, letSleep } from './wake-lock.js';
 
 const HIDE_CHROME_AFTER_MS = 4000;
 const CHROME_REVEAL_BAND_PX = 80;
@@ -234,6 +235,12 @@ export class ReaderView {
   }
 
   async render() {
+    // First statement, before any await: the tap on the cover that led here is
+    // still the current user gesture, and iOS grants the wake lock only on one
+    // (ADR 25). Loading the book takes seconds on a large PDF — asking after it
+    // would be too late.
+    keepAwake();
+
     this.root.innerHTML = `
       <div class="reader">
         <div class="reader-chrome">
@@ -327,6 +334,14 @@ export class ReaderView {
       if (e.target.closest('.reader-stage')) return;
       this.showChrome();
     }, { passive: true });
+
+    // Re-arm the wake lock on any touch in the reader. Coming back from the
+    // background is not a user gesture, and neither is arriving here at the end
+    // of a book transfer, so the request made in render() can have been refused
+    // or since released. A touch is a gesture, one arrives at the latest with
+    // the next page turn, and keepAwake() is inert while the lock is held
+    // (ADR 25).
+    reader.addEventListener('pointerdown', keepAwake, true);
 
     this.setupSync(reader);
 
@@ -2412,6 +2427,9 @@ export class ReaderView {
   }
 
   destroy() {
+    // No book on screen any more, so the device may sleep on its own schedule
+    // again (ADR 25).
+    letSleep();
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
     if (this._mousePanMove) {
