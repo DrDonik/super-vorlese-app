@@ -28,17 +28,25 @@ at the source rather than surfaced.
 
 The Screen Wake Lock API covers this, and is available on the browsers this
 project targets (Safari/iOS 16.4 and later; [ADR 4](0004-interactive-color-scheme.md)
-already sets the floor at 16.2). Two properties of the platform shape the
-implementation:
+already sets the floor at 16.2). It needs a secure context, which the app has —
+it is served over HTTPS from GitHub Pages — and its permission policy defaults
+to `self`, so the top-level app needs no header of its own. Two properties of
+the platform shape the implementation:
 
-- **A wake lock is granted only on a user gesture.** In the installed iOS web
-  app, the request must be made while the document still holds transient
+- **The first wake lock is granted only on a user gesture.** In the installed
+  iOS web app, the request must be made while the document still holds transient
   activation — that is, in the same task as the tap that opened the book, not
-  after the book has been loaded.
+  after the book has been loaded. Not every input grants that activation:
+  `touchend` always does, `pointerdown` only when the pointer is a mouse, and
+  `pointerup` only when it is not. WebKit then treats the permission as *sticky*
+  for the lifetime of the document, so once a request has succeeded, later ones
+  no longer need a gesture. That makes the **first** successful request the one
+  that matters, and every path to it has to be able to reach one.
 - **A wake lock does not survive backgrounding.** The browser releases it
   whenever the page is hidden: the video call brought to the front, an incoming
-  call, the screen locked by hand. Returning to the app is not a gesture, so the
-  re-request may be refused.
+  call, the screen locked by hand. Returning to the app is not a gesture — which
+  the sticky permission covers, but only for a document that has held a lock
+  before.
 
 ## Decision
 
@@ -52,9 +60,14 @@ in `src/wake-lock.js`, with no interface of its own.
   still the current gesture at that point. Requesting after `getMeta()` and the
   PDF load — seconds on a large book — would arrive too late.
 
-- **Re-armed on the next touch.** A capture-phase `pointerdown` on the reader
-  calls `keepAwake()` again; it is inert while a lock is held. This is what
-  carries the two cases the opening tap cannot: coming back from the background,
+- **Re-armed on the next input**, by capture-phase `touchend` *and*
+  `pointerdown` listeners on the reader, which between them cover both a
+  touchscreen and a mouse under the activation rules above. `pointerup` would
+  cover the touchscreen too, on paper — but the reading stage recognises its
+  gestures from touch events and calls `preventDefault` on them, and a pointer
+  stream taken over that way can end in `pointercancel` instead. `keepAwake()`
+  is inert while a lock is held. This is what carries the two cases the opening
+  tap cannot: coming back from the background before any lock was ever granted,
   and a book opened from a Synchronisations-Code, where a WebRTC transfer of
   several megabytes runs between the tap and the reader
   ([ADR 5](0005-webrtc-book-transfer.md)). During a read-aloud such a touch

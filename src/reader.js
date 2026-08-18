@@ -335,12 +335,17 @@ export class ReaderView {
       this.showChrome();
     }, { passive: true });
 
-    // Re-arm the wake lock on any touch in the reader. Coming back from the
-    // background is not a user gesture, and neither is arriving here at the end
-    // of a book transfer, so the request made in render() can have been refused
-    // or since released. A touch is a gesture, one arrives at the latest with
-    // the next page turn, and keepAwake() is inert while the lock is held
-    // (ADR 25).
+    // Re-arm the wake lock on the next input in the reader, for the case where
+    // the request in render() was refused — a book that arrived over a transfer
+    // has no gesture left by the time the reader opens. Which event this has to
+    // be is not a free choice: only some events grant the activation the lock
+    // needs. `touchend` always does, `pointerdown` only for a mouse, and
+    // `pointerup` only for everything except a mouse — and a stage gesture that
+    // calls preventDefault can end in `pointercancel` rather than `pointerup`,
+    // so the pair below is the one that covers both kinds of device. During a
+    // read-aloud such an input arrives at the latest with the next page turn.
+    // keepAwake() is inert while the lock is held (ADR 25).
+    reader.addEventListener('touchend', keepAwake, { capture: true, passive: true });
     reader.addEventListener('pointerdown', keepAwake, true);
 
     this.setupSync(reader);
