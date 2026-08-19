@@ -70,12 +70,15 @@ export function planReap(rooms, now = Date.now()) {
     const legacyDone = typeof updatedAt === 'number' ? updatedAt < cutoff : updatedAt === undefined;
 
     if (typeof life === 'number') {
-      if (life - 1 <= 0) {
-        if (legacyDone) deletions.push(code);
-        else if (life > 0) decrement.push(code); // hold it at zero, do not go negative
-      } else {
-        decrement.push(code);
-      }
+      // Zero is a state the room rests in for a whole run, not a moment inside
+      // this job: a counter above zero only ever counts down here, and a room is
+      // deleted on the next run, once zero has stood for a day. By then no
+      // client can have renewed it — a room at zero reads as gone to every
+      // client (roomIsGone), so none of them writes to it any more. That is
+      // what keeps this read-then-write job from deleting a room someone just
+      // picked up again, without a conditional request per room.
+      if (life > 0) decrement.push(code);
+      else if (legacyDone) deletions.push(code);
       continue;
     }
     // No counter: a room from before ADR 27, or something we did not write.

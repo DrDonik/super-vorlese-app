@@ -48,8 +48,13 @@ function randomId() {
 // branch goes once no client writes timestamps any more.
 function roomIsGone(data) {
   if (!data) return true;
-  if (typeof data.life === 'number') return data.life <= 0;
-  if (typeof data.updatedAt === 'number') return Date.now() - data.updatedAt > ROOM_TTL_MS;
+  const legacyFresh = typeof data.updatedAt === 'number'
+    && Date.now() - data.updatedAt <= ROOM_TTL_MS;
+  // A spent counter ends the room — unless an old client is still writing its
+  // timestamp there. The reaper keeps such a room alive (see planReap), so this
+  // side must not delete it out from under that client.
+  if (typeof data.life === 'number') return data.life <= 0 && !legacyFresh;
+  if (typeof data.updatedAt === 'number') return !legacyFresh;
   return false;
 }
 

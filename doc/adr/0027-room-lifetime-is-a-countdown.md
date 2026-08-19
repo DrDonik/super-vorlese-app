@@ -43,8 +43,15 @@ reaper runs of grace are left, and nothing about when anyone read.
   is written to about once a week rather than every evening.
 - **The reaper counts it down**, once per daily run, with the server-side
   `increment(-1)` so a top-up landing between its read and its write cannot be
-  overwritten. At zero the room is deleted. Deletions and decrements travel in
-  the one multi-path update the job already used.
+  overwritten. Deletions and decrements travel in the one multi-path update the
+  job already used.
+- **Zero is a resting state, not a moment inside the job.** A run only ever
+  counts a positive counter down; the room is deleted on the *next* run, once
+  zero has stood for a day. This is what keeps a read-then-write job from
+  deleting a room that someone picked up in between: at zero the room reads as
+  over to every client, so no client writes to it any more, and the day-long
+  wait is the confirmation. The cost is one extra day of life, which is noise
+  next to thirty.
 - **The database rule caps the value** at 30 and forbids negatives, so no client
   can write itself an immortal room.
 - **`updatedAt` is gone** from new rooms — not written, not required by the
@@ -65,8 +72,10 @@ the client's own reading of a legacy room.
 ## Consequences
 
 - What a room still tells whoever holds the code: which book it is for, how many
-  devices have it set up, the current page — and, in whole days, how long ago it
-  was last read in. Not the hour, not the device.
+  devices have it set up, the current page — and how much grace is left. That is
+  *not* a measure of when it was last read in: a room read every night sits near
+  30, because the top-up only happens below 24. At most it says that nobody has
+  been there for the last few runs. Not the hour, not the device.
 - **The reaper becomes load-bearing.** A wall-clock TTL ages by itself even when
   the job is broken; a counter does not. If the scheduled workflow stops running
   (an expired service-account key, a changed secret), rooms stop ageing entirely
@@ -83,3 +92,14 @@ the client's own reading of a legacy room.
 - New rooms and old rooms coexist without migration: the counter is seeded on
   the first top-up from a current client, which is the moment a legacy room
   stops depending on its timestamp.
+
+### Alternatives considered
+
+**Conditional deletes.** The room could be read with `X-Firebase-ETag` and
+deleted with `If-Match`, replanning on a 412, so a room renewed between the
+job's read and its write survives. It closes the same window as the resting
+zero above, at the price of a request pair per doomed room, a retry loop, and
+the loss of the single multi-path update — and only for a room that nobody has
+touched in a month. The cheaper mechanism was preferred; if the counter ever
+gains a second writer that can raise it from zero, this is the alternative to
+come back to.

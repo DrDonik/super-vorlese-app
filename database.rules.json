@@ -6,7 +6,7 @@
       "$roomCode": {
         ".read": true,
         ".write": true,
-        ".validate": "$roomCode.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.hasChildren(['page', 'senderId'])",
+        ".validate": "$roomCode.matches(/^[A-HJ-NP-Z2-9]{6}$/) && newData.hasChildren(['page', 'senderId']) && (newData.hasChild('life') || newData.hasChild('updatedAt'))",
         "page": {
           ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000"
         },
@@ -17,7 +17,7 @@
           ".validate": "newData.isNumber() && newData.val() == now"
         },
         "life": {
-          ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 30"
+          ".validate": "newData.isNumber() && newData.val() % 1 == 0 && newData.val() >= 0 && newData.val() <= 30"
         },
         "members": {
           "$memberId": {
