@@ -72,11 +72,12 @@ export function planReap(rooms, now = Date.now()) {
     if (typeof life === 'number') {
       // Zero is a state the room rests in for a whole run, not a moment inside
       // this job: a counter above zero only ever counts down here, and a room is
-      // deleted on the next run, once zero has stood for a day. By then no
-      // client can have renewed it — a room at zero reads as gone to every
-      // client (roomIsGone), so none of them writes to it any more. That is
-      // what keeps this read-then-write job from deleting a room someone just
-      // picked up again, without a conditional request per room.
+      // deleted on the next run, once zero has stood for a day. A counting
+      // client cannot have renewed it in between — a room that this branch
+      // would delete reads as gone to every such client (roomIsGone), so none
+      // of them writes to it any more. An *old* client can still write its
+      // timestamp there at any moment, which is what the conditional delete
+      // below is for.
       if (life > 0) decrement.push(code);
       else if (legacyDone) deletions.push(code);
       continue;
@@ -91,8 +92,47 @@ export function planReap(rooms, now = Date.now()) {
   return { decrement, deletions, skipped };
 }
 
+// Deletes one room, but only if it still deserves it. The listing this job
+// plans from is minutes old by the time it writes, and an old client — which
+// knows nothing of the counter — may write its timestamp into a condemned room
+// at any moment. So the room is read once more, the same rule is applied to
+// that fresh state, and only then is it deleted; anything that changed is left
+// standing for the next run to judge, with no retry loop to get wrong.
+//
+// The delete also carries `If-Match`, which makes it atomic where the database
+// honours it. That is a belt over the braces, not the guard itself: the
+// re-read is what this code relies on, because it holds no matter how ETags
+// behave (the local emulator, for one, does not change its ETag when a field is
+// added). Deletions are rare — this costs two requests on the rare day one
+// happens.
+//
+// `request` is passed in ({ url, method, headers } -> { status, headers, body })
+// so this can be exercised against an emulator without the job's credentials.
+export async function deleteRoomIfStillDone(request, url, now = Date.now()) {
+  const read = await request({ url, method: 'GET', headers: { 'X-Firebase-ETag': 'true' } });
+  const room = read.body;
+  if (!room) return 'gone';
+  if (!planReap({ room }, now).deletions.length) return 'changed';
+
+  const etag = read.headers?.etag || read.headers?.ETag;
+  const res = await request({
+    url,
+    method: 'DELETE',
+    headers: etag ? { 'If-Match': etag } : undefined,
+  });
+  if (res.status === 412) return 'changed';
+  if (res.status >= 400) return 'failed';
+  return 'deleted';
+}
+
 async function main() {
   const client = makeClient();
+  // Statuses are ours to judge, not gaxios's: a 412 is the expected answer to a
+  // conditional delete, not an error.
+  const request = async (opts) => {
+    const res = await client.request({ ...opts, validateStatus: () => true });
+    return { status: res.status, headers: res.headers, body: res.data };
+  };
 
   const { data: rooms } = await client.request({ url: `${DATABASE_URL}/rooms.json` });
   if (!rooms || typeof rooms !== 'object') {
@@ -116,16 +156,29 @@ async function main() {
     return;
   }
 
-  // One multi-path update for both jobs: deletions map the room to null, and
-  // the countdown uses the server-side increment so a client topping the same
-  // counter up in the meantime cannot be overwritten by a stale read.
-  const payload = {};
-  for (const code of deletions) payload[code] = null;
-  for (const code of decrement) payload[`${code}/life`] = { '.sv': { increment: -1 } };
-  if (!Object.keys(payload).length) return;
+  let deleted = 0;
+  let spared = 0;
+  for (const code of deletions) {
+    const outcome = await deleteRoomIfStillDone(request, `${DATABASE_URL}/rooms/${code}.json`);
+    if (outcome === 'deleted') deleted++;
+    else {
+      spared++;
+      console.log(`Left ${code} standing (${outcome}).`);
+    }
+  }
 
-  await client.request({ url: `${DATABASE_URL}/rooms.json`, method: 'PATCH', data: payload });
-  console.log(`Deleted ${deletions.length} room(s); counted down ${decrement.length}.`);
+  // The countdown stays a single multi-path update, with the server-side
+  // increment so a top-up landing between the read and this write survives.
+  if (decrement.length) {
+    const payload = Object.fromEntries(
+      decrement.map((code) => [`${code}/life`, { '.sv': { increment: -1 } }])
+    );
+    await client.request({ url: `${DATABASE_URL}/rooms.json`, method: 'PATCH', data: payload });
+  }
+  console.log(
+    `Deleted ${deleted} room(s)` + (spared ? `, spared ${spared} that changed` : '') +
+      `; counted down ${decrement.length}.`
+  );
 }
 
 // Only when run as the job (the workflow calls this file directly). Importing

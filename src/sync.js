@@ -297,11 +297,18 @@ export class SyncSession {
   // Only below the threshold, so a room read in every night is written to about
   // once a week rather than every evening. A room with no counter is one from
   // before this existed: seeding it is what migrates it off the timestamp.
+  //
+  // Renewal and admission ask the same question, and must: a spent counter next
+  // to an old client's fresh timestamp is a room we are allowed to be in, so it
+  // is also one we have to renew. Refusing there would let it die under us the
+  // moment that old client stops writing, while we are still reading in it.
+  // A room that is over is left alone — the reaper owns it, and nothing here
+  // resurrects it.
   topUpLife(data) {
     if (!this.roomCode || !this.fb || this.lifeWriteInFlight) return;
+    if (roomIsGone(data)) return;
     const life = data?.life;
     if (typeof life === 'number' && life >= ROOM_LIFE_REFRESH_BELOW) return;
-    if (typeof life === 'number' && life <= 0) return; // over; the reaper owns it now
     this.lifeWriteInFlight = true;
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/life`);
     this.fb.set(r, ROOM_LIFE_MAX)

@@ -7,7 +7,8 @@ Date: 2026-08-18
 Accepted
 
 Revises [ADR 26](0026-the-room-records-that-reading-happened.md) on one point:
-`updatedAt` does not stay.
+new rooms no longer write `updatedAt`. Rooms from before this keep theirs for
+the length of the transition, and it still protects them.
 
 ## Context
 
@@ -47,11 +48,23 @@ reaper runs of grace are left, and nothing about when anyone read.
   job already used.
 - **Zero is a resting state, not a moment inside the job.** A run only ever
   counts a positive counter down; the room is deleted on the *next* run, once
-  zero has stood for a day. This is what keeps a read-then-write job from
-  deleting a room that someone picked up in between: at zero the room reads as
-  over to every client, so no client writes to it any more, and the day-long
-  wait is the confirmation. The cost is one extra day of life, which is noise
-  next to thirty.
+  zero has stood for a day. A *counting* client cannot have renewed it in
+  between: a room this branch would delete reads as over to every such client,
+  so none of them writes to it. The cost is one extra day of life, which is
+  noise next to thirty.
+- **Every deletion is checked against a fresh read.** An *old* client knows
+  nothing of the counter and may write its timestamp at any moment, including
+  after the job listed the rooms. So each condemned room is read once more, the
+  same rule is applied to that fresh state, and only then is it deleted;
+  anything that changed is left for the next run. The delete also carries
+  `If-Match`, which makes it atomic where the database honours the ETag — but
+  the re-read is what this rests on, since it holds regardless (the local
+  emulator, for one, does not change its ETag when a field is added).
+- **Renewal and admission ask the same question.** A spent counter beside a
+  fresh legacy timestamp is a room a current client may join — so it is one it
+  must also top up. The earlier "never touch a zero" rule would have let such a
+  room die under a client that was reading in it, the moment the old client
+  stopped writing.
 - **The database rule caps the value** at 30 and forbids negatives, so no client
   can write itself an immortal room.
 - **`updatedAt` is gone** from new rooms — not written, not required by the
@@ -95,11 +108,12 @@ the client's own reading of a legacy room.
 
 ### Alternatives considered
 
-**Conditional deletes.** The room could be read with `X-Firebase-ETag` and
-deleted with `If-Match`, replanning on a 412, so a room renewed between the
-job's read and its write survives. It closes the same window as the resting
-zero above, at the price of a request pair per doomed room, a retry loop, and
-the loss of the single multi-path update — and only for a room that nobody has
-touched in a month. The cheaper mechanism was preferred; if the counter ever
-gains a second writer that can raise it from zero, this is the alternative to
-come back to.
+**A retry loop around the conditional delete.** On a 412 the job could re-read
+and try again until it wins. It does not need to: a room it decides to spare
+will simply be judged again on the next run, a day later, and nothing is lost
+by waiting. A loop would add a failure mode (when to give up) for no gain.
+
+**Leaving deletion unconditional and relying on the resting zero alone.** That
+covers counting clients, which stop writing to a spent room, but not the old
+ones, which keep writing timestamps until they are gone. The re-read costs one
+request on the rare day a room is deleted.
