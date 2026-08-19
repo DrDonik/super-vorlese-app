@@ -330,24 +330,32 @@ export class SyncSession {
     // write that was happening anyway (ADR 27). Deliberately not on connecting
     // or reconnecting: a timestamp written when a device comes online is
     // exactly the "who was last there, and when" record this design removes.
-    if (this.leaseIsDue()) {
-      payload.updatedAt = this.fb.serverTimestamp();
-      // Assume it lands, so a run of page turns renews once instead of with
-      // every tap; the listener replaces this with the server's own value.
-      this.lastUpdatedAt = Date.now();
-    }
+    const renewing = this.leaseIsDue();
+    if (renewing) payload.updatedAt = this.fb.serverTimestamp();
     // update (not set) so the page exchange never clobbers the room's book
     // descriptor or an in-flight WebRTC signalling handshake.
     await this.fb.update(r, payload);
+    // Only once the write has landed. Recording the renewal up front would let
+    // one failed write hold the lease back for another month, and the room
+    // could then be reaped while the two of them are still turning pages. The
+    // listener replaces this with the server's own value moments later.
+    if (renewing) this.lastUpdatedAt = Date.now();
   }
 
-  // Whether the room's lease is stale enough to be worth renewing. An unknown
-  // value is never renewed: every room carries a timestamp, so not knowing it
-  // means the listener has not spoken yet, and writing on a hunch would put the
-  // connect-time stamp back that this whole design is about avoiding.
+  // Whether the room's lease is stale enough to be worth renewing, and still
+  // young enough that renewing it means anything.
+  //
+  // An unknown value is never renewed: every room carries a timestamp, so not
+  // knowing it means the listener has not spoken yet, and writing on a hunch
+  // would put the connect-time stamp back that this whole design is about
+  // avoiding. Past the TTL there is nothing left to renew either — the room
+  // reads as gone to every client (roomIsGone) and belongs to the reaper, so a
+  // page write that renewed it would resurrect a room others have written off
+  // and race the sweep that is about to remove it.
   leaseIsDue() {
-    return typeof this.lastUpdatedAt === 'number'
-      && Date.now() - this.lastUpdatedAt > ROOM_REFRESH_MS;
+    if (typeof this.lastUpdatedAt !== 'number') return false;
+    const age = Date.now() - this.lastUpdatedAt;
+    return age > ROOM_REFRESH_MS && age <= ROOM_TTL_MS;
   }
 
   // --- Pointer ("point at the page") presence ----------------------------

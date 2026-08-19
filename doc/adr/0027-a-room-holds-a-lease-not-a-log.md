@@ -95,14 +95,20 @@ does not hold a list of who is in it.**
   book title and page in it. What goes is a live record of the people in the
   room; what stays longer is an anonymous husk. Replacing a code for a book
   leaves the old room behind the same way.
-- **The reaper is now the only thing that deletes a room** — but not the only
-  thing that ages one. The lease is a wall clock: it expires whether or not the
-  job runs, and every client refuses an expired code and deletes the room when
-  it meets one. A stopped reaper therefore means clutter, not rooms that stay
-  joinable forever.
-- „Der Raum wurde geschlossen." effectively no longer fires during a session.
-  Nothing but the reaper removes a room node now, so the handler remains as the
-  answer to a room that expired under a session left open for weeks.
+- **No client ends a room because it is done with it any more.** The reaper is
+  the only scheduled path — but not the only thing that ages a room, and not the
+  only thing that ever removes one. The lease is a wall clock: it runs out
+  regardless of whether the job runs, and a client that *meets* an expired room
+  — looking a code up, joining, reconnecting — refuses it and clears it away in
+  passing, exactly as before. A stopped reaper therefore means clutter, not
+  rooms that stay joinable forever.
+- A session never renews a lease that has already run out. Doing so would
+  resurrect a room that every other client has written off, and race the sweep
+  about to delete it; the pair keep turning pages until the room goes, and the
+  usual "the room is gone" path then ends the session.
+- „Der Raum wurde geschlossen." effectively no longer fires *during* a session.
+  Nothing takes a room away while somebody is in it, so the handler remains as
+  the answer to a room that expired under a session left open for weeks.
 - The timestamp that remains is not a blurred time but a *rare exact* one: one
   minute per room per month, with no way to tell whether the room has been read
   in since. Losing the last of it would cost more than it is worth — see the

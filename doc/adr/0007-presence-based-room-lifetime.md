@@ -4,10 +4,7 @@ Date: 2026-05-31
 
 ## Status
 
-Accepted, with the member set removed by
-[ADR 27](0027-a-room-holds-a-lease-not-a-log.md). What survives is the shape of
-the answer — one participant leaving must not end anyone else's session — not
-the mechanism this decision chose for it.
+Accepted
 
 ## Context
 
