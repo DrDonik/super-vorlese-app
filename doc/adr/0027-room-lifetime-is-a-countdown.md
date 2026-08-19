@@ -44,8 +44,8 @@ reaper runs of grace are left, and nothing about when anyone read.
   is written to about once a week rather than every evening.
 - **The reaper counts it down**, once per daily run, with the server-side
   `increment(-1)` so a top-up landing between its read and its write cannot be
-  overwritten. Deletions and decrements travel in the one multi-path update the
-  job already used.
+  overwritten. The countdown stays the one multi-path update the job already
+  used; deletions leave it and go one room at a time, for the reason below.
 - **Zero is a resting state, not a moment inside the job.** A run only ever
   counts a positive counter down; the room is deleted on the *next* run, once
   zero has stood for a day. A *counting* client cannot have renewed it in
