@@ -52,14 +52,17 @@ reaper runs of grace are left, and nothing about when anyone read.
   between: a room this branch would delete reads as over to every such client,
   so none of them writes to it. The cost is one extra day of life, which is
   noise next to thirty.
-- **Every deletion is checked against a fresh read.** An *old* client knows
-  nothing of the counter and may write its timestamp at any moment, including
-  after the job listed the rooms. So each condemned room is read once more, the
-  same rule is applied to that fresh state, and only then is it deleted;
-  anything that changed is left for the next run. The delete also carries
-  `If-Match`, which makes it atomic where the database honours the ETag — but
-  the re-read is what this rests on, since it holds regardless (the local
-  emulator, for one, does not change its ETag when a field is added).
+- **Every deletion is read again and written conditionally.** An *old* client
+  knows nothing of the counter and may write its timestamp at any moment,
+  including after the job listed the rooms. So each condemned room is read once
+  more with `X-Firebase-ETag`, the same rule is applied to that fresh state, and
+  the delete then carries `If-Match`. Both are needed and neither replaces the
+  other: the re-read makes the decision current, the ETag makes the write
+  atomic. If the read brings no ETag, nothing is deleted — an abandoned room
+  left standing is a housekeeping cost, a room deleted under two people reading
+  in it is what this is all for. A 412 or a changed re-read leaves the room for
+  the next run; there is no retry loop, because nothing is lost by waiting a
+  day.
 - **Renewal and admission ask the same question.** A spent counter beside a
   fresh legacy timestamp is a room a current client may join — so it is one it
   must also top up. The earlier "never touch a zero" rule would have let such a

@@ -92,19 +92,21 @@ export function planReap(rooms, now = Date.now()) {
   return { decrement, deletions, skipped };
 }
 
-// Deletes one room, but only if it still deserves it. The listing this job
-// plans from is minutes old by the time it writes, and an old client — which
-// knows nothing of the counter — may write its timestamp into a condemned room
-// at any moment. So the room is read once more, the same rule is applied to
-// that fresh state, and only then is it deleted; anything that changed is left
-// standing for the next run to judge, with no retry loop to get wrong.
+// Deletes one room, but only if it still deserves it and only if nothing has
+// touched it in the meantime. The listing this job plans from is minutes old by
+// the time it writes, and an old client — which knows nothing of the counter —
+// may write its timestamp into a condemned room at any moment.
 //
-// The delete also carries `If-Match`, which makes it atomic where the database
-// honours it. That is a belt over the braces, not the guard itself: the
-// re-read is what this code relies on, because it holds no matter how ETags
-// behave (the local emulator, for one, does not change its ETag when a field is
-// added). Deletions are rare — this costs two requests on the rare day one
-// happens.
+// Two things are needed, and neither replaces the other: the room is read once
+// more so the decision is made on current data, and the delete carries
+// `If-Match` so it cannot land after somebody else's write. Without the ETag
+// there is nothing to condition on, so nothing is deleted — an abandoned room
+// left standing is a housekeeping cost; a room deleted under two people
+// reading in it is the thing this whole file exists to avoid.
+//
+// A 412 or a changed re-read simply leaves the room for the next run to judge:
+// no retry loop, nothing lost by waiting a day. Deletions are rare, so this
+// costs two requests on the rare day one happens.
 //
 // `request` is passed in ({ url, method, headers } -> { status, headers, body })
 // so this can be exercised against an emulator without the job's credentials.
@@ -115,11 +117,9 @@ export async function deleteRoomIfStillDone(request, url, now = Date.now()) {
   if (!planReap({ room }, now).deletions.length) return 'changed';
 
   const etag = read.headers?.etag || read.headers?.ETag;
-  const res = await request({
-    url,
-    method: 'DELETE',
-    headers: etag ? { 'If-Match': etag } : undefined,
-  });
+  if (!etag) return 'no-etag';
+
+  const res = await request({ url, method: 'DELETE', headers: { 'If-Match': etag } });
   if (res.status === 412) return 'changed';
   if (res.status >= 400) return 'failed';
   return 'deleted';
