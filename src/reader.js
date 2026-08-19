@@ -432,10 +432,10 @@ export class ReaderView {
   //
   // Deliberately after the reconnect above, and only creating when that came up
   // empty. A book already carrying a code keeps it: creating a second one runs
-  // syncCreate's syncStop first, which leaves the room — and deletes it outright
-  // when this device is its last member — pulling it out from under a partner
-  // who is still in it. Whether the code was made minutes or weeks ago is
-  // nothing the reader has to think about, so the screen is the same either way.
+  // syncCreate's syncStop first, which drops this device's saved code, so a
+  // partner still reading in the old room would be talking to nobody. Whether
+  // the code was made minutes or weeks ago is nothing the reader has to think
+  // about, so the screen is the same either way.
   async ensureSharedCode() {
     if (!this.syncSession?.roomCode) await this.syncCreate();
     // syncCreate reports its own failures and leaves no session behind; showing

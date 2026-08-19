@@ -98,6 +98,10 @@ What deliberately stays:
   client uses it to treat an ancient code as gone. It says "this room saw
   activity", naming no device, and coarsening it would buy little at the price of
   a weaker database rule (`newData.val() == now` would have to become a range).
+  *(Revised by [ADR 27](0027-a-room-holds-a-lease-not-a-log.md): rewritten on
+  every page turn, it also said at what hour of which evening. It is now renewed
+  at most once a month, which leaves the rule exactly as strict — the objection
+  above was to rounding a timestamp, not to writing one rarely.)*
 - **`book.title`** in the clear. The library needs it to say whose book is
   arriving before it has been transferred ([ADR 5](0005-webrtc-book-transfer.md)).
   Removing it is a separate decision about the joining flow, not a side effect of
@@ -106,7 +110,9 @@ What deliberately stays:
   pointer by `onDisconnect`, the mood node per ritual — so neither accumulates a
   history. Re-keying `mood` per run would also break the participant count
   ([issue #82](https://github.com/DrDonik/super-vorlese-app/issues/82)) when a
-  device restarts mid-ritual.
+  device restarts mid-ritual. *(Since
+  [ADR 27](0027-a-room-holds-a-lease-not-a-log.md) that count is the only reason
+  `memberId` is durable at all.)*
 
 ## Consequences
 
