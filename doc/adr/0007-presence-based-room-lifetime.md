@@ -39,7 +39,10 @@ only when the last participant **explicitly** leaves.
   timestamp, validated by the database rules. *(Amended by
   [ADR 26](0026-the-room-records-that-reading-happened.md): the value is now
   `true`. Nothing ever read it, and a per-device timestamp recorded when someone
-  last opened the book.)*
+  last opened the book. Removed entirely by
+  [ADR 27](0027-a-room-holds-a-lease-not-a-log.md): the set was a standing record
+  of the room's participants, bought for a deletion that in practice never
+  happened.)*
 - **Durable, not live.** There is no `onDisconnect()` handler. Closing the app,
   losing the network, or backgrounding leaves the member entry in place, so the
   participant rejoins the still-alive room on their next reconnect via the saved
@@ -49,10 +52,13 @@ only when the last participant **explicitly** leaves.
   `senderId`), so reconnecting refreshes the same membership instead of
   orphaning it under a fresh random id. *(Amended by
   [ADR 26](0026-the-room-records-that-reading-happened.md): the page exchange
-  now carries its own per-run id. Membership stays durable and stable, which is
-  what this decision is about.)*
-- **Last one out cleans up.** Only an explicit disconnect — tapping "Trennen" or
-  deleting the book — removes that device's member entry. If the member set is
+  now carries its own per-run id. Amended again by
+  [ADR 27](0027-a-room-holds-a-lease-not-a-log.md): with the member set gone, the
+  id is kept durable only for the mood ritual's participant count.)*
+- **Last one out cleans up.** *(Removed by
+  [ADR 27](0027-a-room-holds-a-lease-not-a-log.md): disconnecting is now purely
+  local and every room ends with its lease.)* Only an explicit disconnect —
+  tapping "Trennen" or deleting the book — removes that device's member entry. If the member set is
   then empty, that same client deletes the whole room node. A lone creator who
   disconnects is the last member, so the room is removed immediately, exactly as
   before.
@@ -60,7 +66,11 @@ only when the last participant **explicitly** leaves.
   leaves `page`/`senderId`/`updatedAt` intact, so other participants' listeners
   still see a non-null room and the closed-room message does not fire. It fires
   only when the room node itself disappears — i.e. the last participant left.
-- **TTL unchanged.** The 30-day `updatedAt` TTL and the server-side reaper
+- **TTL unchanged.** *(Superseded by
+  [ADR 27](0027-a-room-holds-a-lease-not-a-log.md): the TTL is 45 days, the
+  timestamp is a lease rather than a record of the last page turn, and the reaper
+  is no longer a safety net but the only way a room ends.)* The 30-day
+  `updatedAt` TTL and the server-side reaper
   (`scripts/reap-stale-rooms.mjs`) remain the safety net for rooms abandoned
   without a clean disconnect (everyone closed the app, or a device lost its saved
   state and so never removed its member entry).

@@ -1,4 +1,4 @@
-import { ROOM_TTL_MS, DATABASE_URL } from './sync-constants.js';
+import { ROOM_TTL_MS, ROOM_REFRESH_MS, DATABASE_URL } from './sync-constants.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDeI6LYnu-34xlnAx7Onjwa_bI52boW8GM",
@@ -41,6 +41,16 @@ function getSavedRoom(bookId) {
 
 function randomId() {
   return Math.random().toString(36).substring(2, 9);
+}
+
+// Whether a room has run its lease out (ADR 27). Deliberately one day stricter
+// than the reaper: a room the sweep is about to delete already reads as gone
+// here, so no client can renew it in the gap between the job's listing and its
+// write, and the deletion needs no conditional request.
+function roomIsGone(data) {
+  if (!data) return true;
+  if (typeof data.updatedAt !== 'number') return false;
+  return Date.now() - data.updatedAt > ROOM_TTL_MS;
 }
 
 let firebasePromise = null;
@@ -115,7 +125,7 @@ export async function lookupRoom(code) {
     throw new Error('Diesen Synchronisations-Code gibt es nicht.');
   }
   const data = snapshot.val();
-  if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+  if (roomIsGone(data)) {
     fb.remove(r).catch(() => {});
     throw new Error('Diesen Synchronisations-Code gibt es nicht.');
   }
@@ -126,36 +136,16 @@ export function getSessionForBook(bookId) {
   return activeSessions.get(bookId) || null;
 }
 
-// Removes this device's membership from a room and, if that leaves the room
-// empty, deletes the whole room. A room stays alive as long as at least one
-// participant still has the sync set up (issue #50) — only an explicit
-// disconnect (here or via SyncSession.stop) counts towards deletion, never a
-// dropped connection. Abandoned rooms are reaped server-side by the TTL.
-function leaveRoom(fb, code, memberId) {
-  // Legacy rooms saved before presence tracking carry no memberId; there is
-  // nothing of ours to remove, so leave cleanup to the server-side reaper.
-  if (!memberId) return Promise.resolve();
-  const memberRef = fb.ref(fb.db, `rooms/${code}/members/${memberId}`);
-  return fb.remove(memberRef)
-    .then(() => fb.get(fb.ref(fb.db, `rooms/${code}/members`)))
-    .then((snapshot) => {
-      if (!snapshot.exists()) {
-        return fb.remove(fb.ref(fb.db, `rooms/${code}`));
-      }
-    });
-}
-
+// Ends this device's participation in a room: purely local, touching nothing in
+// the database (ADR 27). Nobody is enrolled anywhere, so there is nothing to
+// remove and no way to tell whether anyone else is still reading — the room
+// simply stays until its lease runs out and the reaper takes it. The partner
+// keeps their session either way, which is what ADR 7 was after (issue #50).
 export function closeSyncForBook(bookId) {
   const session = activeSessions.get(bookId);
   if (session) {
     session.stop();
   } else {
-    const saved = getSavedRoom(bookId);
-    if (saved) {
-      loadFirebase()
-        .then((fb) => leaveRoom(fb, saved.code, saved.memberId))
-        .catch(() => {});
-    }
     removeRoomForBook(bookId);
   }
 }
@@ -170,11 +160,14 @@ export class SyncSession {
     this.isCreator = false;
     // Two identifiers, deliberately independent (ADR 26).
     //
-    // memberId is durable: it keys this device's entry in the room's member set,
-    // is persisted alongside the room code and reused on every reconnect, so a
-    // device that comes back refreshes its membership instead of orphaning it.
-    // It is drawn fresh per book — two books mean two rooms and two unrelated
-    // ids, so the database never shows that one device holds both.
+    // memberId keys this device's pointer and its mood picks. It is persisted
+    // alongside the room code and reused on reconnect for one reason only: the
+    // mood ritual counts the devices taking part (issue #82), and a device that
+    // restarts mid-ritual would otherwise be counted twice. Both places it
+    // appears are wiped by design — the pointer by onDisconnect, the mood node
+    // per ritual — so it never accumulates into a history. It is drawn fresh per
+    // book, so two books mean two unrelated ids and the database never shows
+    // that one device holds both.
     //
     // senderId is drawn fresh for every app run and never stored. Its only job
     // is the echo test in listen(): "was that page write my own?" A stable value
@@ -186,6 +179,9 @@ export class SyncSession {
     this.fb = null;
     this.pointersUnsub = null;
     this.pointerDisconnect = null;
+    // The room's lease as this device last saw it, kept current by the room
+    // listener so renewing it costs no extra read (see sendPage).
+    this.lastUpdatedAt = null;
     this.moodUnsub = null;
   }
 
@@ -210,9 +206,9 @@ export class SyncSession {
     await this.fb.set(r, payload);
     this.roomCode = code;
     this.isCreator = true;
+    this.lastUpdatedAt = Date.now();
     activeSessions.set(this.bookId, this);
     saveRoomForBook(this.bookId, code, true, this.memberId);
-    this.enrollMember();
     this.listen();
     return code;
   }
@@ -229,49 +225,25 @@ export class SyncSession {
       throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
     const data = snapshot.val();
-    if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+    if (roomIsGone(data)) {
       this.fb.remove(r).catch(() => {});
       throw new Error('Diesen Synchronisations-Code gibt es nicht.');
     }
-    // This device may already hold a membership for this book — the library's
-    // join path comes straight here without going through reconnect(). Saving
-    // the fresh id over the stored one would strand the old entry in whatever
-    // room it belongs to, and that entry keeps the room alive until the reaper.
+    // Rejoining the room this device already had saved for this book: keep the
+    // id it is known by there, so a pointer or a mood pick that is still in
+    // flight stays ours rather than arriving as a second participant.
     const saved = getSavedRoom(this.bookId);
-    if (saved?.memberId) {
-      if (saved.code === normalizedCode) {
-        // Same room: keep being the member we already are, and re-enrolling
-        // below simply refreshes that one entry.
-        this.memberId = saved.memberId;
-      } else {
-        // A different room: leave it properly first, which also deletes it if
-        // we were the last one in it.
-        await leaveRoom(this.fb, saved.code, saved.memberId).catch(() => {});
-      }
+    if (saved?.memberId && saved.code === normalizedCode) {
+      this.memberId = saved.memberId;
     }
 
     this.roomCode = normalizedCode;
     this.isCreator = false;
+    this.lastUpdatedAt = data.updatedAt ?? null;
     activeSessions.set(this.bookId, this);
     saveRoomForBook(this.bookId, normalizedCode, false, this.memberId);
-    this.enrollMember();
     this.listen();
     return normalizedCode;
-  }
-
-  // Registers this device in the room's durable member set. Membership marks
-  // "I still have this sync set up" — it is deliberately NOT tied to the live
-  // connection (no onDisconnect), so closing the app or losing the network
-  // leaves it intact and the sync is still there on the next reconnect.
-  //
-  // The value is `true`, not a timestamp. Only the key is ever read (leaveRoom
-  // asks whether any member is left; the reaper works off the room's own
-  // updatedAt), and a per-device timestamp would be a record of when someone
-  // last opened the book — see ADR 26.
-  enrollMember() {
-    if (!this.roomCode || !this.fb) return;
-    const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}/members/${this.memberId}`);
-    this.fb.set(r, true).catch(() => {});
   }
 
   listen() {
@@ -290,6 +262,9 @@ export class SyncSession {
         }
         return;
       }
+      // Every change carries the room's whole node, so the lease value stays
+      // current here rather than costing a read of its own when it is needed.
+      if (typeof data.updatedAt === 'number') this.lastUpdatedAt = data.updatedAt;
       if (data.senderId !== this.senderId && this.onRemotePageChange) {
         this.onRemotePageChange(data.page);
       }
@@ -315,7 +290,7 @@ export class SyncSession {
       return null;
     }
     const data = snapshot.val();
-    if (data.updatedAt && Date.now() - data.updatedAt > ROOM_TTL_MS) {
+    if (roomIsGone(data)) {
       this.fb.remove(r).catch(() => {});
       removeRoomForBook(this.bookId);
       return null;
@@ -326,13 +301,12 @@ export class SyncSession {
     }
     this.roomCode = saved.code;
     this.isCreator = saved.isCreator;
-    // Reuse the persisted member id so reconnecting refreshes our existing
-    // membership instead of orphaning it under a fresh id. Legacy saved rooms
-    // have none yet, so we adopt this session's id and persist it now.
+    this.lastUpdatedAt = data.updatedAt ?? null;
+    // Reuse the persisted id so a device that comes back is the same
+    // participant to the mood ritual's count as before (issue #82).
     if (saved.memberId) this.memberId = saved.memberId;
     activeSessions.set(this.bookId, this);
     saveRoomForBook(this.bookId, saved.code, saved.isCreator, this.memberId);
-    this.enrollMember();
     this.listen();
     return saved.code;
   }
@@ -351,19 +325,43 @@ export class SyncSession {
   async sendPage(page) {
     if (!this.roomCode || !this.fb) return;
     const r = this.fb.ref(this.fb.db, `rooms/${this.roomCode}`);
+    const payload = { page, senderId: this.senderId };
+    // The room's lease, renewed at most once a month and only ever riding a
+    // write that was happening anyway (ADR 27). Deliberately not on connecting
+    // or reconnecting: a timestamp written when a device comes online is
+    // exactly the "who was last there, and when" record this design removes.
+    const renewing = this.leaseIsDue();
+    if (renewing) payload.updatedAt = this.fb.serverTimestamp();
     // update (not set) so the page exchange never clobbers the room's book
     // descriptor or an in-flight WebRTC signalling handshake.
-    await this.fb.update(r, {
-      page,
-      senderId: this.senderId,
-      updatedAt: this.fb.serverTimestamp(),
-    });
+    await this.fb.update(r, payload);
+    // Only once the write has landed. Recording the renewal up front would let
+    // one failed write hold the lease back for another month, and the room
+    // could then be reaped while the two of them are still turning pages. The
+    // listener replaces this with the server's own value moments later.
+    if (renewing) this.lastUpdatedAt = Date.now();
+  }
+
+  // Whether the room's lease is stale enough to be worth renewing, and still
+  // young enough that renewing it means anything.
+  //
+  // An unknown value is never renewed: every room carries a timestamp, so not
+  // knowing it means the listener has not spoken yet, and writing on a hunch
+  // would put the connect-time stamp back that this whole design is about
+  // avoiding. Past the TTL there is nothing left to renew either — the room
+  // reads as gone to every client (roomIsGone) and belongs to the reaper, so a
+  // page write that renewed it would resurrect a room others have written off
+  // and race the sweep that is about to remove it.
+  leaseIsDue() {
+    if (typeof this.lastUpdatedAt !== 'number') return false;
+    const age = Date.now() - this.lastUpdatedAt;
+    return age > ROOM_REFRESH_MS && age <= ROOM_TTL_MS;
   }
 
   // --- Pointer ("point at the page") presence ----------------------------
   // A pointer lives at rooms/{code}/pointers/{memberId} = { x, y } where x and
   // y are fractions (0..1) of the reader stage. It exists only while a finger
-  // is held down, so unlike room membership it IS tied to the live connection:
+  // is held down, and unlike the room itself it IS tied to the live connection:
   // an onDisconnect handler removes it if the device drops mid-gesture.
 
   async sendPointer(x, y) {
@@ -517,13 +515,12 @@ export class SyncSession {
       this.unsubscribe();
       this.unsubscribe = null;
     }
-    // Drop our membership; the room is deleted only once nobody is left in it.
-    if (this.roomCode && this.fb) {
-      leaveRoom(this.fb, this.roomCode, this.memberId).catch(() => {});
-    }
+    // Nothing to hand back: the room holds no record of this device, and it is
+    // the reaper's to delete once its lease runs out (ADR 27).
     activeSessions.delete(this.bookId);
     removeRoomForBook(this.bookId);
     this.roomCode = null;
     this.isCreator = false;
+    this.lastUpdatedAt = null;
   }
 }

@@ -1,11 +1,17 @@
 // Server-side reaper for abandoned sync rooms (GitHub issue #32).
 //
 // Rooms persist in Firebase so that either party can reconnect after closing
-// the app — that is intentional and must not change. The client only enforces
-// the room TTL lazily (when someone joins/reconnects to an expired code), so a
-// room that is simply abandoned lingers forever. This job sweeps those: it
-// lists every room and deletes the ones whose server-stamped `updatedAt` is
-// older than ROOM_TTL_MS.
+// the app — that is intentional and must not change. Clients never delete a
+// room they are done with (ADR 27): they cannot tell whether the other side is
+// still reading, and asking would mean keeping a record of who is in the room.
+// So every room ends here, once its lease has run out.
+//
+// The lease is `updatedAt`, a server timestamp written when the room is created
+// and renewed at most once a month by a page turn (ADR 27). It says a room is
+// still in use, not when anybody last read in it. This job deletes the rooms
+// whose lease is older than ROOM_TTL_MS + REAP_GRACE_MS — one day past the point
+// where every client already treats the code as gone, so nothing can renew a
+// room between this job's listing and its write.
 //
 // Auth: a Firebase Admin SDK service-account key is provided as the
 // FIREBASE_SA_KEY env var (the full JSON). The minted OAuth token bypasses the
@@ -16,7 +22,7 @@
 //   node scripts/reap-stale-rooms.mjs --dry-run  # report only, delete nothing
 
 import { JWT } from 'google-auth-library';
-import { ROOM_TTL_MS, DATABASE_URL } from '../src/sync-constants.js';
+import { ROOM_TTL_MS, REAP_GRACE_MS, DATABASE_URL } from '../src/sync-constants.js';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/firebase.database',
@@ -44,7 +50,7 @@ function makeClient() {
 
 async function main() {
   const client = makeClient();
-  const cutoff = Date.now() - ROOM_TTL_MS;
+  const cutoff = Date.now() - ROOM_TTL_MS - REAP_GRACE_MS;
 
   const { data: rooms } = await client.request({ url: `${DATABASE_URL}/rooms.json` });
   if (!rooms || typeof rooms !== 'object') {
@@ -68,15 +74,18 @@ async function main() {
   }
 
   console.log(
-    `Scanned ${codes.length} room(s); ${stale.length} stale (older than ${ROOM_TTL_MS / 86400000} days)` +
+    `Scanned ${codes.length} room(s); ${stale.length} stale (lease older than ` +
+      `${(ROOM_TTL_MS + REAP_GRACE_MS) / 86400000} days)` +
       (skipped ? `, ${skipped} skipped (no numeric updatedAt)` : '') +
       '.'
   );
 
   if (stale.length === 0) return;
 
+  // Counts only, never the codes themselves: this repository is public, so its
+  // Actions logs are too, and a room code is all anyone needs to read a room.
   if (dryRun) {
-    console.log(`[dry-run] Would delete: ${stale.join(', ')}`);
+    console.log(`[dry-run] Would delete ${stale.length} room(s).`);
     return;
   }
 
