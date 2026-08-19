@@ -101,7 +101,14 @@ the client's own reading of a legacy room.
 - The reaper's decision moved into an exported pure function, `planReap(rooms,
   now)`, and the file only talks to the database when it is run as the job. That
   is what makes the transition rules testable without a database, which is how
-  they were tested.
+  they were tested. The delete takes its request function as an argument for the
+  same reason, so it can be driven against an emulator.
+- Two things about testing this against the local emulator, both learned the
+  hard way: its REST endpoint *is* subject to the rules in a namespace that has
+  them, so a simulated old client must write `{".sv": "timestamp"}` rather than
+  a client-side `Date.now()`, which `updatedAt`'s `== now` rule rejects; and its
+  ETag does not change when a field is added, so a conditional write cannot be
+  verified there.
 - New rooms and old rooms coexist without migration: the counter is seeded on
   the first top-up from a current client, which is the moment a legacy room
   stops depending on its timestamp.
