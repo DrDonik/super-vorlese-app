@@ -13,6 +13,12 @@ const HIDE_CHROME_AFTER_MS = 4000;
 const CHROME_REVEAL_BAND_PX = 80;
 const CURSOR_IDLE_MS = 2500;
 
+// "Point at the page" (ADR 10) is one gesture with one threshold, whether it is
+// a finger or a mouse button being held: the same press means the same thing at
+// a laptop as on an iPad (rule 1). Both recognisers below measure against these.
+const LONG_PRESS_MS = 700;
+const MOVE_CANCEL_PX = 10; // movement before activation aborts the press
+
 // The page-turn zones and swipe can be switched off locally, so a listener can
 // rest a hand on the screen (or use the pointer) without flipping pages — only
 // the reading partner's synced turns move the page then. Pointing and the
@@ -214,6 +220,12 @@ export class ReaderView {
     this.lastPointerSend = 0;
     this.pendingPointer = null;
     this.longPressTimer = null;
+    this.mouseHoldTimer = null;
+    // Which kind of input the reader last used, so the help overlay can name
+    // the gesture they actually have in their hand („Finger" vs. „Maustaste").
+    // Seeded from the device itself for the case where the help is opened by
+    // keyboard before any pointer has been near the reader.
+    this.lastInputWasMouse = !!window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
     // Shared reading memory (issue #65). The mood overlay is built on demand;
     // mySelection is this device's authoritative picks, moodPartnerPicks mirrors
     // the other participants' picks from Firebase, keyed by memberId. The
@@ -325,8 +337,17 @@ export class ReaderView {
     reader.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
       this.showCursor();
+      // Pointing keeps the chrome away for the same reason the long press does
+      // on a touchscreen (ADR 10): dragging the pointer up near the top edge
+      // must not slide the bar over the page that is being pointed at.
+      if (this.localPointerActive) return;
       if (e.clientY <= CHROME_REVEAL_BAND_PX || e.target.closest('.reader-chrome')) this.showChrome();
     });
+    // Capture, so it also sees the presses the chrome's own buttons consume —
+    // notably the „?" that opens the help this feeds.
+    reader.addEventListener('pointerdown', (e) => {
+      this.lastInputWasMouse = e.pointerType === 'mouse';
+    }, true);
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
       // The stage runs its own gesture recogniser (tap vs. long-press-to-point
@@ -466,8 +487,6 @@ export class ReaderView {
     // Captured once: the canvas element is reused across page renders, so a
     // pointer can be measured against the page without a per-touchmove DOM query.
     const canvas = stage.querySelector('.reader-canvas');
-    const LONG_PRESS_MS = 700;
-    const MOVE_CANCEL_PX = 10; // movement before activation aborts the long press
     const TAP_MAX_MS = 600;
     const TAP_MAX_PX = 15;
     const SWIPE_PX = 40;
@@ -658,55 +677,111 @@ export class ReaderView {
       panning = false;
     });
 
-    this.attachMousePan(stage);
+    this.attachMouseGestures(stage);
     this.attachWheelZoom(stage);
     this.suppressNativePinch(stage);
   }
 
-  // The same "drag the magnified page" for mouse and trackpad, which the touch
-  // recogniser above never sees. Kept apart from it rather than folded in: it
-  // shares none of the tap / long-press / swipe arbitration — a mouse either
-  // drags the page or it doesn't — and mixing pointer events into that
-  // recogniser would double up every touch it already handles.
-  attachMousePan(stage) {
+  // The mouse's half of the stage gestures: hold the button to point at the
+  // page, drag to move the magnified page. Kept apart from the touch recogniser
+  // above rather than folded into it — mixing pointer events into that one
+  // would double up every touch it already handles — but the pointing it grants
+  // is the same gesture, held for the same 700 ms, so a grandmother at a laptop
+  // has the feature the help promises her (issue #121; ADR 10, amendment).
+  //
+  // The two gestures start identically — a button goes down — and movement
+  // tells them apart, exactly as it does for a finger.
+  attachMouseGestures(stage) {
+    // Captured once, as in attachStageGestures: the canvas is reused across
+    // renders, so a pointer can be measured against the page without a DOM
+    // query on every mouse move of a drag.
+    const canvas = stage.querySelector('.reader-canvas');
     const DRAG_START_PX = 3; // a mouse is precise; this only sorts drag from click
     let from = null;
 
+    // Instance property (not a closure local) so destroy() can clear a press
+    // still pending in its 700 ms window and it never fires on a torn-down view.
+    const clearHold = () => {
+      if (this.mouseHoldTimer) { clearTimeout(this.mouseHoldTimer); this.mouseHoldTimer = null; }
+    };
+
     stage.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'mouse' || e.button !== 0) return;
-      if (this.zoomFactor() === 1) return;
       from = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY, moved: false };
+      // Where the press began, held by the timer itself rather than read back
+      // off `from`, which a drag may have dropped by the time it fires.
+      const startX = e.clientX;
+      const startY = e.clientY;
+      clearHold();
+      this.mouseHoldTimer = setTimeout(() => {
+        this.mouseHoldTimer = null;
+        const pos = this.pageFraction(canvas, startX, startY);
+        this.beginLocalPointer(pos.x, pos.y);
+      }, LONG_PRESS_MS);
     });
 
-    // On the window, not the stage: a drag that leaves the stage — or ends
-    // outside the window entirely — must still move the page and must still
-    // end, rather than leaving the page stuck to the cursor.
+    // On the window, not the stage: a gesture that leaves the stage — or ends
+    // outside the window entirely — must still be followed and must still end,
+    // rather than leaving the page (or the pointer) stuck to the cursor.
     this._mousePanMove = (e) => {
       if (!from) return;
       // The button was released somewhere we never heard about (a drag ended
-      // over browser chrome, say). Drop the drag instead of resuming it.
-      if (!(e.buttons & 1)) { from = null; return; }
+      // over browser chrome, say). Drop the gesture instead of resuming it.
+      if (!(e.buttons & 1)) { clearHold(); this.endMousePointer(); from = null; return; }
+      if (this.localPointerActive) {
+        // Pointing: the cluster follows the cursor and the page stays put, so
+        // the bunny can be circled with a mouse just as with a finger.
+        const pos = this.pageFraction(canvas, e.clientX, e.clientY);
+        this.moveLocalPointer(pos.x, pos.y);
+        return;
+      }
       const dx = e.clientX - from.x;
       const dy = e.clientY - from.y;
+      if (Math.abs(dx) > MOVE_CANCEL_PX || Math.abs(dy) > MOVE_CANCEL_PX) {
+        clearHold(); // moved too far to be a press held in place
+      }
       if (!from.moved) {
-        if (Math.abs(dx) < DRAG_START_PX && Math.abs(dy) < DRAG_START_PX) return;
-        // Nothing to move this way (see canPanAlong): let go of the gesture so
-        // it ends as the ordinary click it looks like — over a turn zone that
-        // is a page turn, which is what the same drag does on a touchscreen.
+        // While the press could still become a pointing gesture, the page only
+        // starts moving at that gesture's own cancel distance: a hand that
+        // shifts three pixels while holding still would otherwise drag the page
+        // out from under the pointer it was about to place. A real drag crosses
+        // both distances in the same movement, so dragging feels unchanged.
+        const threshold = this.mouseHoldTimer ? MOVE_CANCEL_PX : DRAG_START_PX;
+        if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return;
+        // Nothing to move this way (see canPanAlong, which is false at 1x):
+        // let go of the gesture so it ends as the ordinary click it looks like
+        // — over a turn zone that is a page turn, which is what the same drag
+        // does on a touchscreen.
         if (!this.canPanAlong(dx, dy)) { from = null; return; }
         from.moved = true;
       }
       this.panTo(from.panX + dx, from.panY + dy);
     };
-    this._mousePanUp = () => {
+    this._mousePanUp = (e) => {
+      if (e.pointerType !== 'mouse') return; // a finger's release is the touch recogniser's
+      clearHold();
       if (!from) return;
       const dragged = from.moved;
+      const pointed = this.localPointerActive;
       from = null;
-      if (dragged) this.swallowNextClick();
+      this.endMousePointer();
+      // Releasing still delivers a click to whatever lies underneath. Over a
+      // turn zone that would turn the page on top of the gesture just made, so
+      // it is swallowed here — the same protection the touch recogniser gets
+      // from its preventDefault.
+      if (dragged || pointed) this.swallowNextClick();
     };
     window.addEventListener('pointermove', this._mousePanMove);
     window.addEventListener('pointerup', this._mousePanUp);
     window.addEventListener('pointercancel', this._mousePanUp);
+  }
+
+  // Ends a mouse pointing gesture, if one is running. Kept apart from the drag
+  // state: the two end on the same events, but a press that pointed and a press
+  // that dragged are not the same gesture and only one of them has a pointer to
+  // take down.
+  endMousePointer() {
+    if (this.localPointerActive) this.endLocalPointer();
   }
 
   // --- Pinch (ADR 24, second amendment) -----------------------------------
@@ -1607,14 +1682,23 @@ export class ReaderView {
 
     this.addHelpHint('help-hint-zone help-hint-zone-prev', 'Zurück', { glyph: '◀' });
     this.addHelpHint('help-hint-zone help-hint-zone-next', 'Weiter', { glyph: '▶' });
-    this.addHelpHint('help-hint-center', 'Finger gedrückt halten: auf die Seite zeigen', {
+    // Both gestures exist on both kinds of device, so no callout appears or
+    // disappears with the hardware — they name „Finger" or „Maus" after what
+    // the reader last used, which for the help is whatever they just opened it
+    // with (issue #121).
+    const holdLabel = this.lastInputWasMouse
+      ? 'Maustaste gedrückt halten: auf die Seite zeigen'
+      : 'Finger gedrückt halten: auf die Seite zeigen';
+    this.addHelpHint('help-hint-center', holdLabel, {
       sub: 'beim gemeinsamen Lesen',
     });
     // Placed in CSS above the loupe rather than through addChromeHelpHints:
     // that one hangs its bubbles below their control, which for a button in the
     // bottom corner would put the label off the screen.
     this.addHelpHint('help-hint-zoom', 'Seite vergrössern', {
-      sub: 'vergrössert: mit dem Finger verschieben',
+      sub: this.lastInputWasMouse
+        ? 'vergrössert: mit der Maus verschieben'
+        : 'vergrössert: mit dem Finger verschieben',
     });
     this.addChromeHelpHints();
 
@@ -2451,6 +2535,7 @@ export class ReaderView {
     clearTimeout(this._wheelZoomT);
     clearTimeout(this.pointerSendTimer);
     clearTimeout(this.longPressTimer);
+    clearTimeout(this.mouseHoldTimer);
     clearTimeout(this._moodIntroT);
     clearTimeout(this._moodRiseT);
     this.clearAllPointers();

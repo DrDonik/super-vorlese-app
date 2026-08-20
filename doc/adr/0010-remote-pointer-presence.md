@@ -72,5 +72,76 @@ unobstructed; a quick tap still reveals the chrome as before.
   active press and auto-removed on release or disconnect.
 - The pointer is a touch gesture; it is not wired to mouse input, matching the
   iPad-first audience. Revisit if desktop use becomes common.
+  *Superseded by the 2026-08-20 amendment below: a held mouse button points too.*
 - The chrome no longer appears on a long press in the page area. A quick tap
   still reveals it, so the control is not lost.
+
+## Amendment (2026-08-20): pointing is not a touch gesture
+
+The consequence above left one thread hanging — *"it is not wired to mouse
+input... revisit if desktop use becomes common"* — and issue #121 is that
+revisit. Desktop use did become common: a grandmother reading along on her
+laptop had no way to point at the page at all, and, worse, the help overlay
+promised her one anyway („Finger gedrückt halten: auf die Seite zeigen" was
+shown on every device). A feature that exists only in the instructions is worse
+than a missing feature (rules 3 and 7).
+
+### Decision
+
+**The same gesture, on every kind of input.** Holding the left mouse button on
+the page for the same 700 ms places the same pointer, which then follows the
+cursor until the button is released. The partner sees no difference between a
+finger and a mouse: the wire format, the throttling, the colours, and the
+clearing on a page turn are all untouched — pointing was already input-agnostic
+everywhere except in how it is started.
+
+We deliberately did *not* add an explicit "pointing mode" to the chrome, the
+alternative the issue offered. A mode is a state to switch on, to recognise, and
+to switch off again — three things to learn where the gesture is one, and one
+more way for the two devices to behave differently from each other (rule 1).
+
+**Recognition stays split in two, arbitration and all.** `attachStageGestures`
+keeps the touch recogniser (tap / long press / swipe / pinch); the mouse gets
+its own, `attachMouseGestures`, because folding pointer events into the touch
+one would make it handle every touch twice. What the two share is the
+threshold: `LONG_PRESS_MS` and `MOVE_CANCEL_PX` are now module constants that
+both measure against, so the gesture cannot drift apart between devices.
+
+Within the mouse recogniser, holding-to-point and dragging-the-magnified-page
+start identically and are told apart by movement, as they are for a finger. One
+consequence is worth naming: while the press could still become a pointer, the
+drag does not begin until the pointer's own 10 px cancel distance, rather than
+at its usual 3 px. Otherwise a hand that shifts three pixels during the hold
+would drag the page out from under the pointer it was about to place. A real
+drag crosses both distances in one movement, so dragging is unchanged in
+practice.
+
+**The help names the input the reader has in hand.** Because the gesture now
+exists everywhere, no callout appears or disappears with the hardware; instead
+the wording follows the input type last used on this device (`pointerdown`'s
+`pointerType`, seeded from `(hover: hover) and (pointer: fine)` for a help
+opened by keyboard). „Maustaste gedrückt halten" at a laptop, „Finger gedrückt
+halten" on an iPad — and the same for the loupe's „mit der Maus / mit dem Finger
+verschieben". On a hybrid device (a touch laptop, an iPad with a Magic Keyboard)
+this follows what the reader is actually using rather than what the device could
+in principle do, and it is always current: the help is opened by pressing the
+„?" itself.
+
+### Consequences
+
+- Touch behaviour is untouched — structurally, not merely by testing: the touch
+  recogniser was not modified beyond reading its two thresholds from module
+  scope.
+- A mouse press that pointed swallows the click it would otherwise deliver on
+  release (`swallowNextClick`), so pointing near the page edge no longer turns
+  the page. The drag already did this.
+- Pointing suppresses the chrome's mouse-reveal band, matching the long press,
+  which has always kept the chrome away so the page stays unobstructed.
+- The pen (`pointerType: 'pen'`) is left with the touch path it already has;
+  Apple Pencil fires touch events, so treating it as a mouse would mean handling
+  one gesture twice. If a stylus on a non-Apple tablet ever needs this, it is a
+  separate, small change.
+- There is still no keyboard way to point. Without a pointing device there is no
+  spot on the page to point *at* without inventing a cursor, and
+  [ADR 22](0022-accessibility-targets-low-vision-not-screen-readers.md) puts
+  this app's accessibility effort elsewhere.

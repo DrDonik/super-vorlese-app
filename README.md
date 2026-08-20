@@ -22,8 +22,9 @@ seine Grosseltern sie gemeinsam ohne fremde Hilfe bedienen können.
 2. Alle öffnen dasselbe Buch (PDF) in der App und koppeln sich einmalig
    mit einem sechsstelligen Code.
 3. Wer eine Seite umblättert, blättert für alle mit.
-4. Mit einem langen Fingerdruck auf die Seite zeigst du den anderen,
-   wo du gerade liest — der Punkt erscheint auch auf ihren Geräten.
+4. Halte den Finger (oder die Maustaste) auf der Seite gedrückt, um den
+   anderen zu zeigen, wo du gerade liest — der Punkt erscheint auch auf
+   ihren Geräten.
 
 ### Was du brauchst
 
