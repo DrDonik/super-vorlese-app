@@ -705,9 +705,37 @@ export class ReaderView {
       if (this.mouseHoldTimer) { clearTimeout(this.mouseHoldTimer); this.mouseHoldTimer = null; }
     };
 
+    // Taken once a press has become a gesture — pointing, or moving the page —
+    // and never before: while the pointer is captured the browser also
+    // retargets the click to the capturing element, which would rob the turn
+    // zones of the plain clicks that turn pages. Both gestures swallow their
+    // click anyway (see below), so from here on the retarget costs nothing and
+    // the capture buys what it is for: a release outside the window is still
+    // delivered here rather than leaving a pointer standing on the partner's
+    // page. A pointer this device no longer has is not an error worth acting on
+    // — such a gesture ends through one of the paths below instead.
+    const capture = () => {
+      if (!from) return;
+      try { stage.setPointerCapture(from.id); } catch {}
+    };
+
+    // The single way out, so no ending can forget a piece of the state: the
+    // hold that may still be pending, the capture, the drag, and the pointer
+    // the partner can see. That last one is why this is worth the care a local
+    // drag never needed — a pointer left standing is left standing on someone
+    // else's screen.
+    const endGesture = () => {
+      clearHold();
+      if (from) {
+        if (stage.hasPointerCapture?.(from.id)) stage.releasePointerCapture(from.id);
+        from = null;
+      }
+      if (this.localPointerActive) this.endLocalPointer();
+    };
+
     stage.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'mouse' || e.button !== 0) return;
-      from = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY, moved: false };
+      from = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY, moved: false, id: e.pointerId };
       // Where the press began, held by the timer itself rather than read back
       // off `from`, which a drag may have dropped by the time it fires.
       const startX = e.clientX;
@@ -717,6 +745,7 @@ export class ReaderView {
         this.mouseHoldTimer = null;
         const pos = this.pageFraction(canvas, startX, startY);
         this.beginLocalPointer(pos.x, pos.y);
+        capture();
       }, LONG_PRESS_MS);
     });
 
@@ -727,7 +756,7 @@ export class ReaderView {
       if (!from) return;
       // The button was released somewhere we never heard about (a drag ended
       // over browser chrome, say). Drop the gesture instead of resuming it.
-      if (!(e.buttons & 1)) { clearHold(); this.endMousePointer(); from = null; return; }
+      if (!(e.buttons & 1)) { endGesture(); return; }
       if (this.localPointerActive) {
         // Pointing: the cluster follows the cursor and the page stays put, so
         // the bunny can be circled with a mouse just as with a finger.
@@ -754,34 +783,41 @@ export class ReaderView {
         // does on a touchscreen.
         if (!this.canPanAlong(dx, dy)) { from = null; return; }
         from.moved = true;
+        capture();
       }
       this.panTo(from.panX + dx, from.panY + dy);
     };
+    // The release, by whichever event carries the news. Matched by pointer id,
+    // so a finger's release — or a second pointer's — is left to whoever owns
+    // it. `lostpointercapture` is in this list rather than treated as an
+    // abandonment because browsers disagree on whether it arrives before or
+    // after the `pointerup` it belongs to; ending here means the click below is
+    // swallowed either way, and whichever of the two comes second finds the
+    // gesture already over and does nothing.
     this._mousePanUp = (e) => {
-      if (e.pointerType !== 'mouse') return; // a finger's release is the touch recogniser's
-      clearHold();
-      if (!from) return;
+      if (!from || e.pointerType !== 'mouse' || e.pointerId !== from.id) return;
       const dragged = from.moved;
       const pointed = this.localPointerActive;
-      from = null;
-      this.endMousePointer();
+      endGesture();
       // Releasing still delivers a click to whatever lies underneath. Over a
       // turn zone that would turn the page on top of the gesture just made, so
       // it is swallowed here — the same protection the touch recogniser gets
       // from its preventDefault.
       if (dragged || pointed) this.swallowNextClick();
     };
+    // The releases nobody reports: the window loses focus with the button still
+    // down, or the tab is hidden mid-gesture. Capture makes these rare, but not
+    // impossible — browsers are known to drop the release when it happens
+    // outside their own window — and the cost of missing one is a pointer left
+    // on the partner's page with nothing to take it away. No click follows an
+    // abandoned gesture, so none is swallowed.
+    this._mouseGestureAbort = () => { if (from) endGesture(); };
     window.addEventListener('pointermove', this._mousePanMove);
     window.addEventListener('pointerup', this._mousePanUp);
     window.addEventListener('pointercancel', this._mousePanUp);
-  }
-
-  // Ends a mouse pointing gesture, if one is running. Kept apart from the drag
-  // state: the two end on the same events, but a press that pointed and a press
-  // that dragged are not the same gesture and only one of them has a pointer to
-  // take down.
-  endMousePointer() {
-    if (this.localPointerActive) this.endLocalPointer();
+    stage.addEventListener('lostpointercapture', this._mousePanUp);
+    window.addEventListener('blur', this._mouseGestureAbort);
+    document.addEventListener('visibilitychange', this._mouseGestureAbort);
   }
 
   // --- Pinch (ADR 24, second amendment) -----------------------------------
@@ -2525,8 +2561,11 @@ export class ReaderView {
       window.removeEventListener('pointermove', this._mousePanMove);
       window.removeEventListener('pointerup', this._mousePanUp);
       window.removeEventListener('pointercancel', this._mousePanUp);
+      window.removeEventListener('blur', this._mouseGestureAbort);
+      document.removeEventListener('visibilitychange', this._mouseGestureAbort);
       this._mousePanMove = null;
       this._mousePanUp = null;
+      this._mouseGestureAbort = null;
     }
     this.closeHelp(); // also detaches its window pointerdown listener
     clearTimeout(this.hideTimer);

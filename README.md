@@ -61,8 +61,9 @@ grandparents can use it together without anyone's help.
 2. Everyone opens the same book (PDF) in the app and pairs once with a
    six-character code.
 3. Whoever turns a page turns it for everyone.
-4. Press and hold a spot on the page to show the others where you are
-   reading — the marker appears on their devices too.
+4. Press and hold a spot on the page — with a finger or the left mouse
+   button — to show the others where you are reading; the marker appears
+   on their devices too.
 
 ### What you need
 

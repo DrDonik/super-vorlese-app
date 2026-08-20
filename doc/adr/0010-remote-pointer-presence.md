@@ -135,6 +135,15 @@ in principle do, and it is always current: the help is opened by pressing the
 - A mouse press that pointed swallows the click it would otherwise deliver on
   release (`swallowNextClick`), so pointing near the page edge no longer turns
   the page. The drag already did this.
+- **A gesture must end even when its release is never reported**, and this
+  matters more for pointing than for the drag it shares its code with: a drag
+  left hanging is a local annoyance, while a pointer left hanging is left
+  hanging on the partner's page. So the pointer is captured — but only once the
+  press has actually become a gesture, because while a capture is held the
+  browser retargets the *click* to the capturing element as well, which would
+  rob the turn zones of the plain clicks that turn pages. On top of that,
+  losing the window's focus or the tab's visibility mid-gesture ends it, for the
+  browsers that drop a release happening outside their own window.
 - Pointing suppresses the chrome's mouse-reveal band, matching the long press,
   which has always kept the chrome away so the page stays unobstructed.
 - The pen (`pointerType: 'pen'`) is left with the touch path it already has;
