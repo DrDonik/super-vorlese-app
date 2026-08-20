@@ -744,8 +744,12 @@ export class ReaderView {
       this.mouseHoldTimer = setTimeout(() => {
         this.mouseHoldTimer = null;
         const pos = this.pageFraction(canvas, startX, startY);
-        this.beginLocalPointer(pos.x, pos.y);
-        capture();
+        // Only a press that actually placed a pointer is worth capturing for.
+        // Reading alone there is no partner and no pointer (see
+        // beginLocalPointer), and capturing anyway would send the click that
+        // follows to the stage instead of the turn zone underneath it: a reader
+        // who rests the button on a zone for a moment would stop turning pages.
+        if (this.beginLocalPointer(pos.x, pos.y)) capture();
       }, LONG_PRESS_MS);
     });
 
@@ -1071,9 +1075,11 @@ export class ReaderView {
     setTimeout(done, 500); // safety net if animationend never fires
   }
 
+  // Returns whether a pointer was actually placed. The mouse gesture needs to
+  // know: a press that pointed at nothing must stay an ordinary click.
   beginLocalPointer(x, y) {
     const session = this.syncSession;
-    if (!session || !session.roomCode) return; // nothing to point at without a partner
+    if (!session || !session.roomCode) return false; // nothing to point at without a partner
     this.localPointerActive = true;
     this.pendingPointer = null;
     const existing = this.pointerEls.get('local');
@@ -1082,6 +1088,7 @@ export class ReaderView {
     this.pointerEls.set('local', el);
     this.lastPointerSend = Date.now();
     session.sendPointer(x, y).catch(() => {});
+    return true;
   }
 
   moveLocalPointer(x, y) {
