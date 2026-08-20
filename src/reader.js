@@ -753,7 +753,11 @@ export class ReaderView {
     // outside the window entirely — must still be followed and must still end,
     // rather than leaving the page (or the pointer) stuck to the cursor.
     this._mousePanMove = (e) => {
-      if (!from) return;
+      // Only the pointer that began this gesture moves it. On a device with
+      // both, a finger dragging elsewhere — or a stylus merely hovering, which
+      // reports no button held — would otherwise move the page under the mouse
+      // or end the gesture outright; a touch belongs to the recogniser above.
+      if (!from || e.pointerType !== 'mouse' || e.pointerId !== from.id) return;
       // The button was released somewhere we never heard about (a drag ended
       // over browser chrome, say). Drop the gesture instead of resuming it.
       if (!(e.buttons & 1)) { endGesture(); return; }
