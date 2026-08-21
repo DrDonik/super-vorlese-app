@@ -537,6 +537,16 @@ export class LibraryView {
     }
   }
 
+  // For the handful of actions that rearrange the whole shelf rather than change
+  // one book on it: sorting and filtering answer at the front of the shelf, and
+  // an import puts its new books there in every order but A–Z. Reading „nichts
+  // ist passiert" off an unchanged screen-full halfway down would be worse than
+  // the move.
+  scrollToTop() {
+    const grid = this.root.querySelector('.library-grid');
+    if (grid) grid.scrollTop = 0;
+  }
+
   async setSortMode(mode) {
     if (mode === this.sortMode) return;
     this.sortMode = mode;
@@ -545,10 +555,7 @@ export class LibraryView {
       pill.setAttribute('aria-pressed', String(pill.dataset.mode === mode));
     }
     await this.renderGrid();
-    // Show the new top of the shelf: reordering while scrolled halfway down
-    // would otherwise look like nothing happened.
-    const grid = this.root.querySelector('.library-grid');
-    if (grid) grid.scrollTop = 0;
+    this.scrollToTop();
   }
 
   // Turns the shelf into the book picker for „Gemeinsam lesen" and back. What
@@ -559,8 +566,9 @@ export class LibraryView {
   // a household that has tagged its books wants those chips exactly now.
   //
   // The grid is rebuilt rather than patched so the tile and the cards can never
-  // disagree about which mode they are in; its scroll position is carried over,
-  // because the books must not move under the finger that is about to pick one.
+  // disagree about which mode they are in; renderGrid() carries the scroll
+  // position over, so the books do not move under the finger that is about to
+  // pick one.
   async setSelectMode(on) {
     if (this.selectMode === on) return;
     this.selectMode = on;
@@ -568,10 +576,7 @@ export class LibraryView {
     this.root.querySelector('.select-cancel').hidden = !on;
     for (const el of this.root.querySelectorAll('.add-photos, .add-import')) el.hidden = on;
 
-    const grid = this.root.querySelector('.library-grid');
-    const scrollTop = grid ? grid.scrollTop : 0;
     await this.renderGrid();
-    if (grid) grid.scrollTop = scrollTop;
 
     // Focus would otherwise be stranded on <body>: entering the mode replaces
     // the „Gemeinsam lesen" tile the dialog returned focus to, and leaving it
@@ -615,8 +620,7 @@ export class LibraryView {
     if (hadFocus) {
       this.root.querySelector(`.library-filter [data-filter="${CSS.escape(id)}"]`)?.focus();
     }
-    const grid = this.root.querySelector('.library-grid');
-    if (grid) grid.scrollTop = 0;
+    this.scrollToTop();
   }
 
   async renderGrid() {
@@ -904,8 +908,20 @@ export class LibraryView {
 
     // Commit synchronously: replace the grid, then swap in the new URLs and
     // revoke the batch they replace.
+    //
+    // Replacing the children drops the scroll position, so it is carried across
+    // the swap: a rebuild is the shelf redrawing itself, not the user asking to
+    // go anywhere, and being thrown to the top after renaming a book or taking a
+    // tag off one is exactly the surprise rule 7 warns about. Read here rather
+    // than at the top of the method because the awaits above leave the user free
+    // to keep scrolling. Where a rebuild *is* a move — sorting, filtering, an
+    // import that puts new books at the front — the caller asks for the top
+    // itself. A shelf that got shorter simply clamps, so a book that leaves the
+    // active filter takes nothing with it.
+    const scrollTop = grid.scrollTop;
     grid.innerHTML = '';
     grid.appendChild(fragment);
+    grid.scrollTop = scrollTop;
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
@@ -1165,6 +1181,7 @@ export class LibraryView {
       status.textContent = `Import fehlgeschlagen: ${err.message || err}`;
     }
     await this.renderGrid();
+    this.scrollToTop();
     const finalMsg = status.textContent;
     setTimeout(() => {
       if (status.textContent === finalMsg) status.hidden = true;
@@ -1211,6 +1228,7 @@ export class LibraryView {
     }
     status.hidden = true;
     await this.renderGrid();
+    this.scrollToTop();
   }
 
   cleanupThumbUrls() {
