@@ -1414,7 +1414,14 @@ export class ReaderView {
     if (!this.source) return;
     const canvas = this.root.querySelector('.reader-canvas');
     const stage = this.root.querySelector('.reader-stage');
-    if (stage.clientWidth === 0 || stage.clientHeight === 0) return;
+    // getBoundingClientRect statt clientWidth/clientHeight: die sind auf ganze
+    // Pixel gerundet (dieselbe Überlegung wie in fullWidthFactor). Seit die
+    // Seiten exakt 3:4 sind (ADR 28) und der Bildschirm des iPads ebenfalls,
+    // entscheidet ein halber Pixel Rundung darüber, ob die Seite höhen- oder
+    // breitenbegrenzt eingepasst wird — und damit, ob sie randlos sitzt oder
+    // schmale Ränder bekommt.
+    const box = stage.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return;
     // The magnified page is rendered at its magnified size rather than scaled
     // up afterwards, so the print gets genuinely sharper and not merely bigger
     // (issue #117). What sticks out past the stage is clipped there and brought
@@ -1422,7 +1429,7 @@ export class ReaderView {
     const zoom = this.zoomFactor();
     let rendered = false;
     try {
-      await this.source.renderPage(this.currentPage, canvas, stage.clientWidth * zoom, stage.clientHeight * zoom, zoom);
+      await this.source.renderPage(this.currentPage, canvas, box.width * zoom, box.height * zoom, zoom);
       rendered = true;
     } catch (err) {
       if (token !== this.renderToken) return;
