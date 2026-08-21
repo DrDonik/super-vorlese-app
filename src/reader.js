@@ -1827,9 +1827,11 @@ export class ReaderView {
     // The second line is the only place the tap-toggle is spelled out: it
     // reveals nothing on the page, so without it the way to clear the bar again
     // is undiscoverable (issue #176).
+    // „In die Mitte", weil die Ränder etwas anderes tun: links und rechts wird
+    // geblättert, und ganz oben holt die Geste die Leiste nur hervor.
     const tapLabel = this.lastInputWasMouse
-      ? 'Kurz klicken: Leiste ein- und ausblenden'
-      : 'Kurz tippen: Leiste ein- und ausblenden';
+      ? 'Kurz in die Mitte klicken: Leiste ein- und ausblenden'
+      : 'Kurz in die Mitte tippen: Leiste ein- und ausblenden';
     this.addHelpHint('help-hint-center', holdLabel, {
       sub: ['beim gemeinsamen Lesen', tapLabel],
     });
