@@ -490,37 +490,50 @@ export class LibraryView {
   // used to drop everyone at the very top, which is only where they were if they
   // had never scrolled — with two dozen books, the one just read was off screen.
   //
-  // The offset is restored first, then checked against the book we are returning
-  // from: if that card is not fully in view, the offset is stale (its book moved
-  // to the front under „Zuletzt gelesen", or the shelf was re-sorted while the
-  // book was open) and the card itself wins. Centring it rather than nudging it
-  // just inside the edge puts its neighbours on both sides, so the shelf reads
-  // as the same shelf. A book that is gone or filtered away simply leaves the
-  // restored offset standing — better than a jump to nowhere.
+  // The offset is restored first, then handed to revealBook(): if the card of the
+  // book we are returning from is not in view, the offset is stale — its book
+  // moved to the front under „Zuletzt gelesen", or the shelf was re-sorted while
+  // the book was open — and the card wins.
   restoreScroll() {
     const grid = this.root.querySelector('.library-grid');
     if (!grid) return;
     grid.scrollTop = lastScrollTop;
 
     if (!this.revealBookId) return;
-    const card = grid.querySelector(`.book-card[data-book-id="${CSS.escape(this.revealBookId)}"]`);
+    const id = this.revealBookId;
     // Consumed on the first render: every later one follows an action of the
     // user's own (sorting, filtering, editing), and scrolling back to this book
     // then would be the view fighting the hand that moved it.
     this.revealBookId = null;
-    if (!card) return;
+    // Tab continues from the book that was just read instead of starting over at
+    // the top of the page — mount() can only park the focus on the container,
+    // because the shelf does not exist yet when it runs. preventScroll because
+    // revealBook() already decided what is on screen. On a tap this costs
+    // nothing: the app rings :focus-visible only.
+    this.revealBook(id)?.querySelector('.book-open')?.focus({ preventScroll: true });
+  }
+
+  // Follows one book through a rebuild: if the shelf left its card off screen,
+  // the card is brought back, centred so its neighbours stand on both sides and
+  // the shelf reads as the same shelf. A card that is fully visible is left
+  // exactly where it is — the shelf must not shift for a book that never moved.
+  //
+  // Returns the card, so callers can put the focus back on the control they
+  // destroyed by rebuilding. No card means the book is gone or the active filter
+  // no longer holds it, and then nothing scrolls at all: there is nothing to
+  // show, and hunting for it would only lose the place the shelf still has.
+  revealBook(bookId) {
+    const grid = this.root.querySelector('.library-grid');
+    if (!grid || !bookId) return null;
+    const card = grid.querySelector(`.book-card[data-book-id="${CSS.escape(bookId)}"]`);
+    if (!card) return null;
 
     const gridBox = grid.getBoundingClientRect();
     const cardBox = card.getBoundingClientRect();
     if (cardBox.top < gridBox.top || cardBox.bottom > gridBox.bottom) {
       card.scrollIntoView({ block: 'center' });
     }
-    // Tab continues from the book that was just read instead of starting over at
-    // the top of the page — mount() can only park the focus on the container,
-    // because the shelf does not exist yet when it runs. preventScroll because
-    // the scrolling above already decided what is on screen. On a tap this costs
-    // nothing: the app rings :focus-visible only.
-    card.querySelector('.book-open')?.focus({ preventScroll: true });
+    return card;
   }
 
   buildSortBar() {
@@ -892,9 +905,16 @@ export class LibraryView {
         // Changed tags can add or drop a filter chip, and can push this very
         // book out of the active filter, so the shelf has to be rebuilt. A new
         // title only moves the card under A–Z; the other orders keep it where
-        // it is, and leaving it there preserves the scroll position.
+        // it is, and then there is nothing to rebuild at all.
         if (tagsChanged || (titleChanged && !titleFailed && this.sortMode === 'title')) {
           await this.renderGrid();
+          // „Anton" was „Zebra" a moment ago and now sits at the other end of
+          // the shelf: follow it, or renaming a book would look like losing it.
+          // The rebuild also destroyed the pencil this focus came from, so it
+          // goes back on the new card's — the same book, the same control.
+          // Nothing moves when a removed tag took the book out of the active
+          // filter: revealBook() finds no card, and the shelf stays put.
+          this.revealBook(book.id)?.querySelector('.book-edit')?.focus({ preventScroll: true });
         }
 
         // Last, so the shelf behind the message already shows what did survive.
