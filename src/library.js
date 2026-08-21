@@ -95,6 +95,18 @@ const MAX_TAG_LENGTH = 20;
 // so the missing books are always explained and one tap from coming back.
 let activeFilter = null;
 
+// Where the shelf stood when it was last left, in pixels. Same lifetime and the
+// same reasoning as activeFilter above: the view is thrown away and rebuilt
+// whenever a book, the camera or a shared session takes over the screen, so the
+// position has to outlive the instance — but it must not outlive the session,
+// where a remembered offset would explain nothing.
+//
+// Restoring the offset alone is not enough, which is why the view is also handed
+// the book it is returning from: „Zuletzt gelesen" (the default order) moves
+// that book to the front while it is open, so the old offset then points at a
+// shelf that has shifted underneath it. See restoreScroll().
+let lastScrollTop = 0;
+
 function bookTags(book) {
   return Array.isArray(book.tags) ? book.tags : [];
 }
@@ -414,8 +426,9 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
 }
 
 export class LibraryView {
-  constructor(root, { onOpenBook, onStartShared, onAddPhotos, onJoinRoom }) {
+  constructor(root, { onOpenBook, onStartShared, onAddPhotos, onJoinRoom, revealBookId = null }) {
     this.root = root;
+    this.revealBookId = revealBookId;
     this.onOpenBook = onOpenBook;
     this.onStartShared = onStartShared;
     this.onAddPhotos = onAddPhotos;
@@ -470,6 +483,57 @@ export class LibraryView {
     this.buildSortBar();
 
     await this.renderGrid();
+    this.restoreScroll();
+  }
+
+  // Puts the shelf back where it was left (issue #174). Coming back from a book
+  // used to drop everyone at the very top, which is only where they were if they
+  // had never scrolled — with two dozen books, the one just read was off screen.
+  //
+  // The offset is restored first, then handed to revealBook(): if the card of the
+  // book we are returning from is not in view, the offset is stale — its book
+  // moved to the front under „Zuletzt gelesen", or the shelf was re-sorted while
+  // the book was open — and the card wins.
+  restoreScroll() {
+    const grid = this.root.querySelector('.library-grid');
+    if (!grid) return;
+    grid.scrollTop = lastScrollTop;
+
+    if (!this.revealBookId) return;
+    const id = this.revealBookId;
+    // Consumed on the first render: every later one follows an action of the
+    // user's own (sorting, filtering, editing), and scrolling back to this book
+    // then would be the view fighting the hand that moved it.
+    this.revealBookId = null;
+    // Tab continues from the book that was just read instead of starting over at
+    // the top of the page — mount() can only park the focus on the container,
+    // because the shelf does not exist yet when it runs. preventScroll because
+    // revealBook() already decided what is on screen. On a tap this costs
+    // nothing: the app rings :focus-visible only.
+    this.revealBook(id)?.querySelector('.book-open')?.focus({ preventScroll: true });
+  }
+
+  // Follows one book through a rebuild: if the shelf left its card off screen,
+  // the card is brought back, centred so its neighbours stand on both sides and
+  // the shelf reads as the same shelf. A card that is fully visible is left
+  // exactly where it is — the shelf must not shift for a book that never moved.
+  //
+  // Returns the card, so callers can put the focus back on the control they
+  // destroyed by rebuilding. No card means the book is gone or the active filter
+  // no longer holds it, and then nothing scrolls at all: there is nothing to
+  // show, and hunting for it would only lose the place the shelf still has.
+  revealBook(bookId) {
+    const grid = this.root.querySelector('.library-grid');
+    if (!grid || !bookId) return null;
+    const card = grid.querySelector(`.book-card[data-book-id="${CSS.escape(bookId)}"]`);
+    if (!card) return null;
+
+    const gridBox = grid.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    if (cardBox.top < gridBox.top || cardBox.bottom > gridBox.bottom) {
+      card.scrollIntoView({ block: 'center' });
+    }
+    return card;
   }
 
   buildSortBar() {
@@ -486,6 +550,16 @@ export class LibraryView {
     }
   }
 
+  // For the handful of actions that rearrange the whole shelf rather than change
+  // one book on it: sorting and filtering answer at the front of the shelf, and
+  // an import puts its new books there in every order but A–Z. Reading „nichts
+  // ist passiert" off an unchanged screen-full halfway down would be worse than
+  // the move.
+  scrollToTop() {
+    const grid = this.root.querySelector('.library-grid');
+    if (grid) grid.scrollTop = 0;
+  }
+
   async setSortMode(mode) {
     if (mode === this.sortMode) return;
     this.sortMode = mode;
@@ -494,10 +568,7 @@ export class LibraryView {
       pill.setAttribute('aria-pressed', String(pill.dataset.mode === mode));
     }
     await this.renderGrid();
-    // Show the new top of the shelf: reordering while scrolled halfway down
-    // would otherwise look like nothing happened.
-    const grid = this.root.querySelector('.library-grid');
-    if (grid) grid.scrollTop = 0;
+    this.scrollToTop();
   }
 
   // Turns the shelf into the book picker for „Gemeinsam lesen" and back. What
@@ -508,8 +579,9 @@ export class LibraryView {
   // a household that has tagged its books wants those chips exactly now.
   //
   // The grid is rebuilt rather than patched so the tile and the cards can never
-  // disagree about which mode they are in; its scroll position is carried over,
-  // because the books must not move under the finger that is about to pick one.
+  // disagree about which mode they are in; renderGrid() carries the scroll
+  // position over, so the books do not move under the finger that is about to
+  // pick one.
   async setSelectMode(on) {
     if (this.selectMode === on) return;
     this.selectMode = on;
@@ -517,18 +589,20 @@ export class LibraryView {
     this.root.querySelector('.select-cancel').hidden = !on;
     for (const el of this.root.querySelectorAll('.add-photos, .add-import')) el.hidden = on;
 
-    const grid = this.root.querySelector('.library-grid');
-    const scrollTop = grid ? grid.scrollTop : 0;
     await this.renderGrid();
-    if (grid) grid.scrollTop = scrollTop;
 
     // Focus would otherwise be stranded on <body>: entering the mode replaces
     // the „Gemeinsam lesen" tile the dialog returned focus to, and leaving it
     // replaces the card that was just chosen. Programmatic focus does not raise
     // a focus ring after a tap (the app rings :focus-visible only), so this
     // costs a mouse or touch user nothing.
-    if (on) this.root.querySelector('.library-grid .book-open')?.focus();
-    else this.root.querySelector('.connect-card')?.focus();
+    //
+    // preventScroll, or the focus would undo the position renderGrid() just
+    // carried over: both targets are the first tile in the grid, and a browser
+    // scrolls a focused element into view by default — so picking a book from
+    // halfway down the shelf started by throwing the shelf back to the top.
+    if (on) this.root.querySelector('.library-grid .book-open')?.focus({ preventScroll: true });
+    else this.root.querySelector('.connect-card')?.focus({ preventScroll: true });
   }
 
   // Rebuilt on every render rather than once like the sort pills, because the
@@ -564,8 +638,7 @@ export class LibraryView {
     if (hadFocus) {
       this.root.querySelector(`.library-filter [data-filter="${CSS.escape(id)}"]`)?.focus();
     }
-    const grid = this.root.querySelector('.library-grid');
-    if (grid) grid.scrollTop = 0;
+    this.scrollToTop();
   }
 
   async renderGrid() {
@@ -653,6 +726,7 @@ export class LibraryView {
       // the mood strip sit above it and catch their own taps.
       const card = document.createElement('div');
       card.className = 'book-card';
+      card.dataset.bookId = book.id;
       card.innerHTML = `
         <button class="book-open" type="button"></button>
         <div class="book-cover"></div>
@@ -836,9 +910,16 @@ export class LibraryView {
         // Changed tags can add or drop a filter chip, and can push this very
         // book out of the active filter, so the shelf has to be rebuilt. A new
         // title only moves the card under A–Z; the other orders keep it where
-        // it is, and leaving it there preserves the scroll position.
+        // it is, and then there is nothing to rebuild at all.
         if (tagsChanged || (titleChanged && !titleFailed && this.sortMode === 'title')) {
           await this.renderGrid();
+          // „Anton" was „Zebra" a moment ago and now sits at the other end of
+          // the shelf: follow it, or renaming a book would look like losing it.
+          // The rebuild also destroyed the pencil this focus came from, so it
+          // goes back on the new card's — the same book, the same control.
+          // Nothing moves when a removed tag took the book out of the active
+          // filter: revealBook() finds no card, and the shelf stays put.
+          this.revealBook(book.id)?.querySelector('.book-edit')?.focus({ preventScroll: true });
         }
 
         // Last, so the shelf behind the message already shows what did survive.
@@ -852,8 +933,20 @@ export class LibraryView {
 
     // Commit synchronously: replace the grid, then swap in the new URLs and
     // revoke the batch they replace.
+    //
+    // Replacing the children drops the scroll position, so it is carried across
+    // the swap: a rebuild is the shelf redrawing itself, not the user asking to
+    // go anywhere, and being thrown to the top after renaming a book or taking a
+    // tag off one is exactly the surprise rule 7 warns about. Read here rather
+    // than at the top of the method because the awaits above leave the user free
+    // to keep scrolling. Where a rebuild *is* a move — sorting, filtering, an
+    // import that puts new books at the front — the caller asks for the top
+    // itself. A shelf that got shorter simply clamps, so a book that leaves the
+    // active filter takes nothing with it.
+    const scrollTop = grid.scrollTop;
     grid.innerHTML = '';
     grid.appendChild(fragment);
+    grid.scrollTop = scrollTop;
     const oldUrls = this.thumbUrls;
     this.thumbUrls = newUrls;
     for (const url of oldUrls) URL.revokeObjectURL(url);
@@ -1113,6 +1206,7 @@ export class LibraryView {
       status.textContent = `Import fehlgeschlagen: ${err.message || err}`;
     }
     await this.renderGrid();
+    this.scrollToTop();
     const finalMsg = status.textContent;
     setTimeout(() => {
       if (status.textContent === finalMsg) status.hidden = true;
@@ -1159,6 +1253,7 @@ export class LibraryView {
     }
     status.hidden = true;
     await this.renderGrid();
+    this.scrollToTop();
   }
 
   cleanupThumbUrls() {
@@ -1167,6 +1262,10 @@ export class LibraryView {
   }
 
   destroy() {
+    // Runs before the container's innerHTML is replaced (see mount()), so the
+    // grid is still on screen and can still be asked where it stands.
+    const grid = this.root.querySelector('.library-grid');
+    if (grid) lastScrollTop = grid.scrollTop;
     // Invalidate any in-flight renderGrid() run so it bails out instead of
     // creating URLs into a torn-down view after we have cleaned up.
     this.renderId++;
