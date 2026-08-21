@@ -13,7 +13,7 @@ beliebig oft wiederholbar.
 Beispiele:
 
     python3 scripts/retypeset-book.py extract doc/books/downloads/moppi-*-teil-*.pdf
-    python3 scripts/retypeset-book.py build doc/books/work/moppi-und-moehre --preview
+    python3 scripts/retypeset-book.py build doc/books/work/moppi-und-moehre
 """
 
 from __future__ import annotations
