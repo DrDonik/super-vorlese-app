@@ -1,24 +1,5 @@
 :root {
   color-scheme: dark;
-
-  /* Die volle Bildschirmhöhe im installierten iOS-Modus.
-     `apple-mobile-web-app-status-bar-style: black-translucent` (index.html)
-     schiebt das Dokument unter die Statusleiste nach oben, lässt die Layout-
-     Höhe aber auf der sicheren Höhe stehen. Unten bleibt dadurch ein Streifen
-     frei, exakt so hoch wie die Statusleiste — auf dem 13" iPad Pro rund 24 pt.
-     Sichtbar wurde das erst mit den 3:4-Seiten aus ADR 28: der Bildschirm ist
-     dort ebenfalls exakt 3:4, die Seite müsste also randlos sitzen, wird durch
-     die fehlende Höhe aber breitenbegrenzt und bekommt zusätzlich schmale
-     Ränder links und rechts (Issue #177). Hier wird die fehlende Höhe wieder
-     dazugerechnet.
-
-     Zu setzen ist das überall dort, wo eine Box ihre Höhe direkt vom Viewport
-     nimmt: auf `html` und auf jedem `position: fixed`, das den Bildschirm
-     füllt. `body` und `#app` erben sie über die Prozentkette von `html`.
-     Ausserhalb des installierten iOS-Modus — Safari, Desktop, Android — ist der
-     Inset 0 und das calc damit wirkungslos. */
-  --full-height: calc(100% + env(safe-area-inset-top, 0px));
-
   --bg: #111;
   --bg-elev: #1c1c1e;
   --fg: #f5f5f7;
@@ -81,12 +62,6 @@ html, body, #app {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
-}
-
-/* Siehe --full-height. Nur `html` braucht die Höhe explizit; `body` und `#app`
-   erben sie von hier. */
-html {
-  height: var(--full-height);
 }
 
 button {
@@ -265,9 +240,9 @@ button {
 
 .library-grid {
   padding: 16px 32px 32px;
-  /* Die App reicht jetzt bis an den physischen Bildschirmrand und damit unter
-     den Home-Indicator (siehe --full-height). Ohne diesen Zuschlag klebt die
-     unterste Buchreihe darunter. */
+  /* Damit die unterste Buchreihe nicht unter dem Home-Indicator klebt, falls
+     die App bis an den physischen Bildschirmrand reicht. Wo sie das nicht tut,
+     ist der Inset 0 und der Zuschlag wirkungslos. */
   padding-bottom: calc(32px + env(safe-area-inset-bottom, 0px));
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
@@ -469,10 +444,7 @@ button {
 
 .reader {
   position: fixed;
-  /* `bottom: auto` statt `inset: 0`, damit die Höhe gilt und nicht mit dem
-     unteren Anschlag überbestimmt ist — siehe --full-height. */
-  inset: 0 0 auto 0;
-  height: var(--full-height);
+  inset: 0;
   background: #000;
   display: flex;
   flex-direction: column;
@@ -1460,9 +1432,7 @@ button {
 
 .camera {
   position: fixed;
-  /* Siehe .reader */
-  inset: 0 0 auto 0;
-  height: var(--full-height);
+  inset: 0;
   background: #000;
   display: flex;
   flex-direction: column;
@@ -1692,9 +1662,7 @@ button {
 
 .dialog-overlay {
   position: fixed;
-  /* Siehe .reader */
-  inset: 0 0 auto 0;
-  height: var(--full-height);
+  inset: 0;
   z-index: 1000;
   display: flex;
   align-items: center;
@@ -2496,4 +2464,66 @@ button {
   .mood-board-title,
   .mood-grid,
   .mood-instructions { animation: none; }
+}
+
+/* ============ VIEWPORT-DIAGNOSE (Issue #177) ============ */
+/* Nur sichtbar, wenn debug-viewport.js sie einschaltet — fünf Taps auf die
+   Überschrift „Bibliothek". Sonst existiert hier nichts. */
+
+/* Die Signalfarbe auf dem Wurzelelement: iOS malt damit die Fläche, die die App
+   selbst nicht erreicht. Ein magentafarbener Streifen im Screenshot liegt also
+   ausserhalb der App, ein dunkler innerhalb. */
+html.debug-viewport-on {
+  background: #f0f;
+}
+
+.debug-viewport {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 9999;
+  max-width: min(520px, calc(100vw - 32px));
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.88);
+  color: #f5f5f7;
+  /* Tabellarisch und monospaced: die Zahlen werden abfotografiert und
+     abgelesen, nicht angeklickt. */
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  /* Die Einblendung misst den Viewport — sie darf ihn nicht selbst verändern,
+     also fängt sie keine Taps ab ausser auf ihrem eigenen Knopf. */
+  pointer-events: none;
+}
+
+.debug-viewport-title {
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.debug-viewport-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.debug-viewport-row span {
+  color: var(--fg-dim);
+}
+
+.debug-viewport-off {
+  margin-top: 12px;
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+  pointer-events: auto;
 }

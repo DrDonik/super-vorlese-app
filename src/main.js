@@ -8,6 +8,7 @@ import { importBundle } from './bundle.js';
 import { getFirebase } from './sync.js';
 import { receiveBook } from './transfer.js';
 import { showAlert, showProgress } from './dialog.js';
+import { restoreDebugViewport } from './debug-viewport.js';
 
 // An installed PWA on iOS is frozen (not reloaded) when reopened, so it never
 // checks for a new version on its own — only a force-quit picks one up. Check
@@ -41,6 +42,10 @@ function mount(view) {
   // yield to whatever has focus (see handleKey), so focusing a button here
   // would stop Space and the arrow keys from turning the page.
   app.focus({ preventScroll: true });
+  // Die Diagnose-Einblendung hängt an <body> und überlebt den innerHTML-Tausch
+  // oben nicht von selbst, wenn sie noch gar nicht existiert; siehe
+  // debug-viewport.js.
+  restoreDebugViewport();
   return view.render();
 }
 
