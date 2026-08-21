@@ -184,6 +184,9 @@ export class ReaderView {
     // pause while it is up and so any tap or key can dismiss it.
     this.helpOpen = false;
     this.helpOverlay = null;
+    // Whether the chrome was pinned open by the help or the page-jump field
+    // when the gesture now in progress began — see tapChrome.
+    this.chromePinnedAtPress = false;
     this.boundKeys = this.handleKey.bind(this);
     this.boundResize = this.scheduleRender.bind(this);
     // Page loupe (issue #117): the factor the page is magnified by (see
@@ -348,6 +351,19 @@ export class ReaderView {
     reader.addEventListener('pointerdown', (e) => {
       this.lastInputWasMouse = e.pointerType === 'mouse';
     }, true);
+    // What tapChrome needs and can no longer read for itself: whether the
+    // chrome was standing on its own when the gesture began. Both the help and
+    // the page-jump field close on this very pointerdown — the help from its own
+    // window listener, the field from the blur the press causes — so by the time
+    // the tap is recognised, at touchend or pointerup, the state that decides
+    // the tap is already gone. On window in the capture phase, and installed
+    // here as the reader opens: the help's dismiss listener sits on the same
+    // target in the same phase but is only ever added later, so this one runs
+    // first and still sees the help open.
+    this._chromePressState = () => {
+      this.chromePinnedAtPress = this.helpOpen || this.pageJumpOpen;
+    };
+    window.addEventListener('pointerdown', this._chromePressState, true);
     reader.addEventListener('touchstart', (e) => {
       if (e.target.closest('button')) return;
       // The stage runs its own gesture recogniser (tap vs. long-press-to-point
@@ -468,8 +484,10 @@ export class ReaderView {
 
   // Unified touch recogniser for the reading stage. It distinguishes three
   // gestures so they never collide:
-  //   • quick tap            → reveal the chrome (but not over a page-turn zone,
-  //                            which turns the page via its own click handler)
+  //   • quick tap            → show the chrome, or take it away again if it is
+  //                            already up (see tapChrome) — but not over a
+  //                            page-turn zone, which turns the page via its own
+  //                            click handler
   //   • long press (≥700ms)  → "point at the page": four chevrons converge on
   //                            the finger and follow it until release; the
   //                            chrome stays hidden so pointing is unobstructed
@@ -659,7 +677,9 @@ export class ReaderView {
         if (dx < 0) this.goNext();
         else this.goPrev();
       } else if (dt < TAP_MAX_MS && absX < TAP_MAX_PX && absY < TAP_MAX_PX && !onZone) {
-        this.showChrome();
+        // Where the finger went down, not where it came up: what the tap was
+        // aimed at is what the top-edge exception in tapChrome is about.
+        this.tapChrome(startY);
       }
       startX = startY = null;
     }, { passive: false });
@@ -735,7 +755,19 @@ export class ReaderView {
 
     stage.addEventListener('pointerdown', (e) => {
       if (e.pointerType !== 'mouse' || e.button !== 0) return;
-      from = { x: e.clientX, y: e.clientY, panX: this.panX, panY: this.panY, moved: false, id: e.pointerId };
+      from = {
+        x: e.clientX,
+        y: e.clientY,
+        panX: this.panX,
+        panY: this.panY,
+        moved: false,
+        id: e.pointerId,
+        // A click over a zone turns the page (the zone's own handler) and must
+        // not also mean the chrome. With navigation off the zones let the press
+        // through to the stage, so this is false there and a click in that half
+        // of the page reaches the chrome — as the same tap does (ADR 14).
+        onZone: !!e.target.closest('.reader-zone'),
+      };
       // Where the press began, held by the timer itself rather than read back
       // off `from`, which a drag may have dropped by the time it fires.
       const startX = e.clientX;
@@ -806,12 +838,23 @@ export class ReaderView {
       if (!from || e.pointerType !== 'mouse' || e.pointerId !== from.id) return;
       const dragged = from.moved;
       const pointed = this.localPointerActive;
+      // A press that became neither gesture is a plain click, and on the page
+      // itself it means the chrome, exactly as a tap does on a touchscreen
+      // (rule 1). What makes it a click rather than a hold is the pointing
+      // timer still being pending: a button held past those 700 ms that placed
+      // no pointer — reading alone there is nobody to point for — was an
+      // attempt to point, not a click. And only a real release counts; a
+      // cancelled or stolen gesture ends here too, and ends as nothing.
+      const clicked = e.type === 'pointerup' && !dragged && !pointed
+        && !from.onZone && !!this.mouseHoldTimer;
+      const pressY = from.y;
       endGesture();
       // Releasing still delivers a click to whatever lies underneath. Over a
       // turn zone that would turn the page on top of the gesture just made, so
       // it is swallowed here — the same protection the touch recogniser gets
       // from its preventDefault.
       if (dragged || pointed) this.swallowNextClick();
+      else if (clicked) this.tapChrome(pressY);
     };
     // The releases nobody reports: the window loses focus with the button still
     // down, or the tab is hidden mid-gesture. Capture makes these rare, but not
@@ -1673,6 +1716,40 @@ export class ReaderView {
     if (this.syncSession) this.syncSession.sendPage(this.currentPage).catch(() => {});
   }
 
+  // A tap or click on the page, away from the turn zones: the chrome comes up,
+  // and the same gesture takes it away again (issue #176). Before, every tap
+  // only pushed the four-second auto-hide out again, so a page could not be
+  // cleared at all while it was being touched — the way back was to wait and
+  // not touch the screen (rules 6 and 7).
+  //
+  // `y` is where the press landed. Two exceptions, both about a gesture not
+  // undoing what it just did:
+  //   • Near the top edge the tap only ever shows. That band is where the bar
+  //     itself sits, so a finger reaching for one of its controls and missing
+  //     would otherwise push away the very thing it was aiming at (rule 5). It
+  //     is the band a mouse already reveals the chrome in by hovering, which
+  //     makes the edge mean the same thing on both kinds of device (rule 1).
+  //   • A gesture that found the help or the page-jump field open has already
+  //     closed it, and closing left the chrome behind on purpose. Hiding it in
+  //     the same beat would be two changes for one tap.
+  tapChrome(y) {
+    const hidden = this.readerEl?.classList.contains('chrome-hidden');
+    if (!hidden && !this.chromePinnedAtPress && y > CHROME_REVEAL_BAND_PX) {
+      this.hideChrome();
+      return;
+    }
+    this.showChrome();
+  }
+
+  // The counterpart to showChrome, and only ever reached through tapChrome —
+  // which is where the cases that must not conceal the bar are decided. The
+  // pending auto-hide goes with it: the bar is already away, so there is
+  // nothing left for that timer to do.
+  hideChrome() {
+    clearTimeout(this.hideTimer);
+    this.readerEl?.classList.add('chrome-hidden');
+  }
+
   showChrome() {
     const reader = this.readerEl;
     if (!reader) return;
@@ -1747,8 +1824,16 @@ export class ReaderView {
     const holdLabel = this.lastInputWasMouse
       ? 'Linke Maustaste gedrückt halten: auf die Seite zeigen'
       : 'Finger gedrückt halten: auf die Seite zeigen';
+    // The second line is the only place the tap-toggle is spelled out: it
+    // reveals nothing on the page, so without it the way to clear the bar again
+    // is undiscoverable (issue #176).
+    // „In die Mitte", weil die Ränder etwas anderes tun: links und rechts wird
+    // geblättert, und ganz oben holt die Geste die Leiste nur hervor.
+    const tapLabel = this.lastInputWasMouse
+      ? 'Kurz in die Mitte klicken: Leiste ein- und ausblenden'
+      : 'Kurz in die Mitte tippen: Leiste ein- und ausblenden';
     this.addHelpHint('help-hint-center', holdLabel, {
-      sub: 'beim gemeinsamen Lesen',
+      sub: ['beim gemeinsamen Lesen', tapLabel],
     });
     // Placed in CSS above the loupe rather than through addChromeHelpHints:
     // that one hangs its bubbles below their control, which for a button in the
@@ -1770,7 +1855,8 @@ export class ReaderView {
   }
 
   // One callout bubble. `glyph` stacks a large chevron above the text (the
-  // page-turn zones); `sub` adds a smaller second line (the pointing hint).
+  // page-turn zones); `sub` adds smaller lines below it — one string or several
+  // (the pointing hint, which also names what a plain tap does).
   addHelpHint(className, text, { glyph, sub } = {}) {
     const hint = document.createElement('div');
     hint.className = `help-hint ${className}`;
@@ -1784,10 +1870,11 @@ export class ReaderView {
     label.className = 'help-hint-text';
     label.textContent = text;
     hint.appendChild(label);
-    if (sub) {
+    for (const line of [sub].flat()) {
+      if (!line) continue;
       const s = document.createElement('span');
       s.className = 'help-hint-sub';
-      s.textContent = sub;
+      s.textContent = line;
       hint.appendChild(s);
     }
     this.helpOverlay.appendChild(hint);
@@ -2592,6 +2679,10 @@ export class ReaderView {
       this._mousePanMove = null;
       this._mousePanUp = null;
       this._mouseGestureAbort = null;
+    }
+    if (this._chromePressState) {
+      window.removeEventListener('pointerdown', this._chromePressState, true);
+      this._chromePressState = null;
     }
     this.closeHelp(); // also detaches its window pointerdown listener
     clearTimeout(this.hideTimer);
