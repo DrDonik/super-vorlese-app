@@ -2466,6 +2466,50 @@ button {
   .mood-instructions { animation: none; }
 }
 
+/* ============ VOLLBILD IM INSTALLIERTEN MODUS (Issue #177) ============ */
+
+/* Im installierten iOS-Modus ist der Layout-Viewport kürzer als der Bildschirm.
+   Auf dem 13" iPad Pro gemessen (Diagnose, siehe debug-viewport.js):
+
+     screen             1032 × 1376   physischer Bildschirm
+     window.inner       1032 × 1344   was die App bekommt
+     safe-area-inset-top      32px    genau die Differenz
+
+   Die Seiten sind seit ADR 28 exakt 3:4, der Bildschirm ebenfalls — die Seite
+   müsste also randlos sitzen. Mit 1344 statt 1376 wird sie stattdessen
+   höhenbegrenzt auf 1008 × 1344 eingepasst und bekommt dadurch nicht nur unten
+   einen Streifen, sondern auch 12 pt Rand links und rechts.
+
+   `100vh` ist hier 1376 und trifft den Bildschirm damit exakt; `100%`, `100dvh`
+   und `100svh` ergeben alle 1344. Die Zahl steht deshalb nirgends im Code — sie
+   kommt aus der Einheit.
+
+   Bewusst nicht `calc(100% + env(safe-area-inset-top))`: daran ist ein früherer
+   Versuch gescheitert (#178). Bei `position: fixed` löst `100%` bereits gegen
+   1376 auf, der Zuschlag kam also obendrauf, und die Seite stand oben über und
+   wurde unten abgeschnitten.
+
+   Nur im Standalone-Modus: In Safari gibt es den Streifen nicht, dort ist der
+   Viewport ohnehin der sichtbare Bereich — und `100vh` würde die Seite unter die
+   Toolbar schieben. Ausserhalb dieser Abfrage bleibt alles, wie es war. */
+@media (display-mode: standalone) {
+  /* `body` und `#app` erben die Höhe über die Prozentkette. */
+  html {
+    height: 100vh;
+  }
+
+  /* `bottom: auto`, damit die Höhe gilt und nicht mit dem unteren Anschlag
+     überbestimmt ist. Die Chrome-Leisten dieser drei Flächen rechnen bereits
+     mit `env(safe-area-inset-top)` und `env(safe-area-inset-bottom)`, sitzen
+     also weiterhin frei von Statusleiste und Home-Indicator. */
+  .reader,
+  .camera,
+  .dialog-overlay {
+    inset: 0 0 auto 0;
+    height: 100vh;
+  }
+}
+
 /* ============ VIEWPORT-DIAGNOSE (Issue #177) ============ */
 /* Nur sichtbar, wenn debug-viewport.js sie einschaltet — fünf Taps auf die
    Überschrift „Bibliothek". Sonst existiert hier nichts. */
