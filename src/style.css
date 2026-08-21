@@ -398,7 +398,7 @@ button {
   width: 44px;
   height: 44px;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.6);
+  background: var(--surface-glass);
   color: #fff;
   border: none;
   padding: 12px;
@@ -421,11 +421,14 @@ button {
   display: block;
 }
 
-/* Neutral lighten on hover: this button opens a dialog, it destroys nothing.
-   Keeps yellow, blue and red reserved for their single jobs. */
+/* Darken on hover, like every other control layered over a picture: this button
+   opens a dialog, it destroys nothing, so it keeps yellow, blue and red
+   reserved for their single jobs. Lightening instead (issue #173) turned the
+   white icon white-on-white over the usual pale picture-book cover — over an
+   arbitrary image only the dark scrim carries the icon, and more of it can
+   only help. */
 .book-edit:hover {
-  background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  background: var(--surface-glass-hover);
 }
 
 /* Held down while its dialog is open. Dims the icon rather than the button:
