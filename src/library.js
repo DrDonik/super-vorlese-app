@@ -596,8 +596,13 @@ export class LibraryView {
     // replaces the card that was just chosen. Programmatic focus does not raise
     // a focus ring after a tap (the app rings :focus-visible only), so this
     // costs a mouse or touch user nothing.
-    if (on) this.root.querySelector('.library-grid .book-open')?.focus();
-    else this.root.querySelector('.connect-card')?.focus();
+    //
+    // preventScroll, or the focus would undo the position renderGrid() just
+    // carried over: both targets are the first tile in the grid, and a browser
+    // scrolls a focused element into view by default — so picking a book from
+    // halfway down the shelf started by throwing the shelf back to the top.
+    if (on) this.root.querySelector('.library-grid .book-open')?.focus({ preventScroll: true });
+    else this.root.querySelector('.connect-card')?.focus({ preventScroll: true });
   }
 
   // Rebuilt on every render rather than once like the sort pills, because the
