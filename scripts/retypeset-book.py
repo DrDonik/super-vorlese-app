@@ -789,7 +789,7 @@ def build(work_dir, preview=False):
     print(f"„{recipe['meta']['title']}“ — {page_count} Seiten")
     print(f"  -> {pdf_path}")
     print("\nIn die Bibliothek übernehmen:")
-    print(f'  cp "{pdf_path}" "{LIBRARY}/"')
+    print(f'  mv "{pdf_path}" "{LIBRARY}/retypeset/"')
 
 
 def sort_parts(paths):
