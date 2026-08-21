@@ -6,6 +6,7 @@ import {
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail } from './pdf.js';
 import { importBundle } from './bundle.js';
+import { attachDebugViewportTrigger } from './debug-viewport.js';
 import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { showAlert, showConfirm, openDialog } from './dialog.js';
@@ -451,6 +452,11 @@ export class LibraryView {
         <div class="library-grid"></div>
       </div>
     `;
+
+    // Fünf Taps auf die Überschrift blenden die Viewport-Diagnose ein; siehe
+    // debug-viewport.js. Die Überschrift trägt sonst keine Funktion, und eine
+    // installierte Web-App hat keine Adressleiste für einen Schalter.
+    attachDebugViewportTrigger(this.root.querySelector('.library-header h1'));
 
     const importInput = this.root.querySelector('.import-input');
     importInput.addEventListener('change', (e) => this.handleImport(e.target.files));
