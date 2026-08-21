@@ -54,12 +54,12 @@ export async function hashBook({ type, fileBlob, pages }) {
   return sha256Hex(await fileBlob.arrayBuffer());
 }
 
-export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash }) {
+export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash, tags }) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
   }
-  await set(metaKey(id), {
+  const meta = {
     id,
     type: 'pdf',
     title,
@@ -67,7 +67,11 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, cont
     addedAt: Date.now(),
     lastPage: 1,
     contentHash: contentHash ?? await hashBook({ type: 'pdf', fileBlob }),
-  });
+  };
+  // Only written when there is something to write, so a book whose title page
+  // yields no age recommendation keeps the shape every book has always had.
+  if (tags?.length) meta.tags = tags;
+  await set(metaKey(id), meta);
 }
 
 export async function savePhotoBook({ id, title, pages, thumbBlob, contentHash }) {
@@ -140,6 +144,24 @@ export async function getPhotoPages(id, count) {
   const pageKeys = [];
   for (let i = 1; i <= count; i++) pageKeys.push(pageKey(id, i));
   return getMany(pageKeys);
+}
+
+// Replaces a book's cover picture and nothing else. The book keeps its id, so
+// everything else keyed by it stays with it: the saved room code, the
+// shared-reading keepsake, the title, the tags and the reading position. This is
+// what lets a re-import hand an old book the cover this version can read without
+// the book becoming a different book (ADR 29).
+//
+// A book deleted while the picture was being derived would otherwise keep a
+// thumbnail nobody can reach any more, so the write is taken back. False then,
+// like the other callers that must not act on a book that is gone.
+export async function updateBookThumb(id, thumbBlob) {
+  await set(thumbKey(id), thumbBlob);
+  if (!(await get(metaKey(id)))) {
+    await del(thumbKey(id));
+    return false;
+  }
+  return true;
 }
 
 export async function getThumb(id) {
@@ -274,6 +296,19 @@ export async function getCompletionsMany(ids) {
 // showing a freshly renamed card for something that no longer exists.
 export async function updateBookTitle(id, title) {
   return updateMeta(id, (meta) => ({ ...meta, title }));
+}
+
+// Adds one tag to a book from within the transaction that reads its metadata, so
+// a tag set in „Buch bearbeiten" while a slow import is still deriving this one
+// cannot be written back over (the reason updateMeta exists at all). Whether two
+// tags are the same is the shelf's business, not storage's — the library folds
+// capitalisation its own way and passes that judgement in as `isSame`.
+export async function addBookTag(id, tag, isSame) {
+  return updateMeta(id, (meta) => {
+    const tags = Array.isArray(meta.tags) ? meta.tags : [];
+    if (tags.some((existing) => isSame(existing, tag))) return meta;
+    return { ...meta, tags: [...tags, tag] };
+  });
 }
 
 export async function updateBookTags(id, tags) {

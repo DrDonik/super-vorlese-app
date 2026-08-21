@@ -3,7 +3,7 @@ import {
   getMeta, getPhotoPages, getBookFile, getThumb,
   savePhotoBook, saveBook, uid, hashBook, findAndBumpExistingBook,
 } from './storage.js';
-import { loadPdf } from './pdf.js';
+import { loadPdf, readTitlePage } from './pdf.js';
 
 const APP_TAG = 'super-vorlese';
 const BUNDLE_VERSION = 1;
@@ -132,16 +132,31 @@ export async function importBundle(file, { dedupe = false } = {}) {
     const pdfBytes = entries['book.pdf'];
     if (!pdfBytes) throw new Error('PDF fehlt im Bundle.');
     const fileBlob = new Blob([pdfBytes], { type: 'application/pdf' });
-    let actualPageCount;
+    let pdf;
     try {
-      const pdf = await loadPdf(fileBlob);
-      actualPageCount = pdf.numPages;
-      pdf.destroy?.();
+      pdf = await loadPdf(fileBlob);
     } catch {
       throw new Error('PDF im Bundle ist beschädigt.');
     }
+    let actualPageCount;
+    let cover = null;
+    let ageTag = null;
+    try {
+      actualPageCount = pdf.numPages;
+      // However a book reaches the shelf, it arrives with the same cover and
+      // the same tags read off its title page (ADR 29) — this is the path a
+      // book takes when it comes over a sync session or as a .vorlese file, so
+      // it reads the title page just like the drag-and-drop import does.
+      ({ cover, ageTag } = await readTitlePage(pdf));
+    } finally {
+      pdf.destroy?.();
+    }
     const contentHash = await hashBook({ type: 'pdf', fileBlob });
     if (dedupe) {
+      // A book already on this shelf is left exactly as it stands — its cover
+      // does not change under the owner's hands and no tag appears on it. The
+      // one place that does refresh an existing book is the library's own PDF
+      // import, where re-adding the file is the deliberate act (ADR 29).
       const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount: actualPageCount });
       if (existing) return { id: existing.id, title: existing.title };
     }
@@ -149,9 +164,13 @@ export async function importBundle(file, { dedupe = false } = {}) {
       id,
       title,
       fileBlob,
-      thumbBlob,
+      // The bundle's own thumb.jpg is the sender's full-page render of page 1 —
+      // the very thing the cover replaces, and a perfectly good fallback when
+      // there is no cover to be found.
+      thumbBlob: cover ?? thumbBlob,
       pageCount: actualPageCount,
       contentHash,
+      tags: ageTag ? [ageTag] : undefined,
     });
   } else {
     throw new Error(`Unbekannter Buch-Typ: ${manifest.type}`);
