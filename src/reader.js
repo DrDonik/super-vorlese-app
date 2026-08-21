@@ -820,6 +820,10 @@ export class ReaderView {
     // on the partner's page with nothing to take it away. No click follows an
     // abandoned gesture, so none is swallowed.
     this._mouseGestureAbort = () => { if (from) endGesture(); };
+    // Reachable from destroy(), which tears the reader down from outside this
+    // closure: the pointer it may still hold is released and the drag dropped
+    // there rather than left to the garbage collector.
+    this._endMouseGesture = endGesture;
     window.addEventListener('pointermove', this._mousePanMove);
     window.addEventListener('pointerup', this._mousePanUp);
     window.addEventListener('pointercancel', this._mousePanUp);
@@ -2568,6 +2572,10 @@ export class ReaderView {
     letSleep();
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
+    // Before the listeners go: a gesture still running ends properly rather
+    // than being abandoned half-torn-down.
+    this._endMouseGesture?.();
+    this._endMouseGesture = null;
     if (this._mousePanMove) {
       window.removeEventListener('pointermove', this._mousePanMove);
       window.removeEventListener('pointerup', this._mousePanUp);
