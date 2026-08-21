@@ -298,6 +298,19 @@ export async function updateBookTitle(id, title) {
   return updateMeta(id, (meta) => ({ ...meta, title }));
 }
 
+// Adds one tag to a book from within the transaction that reads its metadata, so
+// a tag set in „Buch bearbeiten" while a slow import is still deriving this one
+// cannot be written back over (the reason updateMeta exists at all). Whether two
+// tags are the same is the shelf's business, not storage's — the library folds
+// capitalisation its own way and passes that judgement in as `isSame`.
+export async function addBookTag(id, tag, isSame) {
+  return updateMeta(id, (meta) => {
+    const tags = Array.isArray(meta.tags) ? meta.tags : [];
+    if (tags.some((existing) => isSame(existing, tag))) return meta;
+    return { ...meta, tags: [...tags, tag] };
+  });
+}
+
 export async function updateBookTags(id, tags) {
   return updateMeta(id, (meta) => ({ ...meta, tags }));
 }

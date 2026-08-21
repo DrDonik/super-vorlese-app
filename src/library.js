@@ -1,6 +1,6 @@
 import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
-  getThumbs, uid, findAndBumpExistingBook, hashBook,
+  addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
@@ -192,14 +192,14 @@ function normalizeTag(raw) {
 // shelf nobody drops PDFs onto therefore never rearranges itself.
 //
 // The book keeps its id, so the saved room code and the shared-reading keepsake,
-// both keyed by it, stay with it. Tags are joined, never replaced: what the
-// reader put on this book is theirs, and nothing here takes it off again.
-async function refreshFromTitlePage(book, { cover, ageTag }) {
-  if (cover) await updateBookThumb(book.id, cover);
-  if (!ageTag) return;
-  const tags = bookTags(book);
-  if (tags.some((tag) => sameTag(tag, ageTag))) return;
-  await updateBookTags(book.id, [...tags, ageTag]);
+// both keyed by it, stay with it. Only that id is passed in: reading a book was
+// found by is a duplicate-detection snapshot, taken before the title page was
+// read, and appending to *those* tags would write them back over a tag set in
+// the meantime. addBookTag joins from the metadata as it stands instead — what
+// the reader put on this book is theirs, and nothing here takes it off again.
+async function refreshFromTitlePage(bookId, { cover, ageTag }) {
+  if (cover) await updateBookThumb(bookId, cover);
+  if (ageTag) await addBookTag(bookId, ageTag, sameTag);
 }
 
 let tagLabelSeq = 0;
@@ -1252,7 +1252,7 @@ export class LibraryView {
           const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount });
           const { cover, ageTag } = await readTitlePage(pdf);
           if (existing) {
-            await refreshFromTitlePage(existing, { cover, ageTag });
+            await refreshFromTitlePage(existing.id, { cover, ageTag });
             continue;
           }
           await saveBook({
