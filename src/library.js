@@ -1,10 +1,10 @@
 import {
-  listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, getThumbs, uid,
-  findAndBumpExistingBook, hashBook,
+  listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
+  getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
-import { loadPdf, renderThumbnail } from './pdf.js';
+import { loadPdf, renderThumbnail, readTitlePage } from './pdf.js';
 import { importBundle } from './bundle.js';
 import { attachDebugViewportTrigger } from './debug-viewport.js';
 import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
@@ -152,9 +152,11 @@ function collectTags(books) {
 // no chip can filter the shelf down to an empty grid.
 //
 // Finished means the book has a shared-reading completion (ADR 11/12), the fact
-// the app already records when two readers end a book together. Nothing is ever
-// auto-tagged: closing a book usually means "that's enough for tonight", so a
-// tag written on that event would be wrong more often than right.
+// the app already records when two readers end a book together. No tag is ever
+// written from how a book is used: closing one usually means "that's enough for
+// tonight", so a tag put on that event would be wrong more often than right.
+// The age recommendation an import sets (ADR 29) is the other kind of thing —
+// it is printed on the title page, read off it, and never inferred.
 function buildFilterChips(books, doneFlags) {
   const chips = [];
   const doneCount = doneFlags.filter(Boolean).length;
@@ -180,6 +182,24 @@ function matchesFilter(book, isDone, filter) {
 // row out of shape. Returns '' for anything that isn't a usable tag.
 function normalizeTag(raw) {
   return String(raw).replace(/\s+/g, ' ').trim().slice(0, MAX_TAG_LENGTH).trim();
+}
+
+// Hands a book already on the shelf what this version can read off its title
+// page (ADR 29): the publisher's cover picture, and the age recommendation as a
+// tag. Only the library's own PDF import comes here — re-adding the file is a
+// deliberate act, so a cover that changes is the point of it rather than a
+// surprise. A book arriving over a sync session never takes this path, and a
+// shelf nobody drops PDFs onto therefore never rearranges itself.
+//
+// The book keeps its id, so the saved room code and the shared-reading keepsake,
+// both keyed by it, stay with it. Tags are joined, never replaced: what the
+// reader put on this book is theirs, and nothing here takes it off again.
+async function refreshFromTitlePage(book, { cover, ageTag }) {
+  if (cover) await updateBookThumb(book.id, cover);
+  if (!ageTag) return;
+  const tags = bookTags(book);
+  if (tags.some((tag) => sameTag(tag, ageTag))) return;
+  await updateBookTags(book.id, [...tags, ageTag]);
 }
 
 let tagLabelSeq = 0;
@@ -1229,17 +1249,22 @@ export class LibraryView {
           // Re-importing a book the user already has resurfaces the existing copy
           // (moved to the front) rather than creating a confusing duplicate.
           const contentHash = await hashBook({ type: 'pdf', fileBlob: file });
-          if (await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount })) {
+          const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount });
+          const { cover, ageTag } = await readTitlePage(pdf);
+          if (existing) {
+            await refreshFromTitlePage(existing, { cover, ageTag });
             continue;
           }
-          const thumbBlob = await renderThumbnail(pdf, 1, 480);
           await saveBook({
             id: uid(),
             title: deriveTitle(file.name),
             fileBlob: file,
-            thumbBlob,
+            // No cover to be made out means this is not a book whose title page
+            // we know, and the whole first page stands in for it as it always did.
+            thumbBlob: cover ?? await renderThumbnail(pdf, 1, 480),
             pageCount,
             contentHash,
+            tags: ageTag ? [ageTag] : undefined,
           });
         } finally {
           // Release PDF.js document/worker resources on every path (duplicate,
