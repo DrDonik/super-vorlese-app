@@ -192,14 +192,17 @@ export class CameraView {
     this.doneBtn.textContent = 'Speichere…';
     try {
       const thumbBlob = await renderImageThumbnail(pages[0], 480, 0.8);
+      const id = uid();
       await savePhotoBook({
-        id: uid(),
+        id,
         title,
         pages,
         thumbBlob,
       });
       this.stopCamera();
-      this.onSaved();
+      // The library scrolls the new book into view, so the pages that were just
+      // photographed are visible as a book instead of somewhere on the shelf.
+      this.onSaved(id);
     } catch (err) {
       console.error('Speichern fehlgeschlagen', err);
       await showAlert({ message: 'Das Buch konnte nicht gespeichert werden.' });

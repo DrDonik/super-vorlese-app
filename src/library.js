@@ -95,6 +95,18 @@ const MAX_TAG_LENGTH = 20;
 // so the missing books are always explained and one tap from coming back.
 let activeFilter = null;
 
+// Where the shelf stood when it was last left, in pixels. Same lifetime and the
+// same reasoning as activeFilter above: the view is thrown away and rebuilt
+// whenever a book, the camera or a shared session takes over the screen, so the
+// position has to outlive the instance — but it must not outlive the session,
+// where a remembered offset would explain nothing.
+//
+// Restoring the offset alone is not enough, which is why the view is also handed
+// the book it is returning from: „Zuletzt gelesen" (the default order) moves
+// that book to the front while it is open, so the old offset then points at a
+// shelf that has shifted underneath it. See restoreScroll().
+let lastScrollTop = 0;
+
 function bookTags(book) {
   return Array.isArray(book.tags) ? book.tags : [];
 }
@@ -414,8 +426,9 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
 }
 
 export class LibraryView {
-  constructor(root, { onOpenBook, onStartShared, onAddPhotos, onJoinRoom }) {
+  constructor(root, { onOpenBook, onStartShared, onAddPhotos, onJoinRoom, revealBookId = null }) {
     this.root = root;
+    this.revealBookId = revealBookId;
     this.onOpenBook = onOpenBook;
     this.onStartShared = onStartShared;
     this.onAddPhotos = onAddPhotos;
@@ -470,6 +483,44 @@ export class LibraryView {
     this.buildSortBar();
 
     await this.renderGrid();
+    this.restoreScroll();
+  }
+
+  // Puts the shelf back where it was left (issue #174). Coming back from a book
+  // used to drop everyone at the very top, which is only where they were if they
+  // had never scrolled — with two dozen books, the one just read was off screen.
+  //
+  // The offset is restored first, then checked against the book we are returning
+  // from: if that card is not fully in view, the offset is stale (its book moved
+  // to the front under „Zuletzt gelesen", or the shelf was re-sorted while the
+  // book was open) and the card itself wins. Centring it rather than nudging it
+  // just inside the edge puts its neighbours on both sides, so the shelf reads
+  // as the same shelf. A book that is gone or filtered away simply leaves the
+  // restored offset standing — better than a jump to nowhere.
+  restoreScroll() {
+    const grid = this.root.querySelector('.library-grid');
+    if (!grid) return;
+    grid.scrollTop = lastScrollTop;
+
+    if (!this.revealBookId) return;
+    const card = grid.querySelector(`.book-card[data-book-id="${CSS.escape(this.revealBookId)}"]`);
+    // Consumed on the first render: every later one follows an action of the
+    // user's own (sorting, filtering, editing), and scrolling back to this book
+    // then would be the view fighting the hand that moved it.
+    this.revealBookId = null;
+    if (!card) return;
+
+    const gridBox = grid.getBoundingClientRect();
+    const cardBox = card.getBoundingClientRect();
+    if (cardBox.top < gridBox.top || cardBox.bottom > gridBox.bottom) {
+      card.scrollIntoView({ block: 'center' });
+    }
+    // Tab continues from the book that was just read instead of starting over at
+    // the top of the page — mount() can only park the focus on the container,
+    // because the shelf does not exist yet when it runs. preventScroll because
+    // the scrolling above already decided what is on screen. On a tap this costs
+    // nothing: the app rings :focus-visible only.
+    card.querySelector('.book-open')?.focus({ preventScroll: true });
   }
 
   buildSortBar() {
@@ -653,6 +704,7 @@ export class LibraryView {
       // the mood strip sit above it and catch their own taps.
       const card = document.createElement('div');
       card.className = 'book-card';
+      card.dataset.bookId = book.id;
       card.innerHTML = `
         <button class="book-open" type="button"></button>
         <div class="book-cover"></div>
@@ -1167,6 +1219,10 @@ export class LibraryView {
   }
 
   destroy() {
+    // Runs before the container's innerHTML is replaced (see mount()), so the
+    // grid is still on screen and can still be asked where it stands.
+    const grid = this.root.querySelector('.library-grid');
+    if (grid) lastScrollTop = grid.scrollTop;
     // Invalidate any in-flight renderGrid() run so it bails out instead of
     // creating URLs into a torn-down view after we have cleaned up.
     this.renderId++;

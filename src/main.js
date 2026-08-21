@@ -49,8 +49,12 @@ function mount(view) {
   return view.render();
 }
 
-function showLibrary() {
+// revealBookId names the book the shelf is returning from, so it can be brought
+// back into view together with the scroll position the library remembers for
+// itself (issue #174). Opening the app has nothing to return to and passes none.
+function showLibrary({ revealBookId = null } = {}) {
   mount(new LibraryView(app, {
+    revealBookId,
     onOpenBook: (id) => showReader(id),
     // The library's „Gemeinsam lesen" → „Buch auswählen" path: open the book and
     // put its Synchronisations-Code on screen, so the code can be read out
@@ -66,7 +70,7 @@ function showReader(bookId, { joinCode = null, startShared = false } = {}) {
     bookId,
     joinCode,
     startShared,
-    onClose: () => showLibrary(),
+    onClose: () => showLibrary({ revealBookId: bookId }),
     onJoinRoom: (room) => openRoom(room),
   }));
 }
@@ -133,7 +137,10 @@ async function openRoom(room) {
 function showCamera() {
   mount(new CameraView(app, {
     onClose: () => showLibrary(),
-    onSaved: () => showLibrary(),
+    // The book that was just photographed is the one to show: under A–Z it lands
+    // somewhere in the middle of the shelf, and the restored scroll position is
+    // from before it existed.
+    onSaved: (id) => showLibrary({ revealBookId: id }),
   }));
 }
 
