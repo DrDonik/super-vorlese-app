@@ -1738,7 +1738,7 @@ export class ReaderView {
     // the reader last used, which for the help is whatever they just opened it
     // with (issue #121).
     const holdLabel = this.lastInputWasMouse
-      ? 'Maustaste gedrückt halten: auf die Seite zeigen'
+      ? 'Linke Maustaste gedrückt halten: auf die Seite zeigen'
       : 'Finger gedrückt halten: auf die Seite zeigen';
     this.addHelpHint('help-hint-center', holdLabel, {
       sub: 'beim gemeinsamen Lesen',
