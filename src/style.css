@@ -1471,7 +1471,10 @@ button {
 }
 
 /* Ohne Zeichen entfällt die erste Spalte — sonst rückte die Zeile um eine
-   leere Spalte samt Abstand ein. */
+   leere Spalte samt Abstand ein. Die Bedingung muss auch auf der Zuweisung
+   unten stehen: `grid-column: 2` erzeugt sich die zweite Spalte notfalls
+   selbst, und dann steht hier zwar `1fr`, die Zeile hat aber trotzdem zwei —
+   eine leere und die Lücke dazwischen. */
 .help-list .help-hint:not(:has(.help-hint-glyph, .help-hint-control-glyph)) {
   grid-template-columns: 1fr;
 }
@@ -1502,8 +1505,12 @@ button {
   text-align: center;
 }
 
-.help-list .help-hint-text,
-.help-list .help-hint-sub {
+/* Nur wo links wirklich ein Zeichen steht. Ohne die Bedingung landete auch die
+   Gesten-Zeile in einer zweiten Spalte, die es für sie nicht gibt: sie verlor
+   die 12px Spaltenabstand und wurde dadurch bei doppelter Schrift eine Zeile
+   höher, als sie sein müsste. */
+.help-list .help-hint:has(.help-hint-glyph, .help-hint-control-glyph)
+  :is(.help-hint-text, .help-hint-sub) {
   grid-column: 2;
 }
 
