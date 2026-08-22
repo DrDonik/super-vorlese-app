@@ -35,6 +35,19 @@ const KEYS_OWNED_BY_A_MODAL = [
 // transfer's own overlay is still up.
 const inertCounts = new Map();
 
+// The modals currently on screen, oldest first — the last of them owns the
+// keyboard. Every modal keeps a listener of its own on `document`, and
+// stopPropagation holds an event back from other *nodes*, not from a sibling
+// listener on the same one: without this, one Escape would run every open
+// modal's dismissal at once and take a dialog and the panel underneath it
+// together, where Escape is meant to peel off exactly one layer (rule 1).
+// The case is an everyday one — „Buch wird noch geladen" opens over the sync
+// panel, the room can close over the mood ritual.
+// stopImmediatePropagation would not do the job: it leaves the listener that
+// was registered first standing, which is the bottom-most modal — precisely
+// the wrong one.
+const modalStack = [];
+
 function claimInert(el) {
   const held = inertCounts.get(el) ?? 0;
   inertCounts.set(el, held + 1);
@@ -103,7 +116,11 @@ export function makeModal(overlay, {
   // reliable; the capture phase is avoided because stopping propagation there
   // would block native keyboard behaviour — the caret in an input, Space on a
   // button — inside the card itself.
+  const layer = {};
+  modalStack.push(layer);
+
   const onKeyDown = (e) => {
+    if (modalStack[modalStack.length - 1] !== layer) return;
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (KEYS_OWNED_BY_A_MODAL.includes(e.key)) e.stopPropagation();
     onKey?.(e);
@@ -123,6 +140,10 @@ export function makeModal(overlay, {
   return () => {
     if (released) return;
     released = true;
+    // By identity, not by popping: modals need not close in the order they
+    // opened, and the one left on top must inherit the keyboard.
+    const at = modalStack.indexOf(layer);
+    if (at !== -1) modalStack.splice(at, 1);
     document.removeEventListener('keydown', onKeyDown, false);
     overlay.removeEventListener('click', onClick);
     // Before the focus is handed back: focus() on an element still inert does
