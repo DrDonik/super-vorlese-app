@@ -53,6 +53,19 @@
 
 * { box-sizing: border-box; }
 
+/* ---- Schriftgrössen (Issue #125) ------------------------------------------
+   Jede Schriftgrösse in dieser Datei ist rem, damit die Schriftgrösse, die der
+   Benutzer am Gerät eingestellt hat, tatsächlich durchschlägt. Basis ist die
+   Standardgrösse des Browsers (16px), auf iOS die Dynamic-Type-Grösse (siehe
+   den @supports-Block unten).
+
+   Was px bleibt: Abstände, Radien, Rahmen und die 44px-Zielgrössen aus ADR 23.
+   Das ist Fingergeometrie, keine Typografie — ein Ziel wird nicht dadurch
+   leichter zu treffen, dass die Schrift grösser steht. Ebenso px bleiben die
+   drei Glyphen, die ein Bild ersetzen statt gelesen zu werden (📖 auf einem
+   Cover, ✕ auf einem Foto): die sind an ihre Kachel bemessen, nicht an den
+   Text. Jede dieser Stellen trägt den Grund an Ort und Stelle. */
+
 html, body, #app {
   margin: 0;
   padding: 0;
@@ -62,6 +75,37 @@ html, body, #app {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+}
+
+/* iOS: die Systemschriftgrösse heisst hier Dynamic Type, und rem allein erreicht
+   sie nicht. Die App läuft bei den Grosseltern als installierte Web-App
+   (`apple-mobile-web-app-capable` in index.html) — dort gibt es weder eine
+   Schriftgrösseneinstellung im Browser noch den Seiten-Zoom. `-apple-system-body`
+   ist die einzige Verbindung dorthin: der Wert folgt der Einstellung unter
+   „Anzeige & Helligkeit → Textgrösse" und der Bedienungshilfe „Grössere Schrift",
+   und weil er hier an der Wurzel hängt, folgt ihm jedes rem der Datei.
+
+   Nur iOS: `-webkit-touch-callout` gibt es sonst nirgends, und das ist Absicht —
+   auf dem Mac liefert `-apple-system-body` 13px und würde die App schrumpfen
+   statt sie wachsen zu lassen.
+
+   Zwei Nebenwirkungen der `font`-Kurzschreibweise, beide auf `body` zurückgeholt:
+   sie setzt auch `font-family` (auf die Systemschrift) und `line-height` (auf die
+   von Dynamic Type). Die Wurzel trägt hier ausschliesslich die Grösse.
+
+   Preis, bewusst bezahlt: die Standardgrösse von Dynamic Type ist 17px, nicht 16.
+   Auf iOS steht die App bei unveränderten Einstellungen also rund 6 % grösser da
+   als bisher — das ist die Grösse, in der jede andere App auf demselben Gerät
+   ihren Fliesstext setzt. */
+@supports (-webkit-touch-callout: none) {
+  :root {
+    font: -apple-system-body;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+    line-height: normal;
+  }
 }
 
 button {
@@ -91,7 +135,7 @@ button {
 
 .library-header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 1.75rem;
   font-weight: 600;
 }
 
@@ -129,7 +173,7 @@ button {
 .library-status {
   padding: 8px 32px;
   color: var(--fg-dim);
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 /* Sits directly above the grid it orders and stays put whatever the shelf holds
@@ -156,7 +200,7 @@ button {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-size: 14px;
+  font-size: 0.875rem;
   cursor: pointer;
   transition: background 0.15s, color 0.15s;
 }
@@ -209,7 +253,7 @@ button {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -338,6 +382,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* px, nicht rem: das ist kein Text, sondern das 📖 für ein Buch ohne Cover,
+     bemessen an dieser Kachel. Die Kachel wächst mit der Spaltenbreite, nicht
+     mit der Schriftgrösse — ein mitwachsender Glyph liefe aus ihr heraus
+     (Issue #125). */
   font-size: 48px;
 }
 
@@ -393,7 +441,7 @@ button {
 }
 
 .book-title {
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
   line-height: 1.3;
   overflow: hidden;
@@ -404,7 +452,7 @@ button {
 }
 
 .book-meta {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--fg-dim);
 }
 
@@ -564,7 +612,7 @@ button {
   flex: 1 1 0;
   min-width: 0;
   font-weight: 600;
-  font-size: 16px;
+  font-size: 1rem;
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
@@ -583,7 +631,7 @@ button {
   height: 44px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 1;
   display: flex;
   align-items: center;
@@ -627,7 +675,7 @@ button {
 .reader-page-indicator {
   font-variant-numeric: tabular-nums;
   color: var(--fg);
-  font-size: 14px;
+  font-size: 0.875rem;
   padding: 6px 12px;
   min-height: 44px;
   display: inline-flex;
@@ -786,7 +834,7 @@ button {
   border-radius: 999px;
   background: var(--surface-glass);
   color: var(--fg);
-  font-size: 15px;
+  font-size: 0.9375rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -803,7 +851,7 @@ button {
 }
 
 .reader-zoom-glyph {
-  font-size: 17px;
+  font-size: 1.0625rem;
 }
 
 /* At 1× there is no factor to show, and an empty flex item would still claim
@@ -955,7 +1003,7 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
+  font-size: 1.125rem;
   color: var(--fg-dim);
 }
 
@@ -990,7 +1038,7 @@ button {
   .reader-chrome:has(.page-jump-input) .reader-title { display: none; }
   .reader-chrome:has(.page-jump-input) .reader-page-indicator { padding: 6px; }
   .library-header { padding: 16px 16px 8px; padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); flex-wrap: wrap; }
-  .library-header h1 { font-size: 22px; }
+  .library-header h1 { font-size: 1.375rem; }
   .library-grid { padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
   /* Tighter pill padding so all three still share one row on a phone; the 44px
      target height is kept. */
@@ -1002,7 +1050,7 @@ button {
   .library-filter:not([hidden]),
   .library-sort:has(+ .library-filter[hidden]) { margin-bottom: 12px; }
   /* Compact type and padding, but the 44px floor from the base rule stays. */
-  .add-book { padding: 10px 14px; font-size: 14px; }
+  .add-book { padding: 10px 14px; font-size: 0.875rem; }
 }
 
 /* ============ SYNC ============ */
@@ -1014,7 +1062,7 @@ button {
   height: 44px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 1.125rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1073,17 +1121,17 @@ button {
 }
 
 .sync-panel-title {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 
 .sync-panel-desc {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
 }
 
 .sync-or {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg-dim);
 }
 
@@ -1116,7 +1164,7 @@ button {
 }
 
 .sync-join-label {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
 }
 
@@ -1144,7 +1192,7 @@ button {
   border-radius: 10px;
   padding: 12px 14px;
   color: var(--fg);
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .sync-join-input:focus {
@@ -1185,12 +1233,12 @@ button {
 }
 
 .sync-code-label {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
 }
 
 .sync-code-display {
-  font-size: 32px;
+  font-size: 2rem;
   font-weight: 700;
   font-family: monospace;
   letter-spacing: 4px;
@@ -1204,7 +1252,7 @@ button {
    shows a code — freshly created or reconnected — so it carries no state and
    needs no second wording. */
 .sync-code-hint {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
 }
 
@@ -1289,7 +1337,7 @@ button {
   height: 44px;
   border-radius: 10px;
   cursor: pointer;
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 600;
   display: flex;
   align-items: center;
@@ -1355,7 +1403,7 @@ button {
   max-width: 210px;
   background: #fff;
   color: #111;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   line-height: 1.35;
   padding: 8px 12px;
@@ -1390,13 +1438,13 @@ button {
 
 .help-hint-glyph {
   display: block;
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1.2;
 }
 
 .help-hint-sub {
   display: block;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 400;
   color: #555;
   margin-top: 2px;
@@ -1490,7 +1538,7 @@ button {
   background: var(--surface-glass);
   color: #fff;
   border: none;
-  font-size: 18px;
+  font-size: 1.125rem;
   cursor: pointer;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -1505,7 +1553,7 @@ button {
   border-radius: 20px;
   background: var(--surface-glass);
   color: #fff;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-variant-numeric: tabular-nums;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -1521,7 +1569,7 @@ button {
   text-align: center;
   padding: 32px;
   color: var(--fg-dim);
-  font-size: 15px;
+  font-size: 0.9375rem;
   line-height: 1.5;
   background: rgba(0, 0, 0, 0.6);
 }
@@ -1570,6 +1618,10 @@ button {
   background: rgba(0, 0, 0, 0.75);
   color: #fff;
   border: none;
+  /* px aus demselben Grund wie oben, und aus dem, den ADR 23 für diese Scheibe
+     schon nennt: sie sitzt auf einem 64px-Foto. Mitwachsend würde sie genau das
+     Bild zudecken, zu dessen Kontrolle sie da ist. Das Ziel darunter sind
+     ohnehin volle 44px (siehe ::after). */
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
@@ -1608,7 +1660,7 @@ button {
 .camera-fallback {
   justify-self: start;
   color: var(--fg-dim);
-  font-size: 13px;
+  font-size: 0.8125rem;
   text-decoration: underline;
   cursor: pointer;
   min-height: 44px;
@@ -1712,12 +1764,12 @@ button {
 }
 
 .dialog-title {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 
 .dialog-message {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
   line-height: 1.5;
 }
@@ -1728,7 +1780,7 @@ button {
   border-radius: 10px;
   padding: 12px 14px;
   color: var(--fg);
-  font-size: 16px;
+  font-size: 1rem;
   width: 100%;
 }
 
@@ -1744,7 +1796,7 @@ button {
 }
 
 .dialog-field-label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--fg-dim);
 }
 
@@ -1894,7 +1946,7 @@ button {
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  font-size: 12px;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
@@ -1952,7 +2004,7 @@ button {
    raised from within one only appears after it closes (see showBookEdit). Red:
    a chip has just been put back to a state the user did not choose. */
 .book-edit-error {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--danger);
 }
 
@@ -1965,7 +2017,7 @@ button {
    is one line of three and at 20px it shouted down the title above it. */
 .book-edit-sync-code {
   font-family: monospace;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 700;
   letter-spacing: 3px;
   color: var(--success);
@@ -2009,7 +2061,7 @@ button {
   gap: 8px;
   background: var(--accent);
   color: #111;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   padding: 12px 20px;
   min-height: 44px;
@@ -2026,7 +2078,7 @@ button {
 }
 
 .reader-finish-cue-icon {
-  font-size: 18px;
+  font-size: 1.125rem;
 }
 
 @keyframes finish-cue-pulse {
@@ -2092,7 +2144,7 @@ button {
   border: none;
   background: var(--surface);
   color: var(--fg);
-  font-size: 16px;
+  font-size: 1rem;
   cursor: pointer;
   touch-action: manipulation;
 }
@@ -2125,7 +2177,7 @@ button {
   justify-content: center;
   background: var(--surface);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
-  font-size: 34px; /* sizes the 📖 fallback when a book has no cover */
+  font-size: 34px; /* wie .book-cover: 📖-Ersatz, bemessen an dieser 64×84-Kachel, darum px */
 }
 
 .mood-cover img {
@@ -2136,7 +2188,7 @@ button {
 }
 
 .mood-cover-title {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--fg-dim);
 }
@@ -2146,7 +2198,7 @@ button {
    in with the board, so the cover-only intro and the bow-outs never show it. */
 .mood-board-title {
   margin: 0;
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 
@@ -2158,7 +2210,7 @@ button {
 }
 
 .mood-instructions {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
   min-height: 20px;
 }
@@ -2168,7 +2220,7 @@ button {
    her to leave the board to the children. Sits above the „Wähle …" counter; the
    children can't read it, so differentiation is carried by the humans. */
 .mood-warning {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--fg);
   min-height: 20px;
@@ -2280,7 +2332,7 @@ button {
    the library history (in .dialog-overlay); the base styles are the compact
    history size, scaled up inside the overlay. */
 .mood-result-title {
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 600;
 }
 
@@ -2298,7 +2350,7 @@ button {
 }
 
 .mood-reveal-label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: var(--fg-dim);
   text-align: center;
@@ -2468,13 +2520,13 @@ button {
 
 /* Text scales with the tiles it labels, so the entry keeps the reveal's balance. */
 .mood-history-card .mood-reveal-label {
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 /* Centred with the rows it heads (the dialog's own alignment), so each entry
    reads as one block rather than a stray label off to the side. */
 .mood-history-date {
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--fg-dim);
   margin-bottom: 8px;
 }
@@ -2559,7 +2611,7 @@ html.debug-viewport-on {
   /* Tabellarisch und monospaced: die Zahlen werden abfotografiert und
      abgelesen, nicht angeklickt. */
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
+  font-size: 0.8125rem;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
   /* Die Einblendung misst den Viewport — sie darf ihn nicht selbst verändern,
