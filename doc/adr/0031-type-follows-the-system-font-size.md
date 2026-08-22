@@ -89,10 +89,13 @@ sets its body text.
 
 - A grandmother's system setting now moves the whole app: library, reader
   chrome, dialogs and the closing ritual. That is the point of the change.
-- At the default setting the app is pixel-identical to before on every surface
-  except iOS, where it is 6 % larger. The library, the mood archive, the book
-  dialog, the reader, the help overlay and the sync panel were diffed against
-  `main` at 16px: zero differing subpixels.
+- At the default setting the app is pixel-identical to before. The library, the
+  mood archive, the book dialog, the reader, the help overlay and the sync panel
+  were diffed against `main` at 16px on 320, 390 and 768px wide: zero differing
+  subpixels — with one intended exception. Below about 330px the dialog and sync
+  cards are 8px narrower, because their old floor of 280px was wider than the
+  space the overlay's own padding left them and they had been sitting on that
+  padding. iOS is the other exception, and the deliberate one: 6 % larger.
 - Card-shaped overlays (dialog, sync panel) now carry `max-height` and scroll.
   Growing text used to push them out of a centred overlay at both ends at once,
   where nothing could reach them.
