@@ -9,7 +9,13 @@ import { showAlert, showConfirm } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 import { keepAwake, letSleep } from './wake-lock.js';
 
+// The chrome serves one intention at a time and then gets out of the way
+// (ADR 30). Two waits, because "I am looking for a control" and "I have just
+// used one" are not the same span: the first has to survive an older hand
+// finding a 44px target, the second only has to let the button's own change
+// register before the page is the whole screen again.
 const HIDE_CHROME_AFTER_MS = 4000;
+const HIDE_CHROME_AFTER_ACTION_MS = 1500;
 const CHROME_REVEAL_BAND_PX = 80;
 const CURSOR_IDLE_MS = 2500;
 
@@ -180,6 +186,10 @@ export class ReaderView {
     this.renderToken = 0;
     this.hideTimer = null;
     this.pageJumpOpen = false;
+    // The sync panel is an extension of the „👥" button that opened it, so the
+    // bar behind it stays put for as long as it is up — sliding it away under
+    // an open dialog would take the button's own state marker with it.
+    this.syncPanelOpen = false;
     // The "?" help overlay (see openHelp). Tracked so the chrome auto-hide can
     // pause while it is up and so any tap or key can dismiss it.
     this.helpOpen = false;
@@ -337,6 +347,25 @@ export class ReaderView {
       }
     });
 
+    // Keyboard operation reveals the chrome and restarts its wait — arriving on
+    // a control (Tab) and using one (Enter, Space) alike. Resting focus alone
+    // deliberately does NOT hold it open: the bar would then never settle for
+    // anyone whose focus happens to sit on it, which is the defect issue #179
+    // reported. Because every key re-reveals, a control that went out of sight
+    // under a resting focus comes back the moment it is used, so nothing is
+    // ever activated invisibly. The loupe rides along: it is chrome too, it
+    // just lives outside the bar.
+    //
+    // A pointer press on a control lands here as well, and harmlessly: a
+    // concealed control is off-screen or has pointer-events: none, so anything
+    // that can be pressed was on screen anyway, and the control's own handler
+    // then sets whichever wait applies to it.
+    const revealForKeyboard = (e) => {
+      if (e.target.closest?.('.reader-chrome, .reader-zoom')) this.showChrome();
+    };
+    reader.addEventListener('focusin', revealForKeyboard);
+    reader.addEventListener('keydown', revealForKeyboard);
+
     reader.addEventListener('pointermove', (e) => {
       if (e.pointerType !== 'mouse') return;
       this.showCursor();
@@ -478,7 +507,7 @@ export class ReaderView {
     // syncCreate reports its own failures and leaves no session behind; showing
     // an empty panel on top of that alert would only be a second thing to close.
     if (this.syncSession?.roomCode) {
-      this.root.querySelector('.sync-panel').hidden = false;
+      this.openSyncPanel();
     }
   }
 
@@ -1309,12 +1338,14 @@ export class ReaderView {
   }
 
   // Flip the local page-navigation toggle, persist it, and reflect it in the UI.
-  // The chrome is kept up so the listener sees the button's state change.
+  // The chrome is held for the short wait, not the long one: the button's own
+  // state change is the entire feedback, and it happens under the finger that
+  // asked for it.
   toggleNav() {
     this.navEnabled = !this.navEnabled;
     saveNavEnabled(this.navEnabled);
     this.applyNavState();
-    this.showChrome();
+    this.showChrome(HIDE_CHROME_AFTER_ACTION_MS);
   }
 
   // Single source of truth: the `nav-off` class on the reader root drives the
@@ -1686,27 +1717,47 @@ export class ReaderView {
     const commit = () => {
       const val = parseInt(input.value, 10);
       const page = isNaN(val) ? this.currentPage : Math.min(Math.max(val, 1), this.totalPages);
-      this.closePageJump(page, true);
+      // Not even the short wait here: the page that was asked for is itself the
+      // answer, and the bar is lying across the top of it.
+      this.closePageJump(page);
+      this.hideChrome();
       this.goToPage(page);
     };
 
     input.addEventListener('keydown', (e) => {
       e.stopPropagation();
       if (e.key === 'Enter') commit();
-      else if (e.key === 'Escape') this.closePageJump(undefined, true);
+      else if (e.key === 'Escape') this.closePageJump();
     });
     input.addEventListener('blur', () => this.closePageJump());
   }
 
-  closePageJump(page, shouldFocus = false) {
-    const ind = this.root.querySelector('.reader-page-indicator');
-    if (!ind.querySelector('.page-jump-input')) return;
+  // The field goes and the focus goes with it — nowhere, that is: removing the
+  // input leaves the focus on <body>. Nobody jumps twice in a row, and anyone
+  // who does can tap the indicator again while the bar is still there. Handing
+  // the focus back to the indicator instead used to keep the whole bar on
+  // screen for the rest of the reading (issue #179), and swallowed the arrow
+  // keys with it (OWNED_BY_A_CONTROL in handleKey).
+  //
+  // Reached without a page when the jump was abandoned (Escape, or a press
+  // somewhere else), which is why the bar keeps the short wait rather than
+  // being taken away: nothing changed, so nothing has to be uncovered.
+  //
+  // Guarded on the flag rather than on the field still being in the DOM,
+  // because this method re-enters itself: writing the indicator takes the
+  // focused input out, Chromium fires `blur` synchronously as it goes, and that
+  // handler calls back in here. On a DOM guard the nested call still found the
+  // half-removed input, rewrote the indicator underneath the outer call, and
+  // left it to throw out of replaceChildren — taking the goToPage below it with
+  // it, so Enter jumped nowhere at all.
+  closePageJump(page) {
+    if (!this.pageJumpOpen) return;
     this.pageJumpOpen = false;
+    const ind = this.root.querySelector('.reader-page-indicator');
     ind.setAttribute('role', 'button');
     ind.setAttribute('tabindex', '0');
     this.writeIndicator(page !== undefined ? page : this.currentPage);
-    this.showChrome();
-    if (shouldFocus) ind.focus();
+    this.showChrome(HIDE_CHROME_AFTER_ACTION_MS);
   }
 
   async goToPage(page) {
@@ -1731,18 +1782,21 @@ export class ReaderView {
   //     makes the edge mean the same thing on both kinds of device (rule 1).
   //   • A gesture that found the help or the page-jump field open has already
   //     closed it, and closing left the chrome behind on purpose. Hiding it in
-  //     the same beat would be two changes for one tap.
+  //     the same beat would be two changes for one tap. That errand is done
+  //     though, so the bar stays for the short wait, not for a new search.
   tapChrome(y) {
     const hidden = this.readerEl?.classList.contains('chrome-hidden');
     if (!hidden && !this.chromePinnedAtPress && y > CHROME_REVEAL_BAND_PX) {
       this.hideChrome();
       return;
     }
-    this.showChrome();
+    this.showChrome(this.chromePinnedAtPress ? HIDE_CHROME_AFTER_ACTION_MS : HIDE_CHROME_AFTER_MS);
   }
 
-  // The counterpart to showChrome, and only ever reached through tapChrome —
-  // which is where the cases that must not conceal the bar are decided. The
+  // The counterpart to showChrome, for the two moments the bar has to go at
+  // once rather than after a wait: a tap that means „away with it" (tapChrome,
+  // which is where the cases that must not conceal the bar are decided), and a
+  // committed page jump, which needs the page it just fetched uncovered. The
   // pending auto-hide goes with it: the bar is already away, so there is
   // nothing left for that timer to do.
   hideChrome() {
@@ -1750,17 +1804,22 @@ export class ReaderView {
     this.readerEl?.classList.add('chrome-hidden');
   }
 
-  showChrome() {
+  // `after` says which of the two waits applies: the long one while a control
+  // still has to be found, the short one once one has been used and only its
+  // receipt is still owed.
+  showChrome(after = HIDE_CHROME_AFTER_MS) {
     const reader = this.readerEl;
     if (!reader) return;
     reader.classList.remove('chrome-hidden');
     clearTimeout(this.hideTimer);
-    // While the page-jump input or the help overlay is up, the chrome must not
-    // slide away under the user (the callouts point at its controls).
-    if (this.pageJumpOpen || this.helpOpen) return;
+    // While the page-jump input, the help overlay or the sync panel is up, the
+    // chrome must not slide away under the user: the first two live inside it
+    // (the help's callouts point at its controls), and the third was opened
+    // from it and reports back to the button that opened it.
+    if (this.pageJumpOpen || this.helpOpen || this.syncPanelOpen) return;
     this.hideTimer = setTimeout(() => {
       reader.classList.add('chrome-hidden');
-    }, HIDE_CHROME_AFTER_MS);
+    }, after);
   }
 
   showCursor() {
@@ -1939,8 +1998,10 @@ export class ReaderView {
     this.helpOverlay = null;
     this.readerEl?.classList.remove('help-open');
     this.readerEl?.querySelector('.reader-help-btn')?.setAttribute('aria-expanded', 'false');
-    // Re-arm the chrome auto-hide that openHelp suspended.
-    this.showChrome();
+    // Re-arm the chrome auto-hide that openHelp suspended. The short wait: the
+    // same press that dismissed the help usually worked a control too, and what
+    // is left to show is that control's answer.
+    this.showChrome(HIDE_CHROME_AFTER_ACTION_MS);
   }
 
   // --- Shared reading memory ("mood ritual", issue #65) -------------------
@@ -2374,15 +2435,31 @@ export class ReaderView {
     this.updateMoodCue();
   }
 
-  // One way out of the sync panel for all three of its exits (Abbrechen, a tap
-  // on the backdrop, Escape). Hiding the panel while the focus sits on the code
-  // field inside it would drop the focus onto <body>, so it goes back to the
-  // button that opened the panel — the place the reader was before.
+  // One way into the sync panel, for the „👥" button and for the library's
+  // „Gemeinsam lesen" path alike. The bar stays up for as long as the panel is
+  // (the syncPanelOpen guard in showChrome): the panel is that button's own
+  // surface, and letting the bar slide away underneath would take the button —
+  // and the sync marker it wears — off the screen mid-errand.
+  openSyncPanel() {
+    const panel = this.root.querySelector('.sync-panel');
+    if (!panel || !panel.hidden) return;
+    panel.hidden = false;
+    this.syncPanelOpen = true;
+    this.showChrome();
+  }
+
+  // One way out for all three of its exits (Abbrechen/Schliessen, a tap on the
+  // backdrop, Escape). The focus is deliberately not handed back to the „👥"
+  // button: sitting there it would hold the whole bar on screen for the rest of
+  // the reading, exactly as the page indicator did in issue #179. It lands on
+  // <body> instead, and the bar shows the button's new state for the short wait
+  // before it settles — the code itself was already reported in the panel.
   closeSyncPanel() {
     const panel = this.root.querySelector('.sync-panel');
     if (!panel || panel.hidden) return;
     panel.hidden = true;
-    this.root.querySelector('.reader-sync-btn')?.focus();
+    this.syncPanelOpen = false;
+    this.showChrome(HIDE_CHROME_AFTER_ACTION_MS);
   }
 
   setupSync(reader) {
@@ -2394,7 +2471,7 @@ export class ReaderView {
     const closeBtn = reader.querySelector('.sync-panel-close');
 
     syncBtn.addEventListener('click', () => {
-      if (panel.hidden) panel.hidden = false;
+      if (panel.hidden) this.openSyncPanel();
       else this.closeSyncPanel();
     });
 
