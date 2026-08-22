@@ -96,7 +96,18 @@ export function makeModal(overlay, {
   dismissOnBackdrop = true,
   restoreFocus = true,
 } = {}) {
-  const previouslyFocused = document.activeElement;
+  // Where the focus goes when this modal releases, best candidate first. Usually
+  // that is simply whatever held it at the moment of opening — but a modal that
+  // opens over another one takes its candidate from inside that one's card, and
+  // the two need not close in the order they opened: a book transfer finishing
+  // under a „Raum geschlossen"-Dialog takes its progress card, and with it that
+  // candidate, off the page. The modal underneath has already worked out a
+  // target outside every overlay, so its list is inherited here and the chain
+  // holds however many are stacked. <body> is not a candidate: it is where the
+  // focus falls on its own, and putting it in the list would shadow a real
+  // target further down.
+  const opener = document.activeElement === document.body ? null : document.activeElement;
+  const restoreTo = [opener, ...(modalStack[modalStack.length - 1]?.restoreTo ?? [])];
 
   const inerted = [];
   for (let node = overlay; node && node !== document.body; node = node.parentElement) {
@@ -116,7 +127,7 @@ export function makeModal(overlay, {
   // reliable; the capture phase is avoided because stopping propagation there
   // would block native keyboard behaviour — the caret in an input, Space on a
   // button — inside the card itself.
-  const layer = {};
+  const layer = { restoreTo };
   modalStack.push(layer);
 
   const onKeyDown = (e) => {
@@ -149,7 +160,7 @@ export function makeModal(overlay, {
     // Before the focus is handed back: focus() on an element still inert does
     // nothing, and would leave it on <body> instead.
     for (const el of inerted) releaseInert(el);
-    if (restoreFocus && previouslyFocused?.isConnected) previouslyFocused.focus();
+    if (restoreFocus) restoreTo.find((el) => el?.isConnected)?.focus();
   };
 }
 
