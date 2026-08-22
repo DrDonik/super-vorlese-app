@@ -1898,31 +1898,60 @@ export class ReaderView {
     // that one hangs its bubbles below their control, which for a button in the
     // bottom corner would put the label off the screen.
     this.addHelpHint('help-hint-zoom', 'Seite vergrössern', {
+      controlGlyph: '🔍',
       sub: this.lastInputWasMouse
         ? 'vergrössert: mit der Maus verschieben'
         : 'vergrössert: mit dem Finger verschieben',
     });
     this.addChromeHelpHints();
+    this.applyHelpLayout();
 
-    this._helpDismiss = (e) => {
-      // The ? button has its own toggle handler; consuming its pointerdown
-      // here would close the help only to have the click reopen it.
-      if (e.target.closest?.('.reader-help-btn')) return;
+    // Dismissed on the release, not on the press, so that a swipe scrolls the
+    // list layout instead of taking it away — that layout is the one thing here
+    // that accepts a pointer at all. For the spatial layout it comes to the same
+    // thing: the overlay takes no pointers, so the press still reaches the
+    // control underneath and the help goes an instant later.
+    let from = null;
+    const down = (e) => {
+      // The ? button has its own toggle handler; consuming its press here would
+      // close the help only to have the click reopen it.
+      from = e.target.closest?.('.reader-help-btn') ? null : { x: e.clientX, y: e.clientY };
+    };
+    const up = (e) => {
+      const start = from;
+      from = null;
+      if (!start || e.type === 'pointercancel') return;
+      if (Math.abs(e.clientX - start.x) > MOVE_CANCEL_PX
+        || Math.abs(e.clientY - start.y) > MOVE_CANCEL_PX) return;
       this.closeHelp();
     };
-    window.addEventListener('pointerdown', this._helpDismiss, true);
+    this._helpDismiss = { down, up };
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('pointerup', up, true);
+    window.addEventListener('pointercancel', up, true);
   }
 
   // One callout bubble. `glyph` stacks a large chevron above the text (the
   // page-turn zones); `sub` adds smaller lines below it — one string or several
   // (the pointing hint, which also names what a plain tap does).
-  addHelpHint(className, text, { glyph, sub } = {}) {
+  //
+  // `controlGlyph` names the control the callout belongs to. It is invisible in
+  // the spatial layout, where the arrow already says which control is meant, and
+  // appears only in the list layout below, where there is no arrow left to say
+  // it (issue #125).
+  addHelpHint(className, text, { glyph, controlGlyph, sub } = {}) {
     const hint = document.createElement('div');
     hint.className = `help-hint ${className}`;
     if (glyph) {
       const g = document.createElement('span');
       g.className = 'help-hint-glyph';
       g.textContent = glyph;
+      hint.appendChild(g);
+    }
+    if (controlGlyph) {
+      const g = document.createElement('span');
+      g.className = 'help-hint-control-glyph';
+      g.textContent = controlGlyph;
       hint.appendChild(g);
     }
     const label = document.createElement('span');
@@ -1972,7 +2001,13 @@ export class ReaderView {
     for (const [selector, text, preferredTier] of targets) {
       const target = reader.querySelector(selector);
       if (!target) continue;
-      const hint = this.addHelpHint('help-hint-chrome', text);
+      // innerText, not textContent: it gives what is actually on screen — „←"
+      // and „12 / 148" on a phone, „← Bibliothek" and „Seite 12 / 148" on a
+      // tablet. That is exactly what the list needs to point back at the bar
+      // once there is no arrow left doing it.
+      const hint = this.addHelpHint('help-hint-chrome', text, {
+        controlGlyph: target.innerText.trim(),
+      });
       const arrow = document.createElement('span');
       arrow.className = 'help-hint-arrow';
       hint.appendChild(arrow);
@@ -2006,11 +2041,55 @@ export class ReaderView {
     }
   }
 
+  // The spatial layout, or the list. Six callouts anchored to what they name is
+  // the better answer and holds on every screen at ordinary type — and on a
+  // tablet well past that. On a phone at twice the size it stops being possible:
+  // the four chrome bubbles cascade into the middle of the page and land on the
+  // zone and gesture callouts, which hang from the page itself. Six bubbles that
+  // size do not fit a phone, and no placement makes them.
+  //
+  // So the layout yields, in the order ADR 23 set for the bar it explains: first
+  // the words went, now the arrangement. The callouts become one plain list —
+  // each row the control's own glyph and what it does. What is lost is the line
+  // from a label to its button; what is kept is every word of it, which at this
+  // type size is what was asked for.
+  //
+  // The trigger is measured, never a breakpoint. Whether the bubbles fit depends
+  // on the type size, and a media query cannot see that one: `em` in a media
+  // query is the browser's default, not our root — so on iOS, where the size
+  // comes from Dynamic Type, a query would be blind to the very setting this is
+  // about (ADR 31). The overlay is already laid out at this point, so the honest
+  // question is simply how it came out.
+  //
+  // A quarter of the smaller bubble, not any overlap at all: the zone labels and
+  // the gesture callout in the middle of the page have always grazed each other
+  // on a narrow phone — 5 % at 320px, and it has never been worth a word. What
+  // this is looking for is a bubble sitting on another one's text, which starts
+  // around half again the normal size and is past 50 % by twice it.
+  applyHelpLayout() {
+    const overlay = this.helpOverlay;
+    if (!overlay) return;
+    const base = this.readerEl.getBoundingClientRect();
+    const rects = [...overlay.querySelectorAll('.help-hint')].map((h) => h.getBoundingClientRect());
+    const offScreen = rects.some((r) => r.top < base.top - 1 || r.bottom > base.bottom + 1
+      || r.left < base.left - 1 || r.right > base.right + 1);
+    const buried = rects.some((a, i) => rects.some((b, j) => {
+      if (j <= i) return false;
+      const w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (w <= 0 || h <= 0) return false;
+      return w * h > 0.25 * Math.min(a.width * a.height, b.width * b.height);
+    }));
+    if (offScreen || buried) overlay.classList.add('help-list');
+  }
+
   closeHelp() {
     if (!this.helpOpen) return;
     this.helpOpen = false;
     if (this._helpDismiss) {
-      window.removeEventListener('pointerdown', this._helpDismiss, true);
+      window.removeEventListener('pointerdown', this._helpDismiss.down, true);
+      window.removeEventListener('pointerup', this._helpDismiss.up, true);
+      window.removeEventListener('pointercancel', this._helpDismiss.up, true);
       this._helpDismiss = null;
     }
     this.helpOverlay?.remove();

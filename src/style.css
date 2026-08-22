@@ -1431,11 +1431,98 @@ button {
   to   { opacity: 1; }
 }
 
+/* ---- Der Listenaufbau (Issue #125) ---------------------------------------
+   Gesetzt von applyHelpLayout, wenn die Blasen einander überlagern oder über
+   den Schirm ragen — auf dem Telefon ab etwa doppelter Schriftgrösse, sonst
+   nie. Aus den sechs verankerten Sprechblasen wird eine Liste: je Zeile das
+   Zeichen der Steuerung und was sie tut. Die Blasen behalten ihr Aussehen,
+   sie stehen nur nicht mehr an ihrem Ort.
+
+   Das Overlay nimmt hier als einziger Fall Zeiger an, weil die Liste scrollen
+   können muss; das Wegtippen liegt darum auf dem Loslassen (siehe openHelp). */
+.help-overlay.help-list {
+  pointer-events: auto;
+  overflow-y: auto;
+  touch-action: pan-y;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px)) calc(16px + env(safe-area-inset-left, 0px));
+}
+
+/* Die Bänder markieren die Tippzonen und bleiben wahr — aber hinter einer
+   Liste sind ihre gestrichelten Kanten nur noch Unruhe. */
+.help-list .help-band {
+  display: none;
+}
+
+/* position: static macht die von addChromeHelpHints gesetzten top/left
+   wirkungslos, ohne dass sie einzeln zurückgenommen werden müssten. */
+.help-list .help-hint {
+  position: static;
+  max-width: none;
+  width: 100%;
+  transform: none;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  column-gap: 12px;
+  text-align: left;
+}
+
+/* Ohne Zeichen entfällt die erste Spalte — sonst rückte die Zeile um eine
+   leere Spalte samt Abstand ein. */
+.help-list .help-hint:not(:has(.help-hint-glyph, .help-hint-control-glyph)) {
+  grid-template-columns: 1fr;
+}
+
+/* Der Pfeil zeigte auf einen Ort, den es hier nicht mehr gibt. */
+.help-list .help-hint-arrow {
+  display: none;
+}
+
+/* Gelesen wird von oben nach unten, also stehen die Zeilen in der Reihenfolge,
+   in der die Dinge auf dem Schirm liegen: erst die Leiste (in ihrer eigenen
+   Reihenfolge von links nach rechts), dann die Blätterzonen, die Geste auf der
+   Seite und zuletzt die Lupe unten rechts. Über `order` und nicht über die
+   Reihenfolge im DOM, damit der räumliche Aufbau — wo jede Blase an ihrem Platz
+   steht und die Reihenfolge nur die Malreihenfolge ist — unberührt bleibt. */
+.help-list .help-hint-chrome { order: 1; }
+.help-list .help-hint-zone   { order: 2; }
+.help-list .help-hint-center { order: 3; }
+.help-list .help-hint-zoom   { order: 4; }
+
+.help-list .help-hint-glyph,
+.help-list .help-hint-control-glyph {
+  display: block;
+  grid-row: 1 / -1;
+  /* Alle Zeichen gleich breit, damit die Beschriftungen eine Fluchtlinie
+     bilden — die Zeichen sind von „←" bis „12 / 148" verschieden lang. */
+  min-width: 2.5em;
+  text-align: center;
+}
+
+.help-list .help-hint-text,
+.help-list .help-hint-sub {
+  grid-column: 2;
+}
+
+/* Das Zeichen der Steuerung trägt die Liste; im räumlichen Aufbau sagt der
+   Pfeil dasselbe und besser. */
+.help-hint-control-glyph {
+  display: none;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
 /* Lift the labelled controls above the scrim so they stay bright while
-   everything else dims. */
-.reader.help-open .reader-chrome,
-.reader.help-open .reader-finish-cue,
-.reader.help-open .reader-zoom {
+   everything else dims. Nicht im Listenaufbau: dort zeigt nichts mehr auf sie,
+   und über der Liste stehend verdeckten sie genau den Text, der sie erklärt.
+   Sie fallen dann hinter den Schleier zurück wie alles andere. */
+.reader.help-open:not(:has(.help-list)) .reader-chrome,
+.reader.help-open:not(:has(.help-list)) .reader-finish-cue,
+.reader.help-open:not(:has(.help-list)) .reader-zoom {
   z-index: 19;
 }
 

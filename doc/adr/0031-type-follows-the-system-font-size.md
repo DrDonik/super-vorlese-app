@@ -70,6 +70,20 @@ sets its body text.
   above roughly twice the default size the bar wraps to a second line rather
   than pushing „?" off the screen. Measured: it still holds one line at 200 % on
   a 320px phone, and wraps at 300 %.
+- **And where an arrangement cannot hold, the arrangement yields.** The „?"
+  overlay hangs six callouts on the things they name. On a phone at twice the
+  size that stops being possible — the four bar callouts cascade into the middle
+  of the page and land on the ones hanging off the page itself, and no placement
+  fixes six bubbles that size on a phone. Past that point the overlay becomes one
+  plain list: each row the control's own glyph and what it does. The line from a
+  label to its button is lost; every word of it is kept, which at this type size
+  is the thing that was asked for. Tablets and desktops keep the anchored layout
+  far beyond 200 %.
+- **That switch is measured, not a breakpoint.** Whether the callouts fit depends
+  on the type size, and `em` in a media query is the browser's default rather
+  than our root — on iOS a query would be blind to Dynamic Type, the very
+  setting this is about. The overlay is laid out first and then asked whether a
+  callout came out buried or off the screen.
 
 ## Consequences
 
@@ -85,6 +99,10 @@ sets its body text.
 - Long German compounds are the other half of this. „Synchronisations-Code" is
   wider than a phone at twice the size, so text breaks inside a word rather than
   running past the edge of its button.
+- The help overlay is the one place where the change is visible as a different
+  arrangement rather than as larger type, and it is the overlay ADR 23 made
+  load-bearing: on a phone the bar carries no words, and this is where they are.
+  A control added to that bar still has to be added here — in either layout.
 - **There is no linter and no test** ([ADR 8](0008-no-tests-or-linter.md)). A
   new rule that writes `font-size: 14px` will pass review unless someone
   notices. The check is a browser with its font size set to 200 % — and, for the
