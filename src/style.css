@@ -238,6 +238,26 @@ button {
   }
 }
 
+/* Der Abstand zwischen der untersten Leiste und der ersten Buchreihe muss auf
+   der Leiste liegen, nicht im Grid: das Grid ist die Scroll-Box, und deren
+   eigenes padding-top gehört zum scrollenden Inhalt — es fuhr mit der ersten
+   Reihe nach oben aus dem Bild, und die Cover schnitten danach bündig an den
+   Pills ab (issue #187). Auf der festen Leiste bleibt die Luft stehen, im
+   Ruhezustand sieht die Bibliothek aus wie vorher. Die Leiste, die den Abstand
+   trägt, ist die jeweils unterste sichtbare: ohne Tags ist das die Sortier-,
+   sonst die Filterzeile — sonst käme der Abstand zwischen die beiden Zeilen und
+   ihr 12px-Gruppenabstand aus #144 wäre dahin. */
+.library-filter:not([hidden]),
+.library-sort:has(+ .library-filter[hidden]) {
+  margin-bottom: 16px;
+}
+
+/* Die Leisten sind genau dann sichtbar, wenn Bücher da sind; das leere Regal
+   behält sein Polster über der Verbinden-Kachel. */
+.library-sort:not([hidden]) ~ .library-grid {
+  padding-top: 0;
+}
+
 .library-grid {
   padding: 16px 32px 32px;
   /* Damit die unterste Buchreihe nicht unter dem Home-Indicator klebt, falls
@@ -978,6 +998,9 @@ button {
   .sort-pill { padding: 0 12px; }
   .library-filter { padding: 0 4px; padding-left: calc(4px + env(safe-area-inset-left, 0px)); padding-right: calc(4px + env(safe-area-inset-right, 0px)); gap: 4px; }
   .filter-chip { padding: 0 12px; }
+  /* Wie das Grid-Polster hier: 12px statt 16px. */
+  .library-filter:not([hidden]),
+  .library-sort:has(+ .library-filter[hidden]) { margin-bottom: 12px; }
   /* Compact type and padding, but the 44px floor from the base rule stays. */
   .add-book { padding: 10px 14px; font-size: 14px; }
 }
