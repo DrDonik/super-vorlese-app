@@ -1006,52 +1006,30 @@ export class LibraryView {
 
   // Shows every time this book was finished together, newest first: the date
   // plus that read's moods in the same „Ich / Wir / Du" layout as the reveal, so
-  // the history is a faithful keepsake of each finish. Reuses the dialog overlay
-  // styling for consistency with the app's other modals.
+  // the history is a faithful keepsake of each finish. An ordinary dialog: it
+  // used to copy the overlay's looks while building its own escape, focus and
+  // background handling — a third set beside dialog.js and the reader's panel,
+  // and the one without a focus trap (issue #122). All it really needs of its
+  // own is a wider card whose list scrolls, which is what `cardClass` carries.
   openMoodHistory(book, completions) {
-    const previouslyFocused = document.activeElement;
-    const overlay = document.createElement('div');
-    overlay.className = 'dialog-overlay';
-
-    const card = document.createElement('div');
-    card.className = 'dialog-card mood-history-card';
-    card.setAttribute('role', 'dialog');
-    card.setAttribute('aria-modal', 'true');
-    card.setAttribute('aria-label', `Gefühle zu „${book.title}"`);
-
     const fmtDate = (ts) =>
       new Date(ts).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    const entries = [...completions].reverse().map((c) => `
+    const list = document.createElement('ul');
+    list.className = 'mood-history-list';
+    list.innerHTML = [...completions].reverse().map((c) => `
       <li class="mood-history-entry">
         <div class="mood-history-date">${fmtDate(c.completedAt)}</div>
         ${c.witnessed ? moodWitnessRowsHTML(c.a || [], c.b || []) : moodRevealRowsHTML(c.mine || [], c.theirs || [])}
       </li>`).join('');
 
-    card.innerHTML = `
-      <div class="dialog-title"></div>
-      <ul class="mood-history-list">${entries}</ul>
-      <div class="dialog-buttons">
-        <button class="dialog-btn dialog-btn-primary mood-history-close" type="button">Schliessen</button>
-      </div>
-    `;
-    card.querySelector('.dialog-title').textContent = book.title;
-
-    const close = () => {
-      document.removeEventListener('keydown', onKeyDown, false);
-      overlay.remove();
-      if (previouslyFocused && previouslyFocused.isConnected) previouslyFocused.focus();
-    };
-    const onKeyDown = (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); close(); }
-    };
-    document.addEventListener('keydown', onKeyDown, false);
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-    card.querySelector('.mood-history-close').addEventListener('click', close);
-
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-    card.querySelector('.mood-history-close').focus();
+    openDialog({
+      title: book.title,
+      cardClass: 'mood-history-card',
+      content: list,
+      buttons: [{ label: 'Schliessen', value: undefined, primary: true }],
+      cancelValue: undefined,
+    });
   }
 
   // The permanent first tile in the library: starts a synced reading session

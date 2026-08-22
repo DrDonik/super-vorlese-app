@@ -5,7 +5,7 @@ import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRo
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { serveBook } from './transfer.js';
 import { exportBook } from './bundle.js';
-import { showAlert, showConfirm } from './dialog.js';
+import { showAlert, showConfirm, makeModal } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 import { keepAwake, letSleep } from './wake-lock.js';
 
@@ -190,6 +190,9 @@ export class ReaderView {
     // bar behind it stays put for as long as it is up — sliding it away under
     // an open dialog would take the button's own state marker with it.
     this.syncPanelOpen = false;
+    // Hands the background back and detaches the panel's key handling; see
+    // openSyncPanel. Non-null exactly while the panel is up.
+    this.releaseSyncPanel = null;
     // The "?" help overlay (see openHelp). Tracked so the chrome auto-hide can
     // pause while it is up and so any tap or key can dismiss it.
     this.helpOpen = false;
@@ -245,6 +248,7 @@ export class ReaderView {
     // partner's picks stay hidden until the reveal, so neither reader steers the
     // other toward a match.
     this.moodOpen = false;
+    this.releaseMood = null;
     this.moodOrder = null; // the shared board (icon ids), agreed via Firebase
     this.mySelection = new Set();
     this.moodPartnerPicks = {};
@@ -1302,15 +1306,12 @@ export class ReaderView {
       e.preventDefault();
       this.goPrev();
     } else if (e.key === 'Escape') {
-      // Escape peels off one layer at a time: an open sync panel is what the
-      // reader wants closed first, and only a reader with nothing on top of it
-      // closes the book. Anything else would make the same key mean „leave the
-      // book" in one overlay and „close the overlay" in the next (rule 1).
-      const panel = this.root.querySelector('.sync-panel');
-      if (panel && !panel.hidden) {
-        this.closeSyncPanel();
-        return;
-      }
+      // Escape peels off one layer at a time, and only a reader with nothing on
+      // top of it closes the book. The layers above take care of themselves:
+      // every overlay of this app is a modal in the sense of makeModal, and a
+      // modal keeps Escape — along with the page-turn and loupe keys — from
+      // reaching this listener at all. Arriving here therefore means there is
+      // nothing left lying over the book.
       this.close();
     }
   }
@@ -2176,20 +2177,6 @@ export class ReaderView {
     overlay.querySelector('.mood-cover-title').textContent = this.bookTitle || '';
     this.fillMoodGrid(overlay.querySelector('.mood-grid'));
     overlay.querySelector('.mood-cancel').addEventListener('click', () => this.cancelMood());
-    // Escape would otherwise bubble to the window listener and close the whole
-    // reader. Intercept it on capture so it acts on the ritual instead: conclude
-    // once locked, cancel while still picking — mirroring the on-screen buttons.
-    this._moodKeyDown = (e) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (this.moodRevealed) {
-        this.concludeMood();
-      } else {
-        this.cancelMood();
-      }
-    };
-    document.addEventListener('keydown', this._moodKeyDown, true);
     // Every finish opens on just the cover: the board stays hidden until the grace
     // window confirms a real pair (2–3 present), so the solo, synced-but-alone,
     // and 4+ bow-outs never flash a board only to swap it for „Ende" (issue #79).
@@ -2201,6 +2188,25 @@ export class ReaderView {
     overlay.classList.add('mood-pending');
     this.readerEl?.appendChild(overlay);
     this.moodOverlay = overlay;
+    // Modal from the first beat: without it the arrow keys, the space bar and
+    // Escape kept reaching the reader behind the ritual, turning pages nobody
+    // could see and closing the book mid-ceremony (issue #122). Escape now means
+    // what the on-screen buttons mean — conclude once the reveal is locked,
+    // cancel while still picking.
+    // No dismiss on the backdrop, deliberately unlike the app's other overlays:
+    // a finger landing beside the card would end a ritual that belongs to both
+    // readers at once, and clearing the shared node is not something either of
+    // them can take back (rule 5). The ✕ and Escape are the deliberate ways out.
+    // The focus parks on the card and not on the ✕: through the cover's opening
+    // beat that is the only live control, and cancelling is not what should sit
+    // under a stray Enter.
+    const card = overlay.querySelector('.mood-card');
+    card.tabIndex = -1;
+    this.releaseMood = makeModal(overlay, {
+      onDismiss: () => (this.moodRevealed ? this.concludeMood() : this.cancelMood()),
+      dismissOnBackdrop: false,
+      focus: card,
+    });
     // The board stays inert from open until it has fully risen in, so no pointer,
     // keyboard, or assistive-tech interaction can pick a mood before it's shown and
     // settled. (inert covers what a CSS pointer-events guard would miss: a keyboard
@@ -2522,14 +2528,14 @@ export class ReaderView {
     this.moodPresentIds = [];
     clearTimeout(this._moodIntroT);
     clearTimeout(this._moodRiseT);
-    if (this._moodKeyDown) {
-      document.removeEventListener('keydown', this._moodKeyDown, true);
-      this._moodKeyDown = null;
-    }
     if (this.moodOverlay) {
       this.moodOverlay.remove();
       this.moodOverlay = null;
     }
+    // After the overlay is gone, so the focus it hands back is not taken off an
+    // element that is on its way out.
+    this.releaseMood?.();
+    this.releaseMood = null;
     this.updateMoodCue();
   }
 
@@ -2543,6 +2549,22 @@ export class ReaderView {
     if (!panel || !panel.hidden) return;
     panel.hidden = false;
     this.syncPanelOpen = true;
+    // The panel lies blurred and dimmed over the whole reader; makeModal makes
+    // that true for the keyboard too, which it was not (issue #122): Tab walked
+    // on into the bar and the invisible page-turn zones behind the card, where
+    // Enter turned the page or left the book — and the arrow keys and the space
+    // bar turned it without even going there first.
+    // Focus starts on the one thing there is to do here: creating a code, or,
+    // once connected, closing a panel that only reports one.
+    this.releaseSyncPanel = makeModal(panel, {
+      onDismiss: () => this.closeSyncPanel(),
+      focus: panel.querySelector('.sync-create-section').hidden
+        ? panel.querySelector('.sync-panel-close')
+        : panel.querySelector('.sync-create-btn'),
+      // ADR 30: no control of the bar is handed the focus back, so the panel
+      // asks makeModal not to either — see closeSyncPanel.
+      restoreFocus: false,
+    });
     this.showChrome();
   }
 
@@ -2555,7 +2577,12 @@ export class ReaderView {
   closeSyncPanel() {
     const panel = this.root.querySelector('.sync-panel');
     if (!panel || panel.hidden) return;
+    // Hiding first, releasing second: the control holding the focus goes out of
+    // reach before the background comes back, so the focus lands on <body>
+    // instead of being carried anywhere.
     panel.hidden = true;
+    this.releaseSyncPanel?.();
+    this.releaseSyncPanel = null;
     this.syncPanelOpen = false;
     this.showChrome(HIDE_CHROME_AFTER_ACTION_MS);
   }
@@ -2841,6 +2868,11 @@ export class ReaderView {
     letSleep();
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
+    // A modal still standing when the book leaves would keep its document
+    // listener — and the inert background beyond the reader — alive without
+    // anything left to close it.
+    this.closeSyncPanel();
+    if (this.moodOpen) this.closeMoodUI();
     // Before the listeners go: a gesture still running ends properly rather
     // than being abandoned half-torn-down.
     this._endMouseGesture?.();
