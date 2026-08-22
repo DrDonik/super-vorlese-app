@@ -32,6 +32,58 @@
   --focus: #0a84ff;
 }
 
+/* ---- Mehr Kontrast, wenn das Gerät danach fragt (Issue #126) --------------
+   Auf dem iPad steckt der Schalter unter Bedienungshilfen → Anzeige &
+   Textgrösse → Kontrast erhöhen; macOS und Windows haben ihn ebenso. Wer ihn
+   umgelegt hat, hat das wegen seiner Augen getan — dieselbe Einstellung, aus
+   demselben Grund wie die Schriftgrösse aus ADR 31.
+
+   Das bessert keinen Mangel aus: die Palette oben hält überall 4,5:1 ein, das
+   graue --fg-dim steht auf --bg bei 7,3:1. Hier wird eine Bitte beantwortet —
+   wer mehr verlangt, bekommt mehr.
+
+   Nur die leisen Rollen werden lauter. --accent, --success und --danger
+   bleiben, wie sie sind: sie stehen bei 10,6:1, 9,3:1 und 5,5:1 und tragen
+   jeweils Text auf ihrer eigenen Fläche, den ein helleres Gelb, Grün oder Rot
+   schlechter lesbar machen würde statt besser. Und keine Rolle wechselt ihre
+   Aufgabe aus ADR 4 — es ändern sich Werte, keine Bedeutungen. */
+@media (prefers-contrast: more) {
+  :root {
+    /* Nebentext rückt an den Haupttext heran, bleibt aber erkennbar
+       Nebentext: 7,3:1 → 12,3:1 auf --bg, 6,6:1 → 11,1:1 auf --bg-elev. Die
+       Rangfolge tragen dann Grösse und Ort, nicht mehr die Helligkeit. */
+    --fg-dim: #d0d0d4;
+
+    /* Die Füllung eines Knopfes hebt sich vom Grund ab: 1,35:1 → 2,1:1. Die
+       3:1 für die Grenze eines Bedienelements erreicht sie damit weiterhin
+       nicht, und das ist Absicht — auf diesem Grund ginge das nur, indem der
+       weisse Text auf der Füllung unter 4,5:1 fällt. Die Grenze trägt darum
+       --surface-line, genau wie die Filter-Pillen es schon im Normalfall
+       halten (siehe .filter-chip[aria-pressed='true']). --fg auf --surface
+       bleibt bei 8,4:1. */
+    --surface: #48484d;
+
+    /* Aus Haarlinien werden Linien: 1,7:1 → 3,7:1 auf --bg, 1,5:1 → 3,3:1 auf
+       --bg-elev, also über den 3:1, die für alles gelten, was kein Text ist.
+       Als Hover-Füllung bleibt sie eine sichtbare Stufe über --surface und
+       trägt --fg noch mit 4,7:1. */
+    --surface-line: #6d6d75;
+
+    /* Über der Buchseite zählt allein, was über weissem Papier passiert: die
+       Knöpfe werden nahezu deckend, 6,4:1 → 13,9:1. Auf einer wimmelnden
+       Illustration ist das der Unterschied zwischen einem flimmernden und
+       einem ruhigen Knopfrand. Die Begründung zur Alpha oben gilt unverändert:
+       dunkler hilft immer. */
+    --surface-glass: rgba(0, 0, 0, 0.85);
+    --surface-glass-hover: rgba(0, 0, 0, 0.93);
+
+    /* Am schwächsten ist der Fokusring dort, wo er über dem Glas auf einer
+       hellen Seite liegt: 4,2:1 → 5,8:1. Dasselbe Blau, nur heller — --focus
+       bleibt dem Fokus vorbehalten. */
+    --focus: #4da3ff;
+  }
+}
+
 /* Universal focus ring: one consistent treatment everywhere. */
 :focus-visible {
   outline: 2px solid var(--focus);
