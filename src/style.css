@@ -498,13 +498,15 @@ button {
   transform: translateY(-100%);
 }
 
-/* The bar is the only way to reach back / page-jump / sync, and there is no
-   keyboard shortcut to summon it. Keep its controls focusable while concealed
-   and slide the bar back into view when one is tabbed to, so focus is never
-   trapped on an off-screen control. Mouse/touch users are unaffected. */
-.reader.chrome-hidden .reader-chrome:focus-within {
-  transform: none;
-}
+/* No focus exception here on purpose. The bar is the only way to reach back /
+   page-jump / sync and there is no keyboard shortcut to summon it, but that is
+   handled where it belongs: focus arriving on one of its controls, and every
+   key pressed on one, reveal the bar and restart its wait (the focusin/keydown
+   pair in reader.js). Doing it in CSS instead meant a bar that was visible
+   while `chrome-hidden` was set — so the state and the screen disagreed, the
+   loupe vanished while the bar stayed, tap-to-hide read the wrong state, and a
+   focus left behind by a page jump pinned the bar for the rest of the reading
+   (issue #179). The class is now the single truth about what is on screen. */
 
 .reader.cursor-hidden,
 .reader.cursor-hidden * {
@@ -792,16 +794,12 @@ button {
 
 /* The loupe comes and goes with the rest of the chrome — a settled reading
    screen is just the page. It fades where the bar slides, because there is
-   nothing above it to slide out to. Focus brings it back for the same reason
-   the bar returns on focus: a control that can be tabbed to must be visible. */
+   nothing above it to slide out to. Tabbing to it brings the whole chrome back
+   (reader.js counts it as one of the chrome's controls), so it needs no focus
+   rule of its own. */
 .reader.chrome-hidden .reader-zoom {
   opacity: 0;
   pointer-events: none;
-}
-
-.reader.chrome-hidden .reader-zoom:focus-visible {
-  opacity: 1;
-  pointer-events: auto;
 }
 
 /* Magnified, it stays put: it is the way back to 1×, and a way back that hides
