@@ -75,6 +75,13 @@ html, body, #app {
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  /* Vererbt an alles: ein Wort, das allein nicht mehr auf seine Zeile passt,
+     wird umbrochen statt über den Rand geschrieben. Das ist die deutsche Seite
+     von Issue #125 — „Synchronisations-Code" und „Bibliothek" sind bei doppelter
+     Schrift breiter als ein Telefon, und ohne diese Zeile stehen sie über dem
+     Rand ihres Knopfes oder ihrer Karte. Passt ein Wort auf seine Zeile, ändert
+     sich nichts, darum ist bei normaler Schriftgrösse nichts anders. */
+  overflow-wrap: break-word;
 }
 
 /* iOS: die Systemschriftgrösse heisst hier Dynamic Type, und rem allein erreicht
@@ -130,6 +137,10 @@ button {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* Wie in der 600px-Regel, nur ohne Breitenbedingung: bei grosser Schrift
+     passen Titel und die beiden Knöpfe auch auf einem breiten Bildschirm nicht
+     mehr nebeneinander. */
+  flex-wrap: wrap;
   gap: 16px;
 }
 
@@ -137,6 +148,11 @@ button {
   margin: 0;
   font-size: 1.75rem;
   font-weight: 600;
+  /* Ohne das bliebe der Titel als Flex-Element so breit wie sein längstes Wort
+     — „Bibliothek", bei den grössten Schriftgrössen breiter als ein Telefon —
+     und schöbe sich über den Rand, statt sich der Spalte zu fügen. Umbrochen
+     wird er dann vom overflow-wrap oben. */
+  min-width: 0;
 }
 
 .library-actions {
@@ -463,9 +479,9 @@ button {
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
+  border-radius: 999px;
   background: var(--surface-glass);
   color: #fff;
   border: none;
@@ -529,6 +545,16 @@ button {
   padding: calc(16px + env(safe-area-inset-top, 0px)) calc(24px + env(safe-area-inset-right, 0px)) 56px calc(24px + env(safe-area-inset-left, 0px));
   display: flex;
   align-items: center;
+  /* Das letzte Ventil, wenn die Schrift so gross steht, dass die Zeile auch
+     ohne Wörter nicht mehr reicht. ADR 23 rechnet ~312px vor und lässt die
+     Wörter zuerst weichen; ab etwa der doppelten Schriftgrösse ist da nichts
+     mehr zu holen — die Wörter sind auf dem Telefon längst weg und die Ziele
+     sind der Boden, den die ADR gerade festgeschrieben hat. Also weicht die
+     Zeile: zwei ordentliche Reihen sind besser als eine, die über den Rand
+     läuft und das „?" mitnimmt. Bei normaler Schrift greift das nie, weil
+     nichts umbrechen muss. Der Titel löst keinen Umbruch aus: er hat
+     flex-basis: 0 und zählt beim Umbruch mit null Breite mit (Issue #125). */
+  flex-wrap: wrap;
   gap: 16px;
   /* The title is the one control here with no glass of its own, so this
      gradient is its entire background. It has to be dark where the row of
@@ -627,8 +653,12 @@ button {
   position: relative;
   background: var(--surface-glass);
   border: none;
-  width: 44px;
-  height: 44px;
+  /* min statt fix: das Zeichen wächst mit der Systemschrift, und eine feste
+     44px-Schachtel würde es abschneiden. 44 ist der Boden aus ADR 23, nicht
+     die Grösse (Issue #125). Gilt für jeden Icon-Button in dieser Datei. */
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 1rem;
@@ -656,10 +686,12 @@ button {
   content: '';
   position: absolute;
   left: 50%;
-  /* Insets grew with the button (40 → 44px) so the strike keeps its length and
-     stays sized to the glyph rather than to the target around it. */
-  top: 9px;
-  bottom: 9px;
+  /* Prozentual statt in px: die Insets sind an die Höhe der Schaltfläche
+     bemessen (9 von 44px), und die wächst jetzt mit dem Zeichen mit. Fest
+     gesetzt bliebe der Strich bei grosser Schrift auf den Pfeilen sitzen,
+     statt sie zu durchstreichen. */
+  top: 20%;
+  bottom: 20%;
   width: 2px;
   border-radius: 1px;
   background: var(--fg-dim);
@@ -1058,8 +1090,9 @@ button {
 .reader-sync-btn {
   background: var(--surface-glass);
   border: none;
-  width: 44px;
-  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 1.125rem;
@@ -1097,6 +1130,11 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Nur oben und unten: seitlich hält die Karte ihre eigene max-width ein und
+     brauchte noch nie Polster. Bei grosser Schrift wächst sie aber in die Höhe,
+     und ohne diese Zeile stösst sie oben und unten an den Bildschirmrand — mit
+     ihr steht sie darin. */
+  padding: 24px 0;
   background: rgba(0, 0, 0, 0.55);
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
@@ -1114,8 +1152,17 @@ button {
   flex-direction: column;
   align-items: stretch;
   gap: 14px;
-  min-width: 280px;
+  /* min(), nicht 280px: auf einem 320px-Telefon bleiben nach dem Polster des
+     Overlays 272px, und eine feste Untergrenze von 280 schob die Karte schon
+     bisher 8px über den Rand. */
+  min-width: min(280px, 100%);
   max-width: 360px;
+  /* Bei grosser Schrift wird der Inhalt höher als der Bildschirm. Ohne diese
+     zwei Zeilen wächst die Karte aus dem zentrierten Overlay oben *und* unten
+     heraus: abgeschnitten und nicht mehr erreichbar. So scrollt stattdessen die
+     Karte — dasselbe, was .mood-history-card längst tut (Issue #125). */
+  max-height: 100%;
+  overflow-y: auto;
   text-align: center;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
@@ -1151,6 +1198,14 @@ button {
   cursor: pointer;
   width: 100%;
   touch-action: manipulation;
+  /* `anywhere` statt des geerbten `break-word`: die Beschriftung ist als
+     Flex-Element so breit wie „Synchronisations-", und das ist bei doppelter
+     Schrift breiter als die Karte. `break-word` bricht erst innerhalb der
+     Zeile und ändert diese Mindestbreite nicht — die Schrift stand darum über
+     den Rändern des Knopfes. `anywhere` senkt sie und lässt notfalls mitten im
+     Wort umbrechen. Der einzige Knopf im Haus mit einem so langen Wort; bei
+     normaler Schrift greift auch das nicht. */
+  overflow-wrap: anywhere;
 }
 
 .sync-create-btn:hover {
@@ -1241,7 +1296,9 @@ button {
   font-size: 2rem;
   font-weight: 700;
   font-family: monospace;
-  letter-spacing: 4px;
+  /* em, nicht px: eine Sperrung ist an ihre Schrift bemessen. Bei 2rem sind das
+     dieselben 4px wie bisher, und sie wachsen mit dem Code mit. */
+  letter-spacing: 0.125em;
   color: var(--success);
   padding: 12px 20px;
   background: color-mix(in srgb, var(--success) 12%, transparent);
@@ -1265,8 +1322,14 @@ button {
 /* The dismiss button and "Verbinden" share one row, mirroring the library's
    join dialog. "Verbinden" hides when connected, leaving the dismiss button
    ("Schliessen") spanning the row on its own. */
+/* Zwei gleich gewichtete Knöpfe nebeneinander — solange ihre Wörter nebeneinander
+   passen. Bei grosser Schrift brauchen „Abbrechen" und „Verbinden" zusammen mehr
+   als die Karte breit ist, und weil beide ihre Beschriftung nicht unterschreiten
+   können, liefen sie über den Rand. Umbrochen steht jeder für sich auf voller
+   Breite: gleich gewichtet bleiben sie so oder so (Issue #125). */
 .sync-panel-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
 }
@@ -1333,8 +1396,9 @@ button {
 .reader-help-btn {
   background: var(--surface-glass);
   border: none;
-  width: 44px;
-  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 1.125rem;
@@ -1400,7 +1464,11 @@ button {
    white reads best over the dimmed page. */
 .help-hint {
   position: absolute;
-  max-width: 210px;
+  /* rem, damit die Blase mit ihrer Schrift wächst statt in immer mehr Zeilen zu
+     zerfallen — aber gedeckelt auf die Bildschirmbreite, weil addChromeHelpHints
+     eine Blase nur verschieben kann, nicht schmaler machen: breiter als das
+     Telefon liefe sie trotz Klemmung rechts hinaus (Issue #125). */
+  max-width: min(13.125rem, calc(100vw - 32px));
   background: #fff;
   color: #111;
   font-size: 0.875rem;
@@ -1451,6 +1519,18 @@ button {
 }
 
 /* Zone labels sit centred in their bands; the long-press hint mid-page. */
+
+/* Diese beiden hängen nicht an der Bildschirmkante, sondern mitten in ihrem
+   Band (15 % / 85 %, um sich selbst zentriert) — eine Blase in Bildschirmbreite
+   ragte hier links bzw. rechts hinaus. Sie brauchen die Breite aber auch nicht:
+   sie ist auf 30 % begrenzt — genau die Breite des Bandes, das sie beschriftet
+   (.help-band), also von der Bandkante bis zur Bandkante und keinen Pixel
+   darüber hinaus. Bei normaler Schrift bindet der Deckel nicht: „Zurück" misst
+   dort rund 80px und damit weniger als 30 % jedes Telefons. */
+.help-hint-zone {
+  max-width: min(210px, 30%);
+}
+
 .help-hint-zone-prev {
   left: 15%;
   top: 50%;
@@ -1469,7 +1549,7 @@ button {
      can't collide on a narrow screen. */
   top: 60%;
   transform: translate(-50%, -50%);
-  max-width: 240px;
+  max-width: min(15rem, calc(100vw - 32px));
 }
 
 /* The loupe's callout sits above the button, in the same corner. Right-aligned
@@ -1477,7 +1557,7 @@ button {
 .help-hint-zoom {
   right: calc(16px + env(safe-area-inset-right, 0px));
   bottom: calc(80px + env(safe-area-inset-bottom, 0px));
-  max-width: 190px;
+  max-width: min(11.875rem, calc(100vw - 32px));
 }
 
 .reader:has(.reader-finish-cue:not([hidden])) .help-hint-zoom {
@@ -1532,9 +1612,10 @@ button {
   position: absolute;
   top: max(16px, env(safe-area-inset-top));
   left: 16px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 999px;
   background: var(--surface-glass);
   color: #fff;
   border: none;
@@ -1756,9 +1837,12 @@ button {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  min-width: 280px;
+  /* Siehe .sync-panel-card: dieselbe Untergrenze und derselbe Grund. */
+  min-width: min(280px, 100%);
   max-width: 360px;
   width: 100%;
+  max-height: 100%;
+  overflow-y: auto;
   text-align: center;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
 }
@@ -1824,8 +1908,10 @@ button {
   border-color: var(--focus);
 }
 
+/* Umbruch aus demselben Grund wie .sync-panel-actions. */
 .dialog-buttons {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   margin-top: 4px;
 }
@@ -1967,8 +2053,12 @@ button {
   font-weight: 600;
 }
 
+/* Umbruch wie bei den Knopfreihen: „Hinzufügen" kann seine Beschriftung nicht
+   unterschreiten, und bei grosser Schrift bleibt neben dem Feld kein Platz mehr
+   dafür. Dann steht der Knopf unter dem Feld statt daneben. */
 .tag-new {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 
@@ -1986,6 +2076,9 @@ button {
   border-radius: 10px;
   padding: 0 16px;
   min-height: 44px;
+  /* Wie beim Bibliothekstitel: ohne das bliebe der Knopf so breit wie sein
+     Wort und stünde bei grosser Schrift über dem Rand der Karte. */
+  min-width: 0;
   font-weight: 600;
   cursor: pointer;
   touch-action: manipulation;
@@ -2059,6 +2152,9 @@ button {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Zentriert und ohne Grenze lief die Pille bei grosser Schrift links und
+     rechts aus dem Bild. Lieber zweizeilig als abgeschnitten. */
+  max-width: calc(100% - 32px);
   background: var(--accent);
   color: #111;
   font-size: 1rem;
@@ -2138,9 +2234,10 @@ button {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 8px;
+  border-radius: 999px;
   border: none;
   background: var(--surface);
   color: var(--fg);

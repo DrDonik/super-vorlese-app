@@ -1948,25 +1948,44 @@ export class ReaderView {
   // a wide screen they sit in two neat rows and on a cramped phone they
   // cascade instead of colliding. A resize closes the help (see
   // scheduleRender) rather than repositioning.
+  //
+  // Two passes, because both numbers the tier maths needs are measured ones.
+  // The step between tiers used to be a constant (46px, „> bubble height"),
+  // which held only while every label stayed on one line. Now that type follows
+  // the system font size (issue #125), „Zurück zur Bibliothek" is three lines
+  // tall at twice the size and the tiers sat on top of each other. The step now
+  // comes from the tallest bubble actually measured. For the same reason every
+  // bubble hangs from the bottom of the *lowest* control rather than from its
+  // own target's: at large type the bar may wrap, and two different starting
+  // heights break the tier arithmetic. The arrows are unaffected — each is
+  // still measured to its own target.
   addChromeHelpHints() {
     const reader = this.readerEl;
     const base = reader.getBoundingClientRect();
-    const TIER_STEP = 46; // > bubble height, so tiers never touch vertically
     const targets = [
       ['.reader-back', 'Zurück zur Bibliothek', 0],
       ['.reader-sync-btn', 'Gemeinsam lesen', 1],
       ['.reader-nav-toggle', 'Umblättern an / aus', 0],
       ['.reader-page-indicator', 'Zu einer Seite springen', 1],
     ];
-    const placed = []; // { tier, left, right } of every bubble already laid out
+    const bubbles = [];
     for (const [selector, text, preferredTier] of targets) {
       const target = reader.querySelector(selector);
       if (!target) continue;
-      const r = target.getBoundingClientRect();
       const hint = this.addHelpHint('help-hint-chrome', text);
       const arrow = document.createElement('span');
       arrow.className = 'help-hint-arrow';
       hint.appendChild(arrow);
+      bubbles.push({ hint, arrow, r: target.getBoundingClientRect(), preferredTier });
+    }
+    if (!bubbles.length) return;
+    // 11px Luft zwischen den Etagen — dasselbe, was die alte Konstante bei einer
+    // einzeiligen Blase liess (46 minus deren 35), damit sich bei normaler
+    // Schriftgrösse nichts verschiebt.
+    const tierStep = Math.max(...bubbles.map((b) => b.hint.offsetHeight)) + 11;
+    const rowBottom = Math.max(...bubbles.map((b) => b.r.bottom)) - base.top;
+    const placed = []; // { tier, left, right } of every bubble already laid out
+    for (const { hint, arrow, r, preferredTier } of bubbles) {
       const targetX = r.left + r.width / 2 - base.left;
       const targetBottom = r.bottom - base.top;
       // Centre the bubble on its target, clamped to the viewport; the arrow
@@ -1979,7 +1998,7 @@ export class ReaderView {
         tier++;
       }
       placed.push({ tier, left, right });
-      const top = targetBottom + 10 + tier * TIER_STEP;
+      const top = rowBottom + 10 + tier * tierStep;
       hint.style.top = `${top}px`;
       hint.style.left = `${left}px`;
       arrow.style.left = `${Math.max(12, Math.min(width - 12, targetX - left))}px`;
