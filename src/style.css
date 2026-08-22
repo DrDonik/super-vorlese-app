@@ -479,8 +479,15 @@ button {
   position: absolute;
   top: 6px;
   right: 6px;
-  min-width: 44px;
-  min-height: 44px;
+  /* Fest statt min, anders als bei jedem anderen Icon-Button dieser Datei
+     (Issue #125): der Stift ist das einzige echte SVG der App, und es ist an
+     die Schaltfläche bemessen (width/height: 100% unten), nicht an die Schrift.
+     Mit min-* hat die absolut gesetzte Schaltfläche keine eigene Breite mehr,
+     die 100 % des Bildes lösen sich gegen die Karte auf, und der Stift wächst
+     auf die volle Kachel. Er wächst ohnehin nicht mit der Systemschrift mit —
+     44px sind hier also Boden und Deckel zugleich. */
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   background: var(--surface-glass);
   color: #fff;
