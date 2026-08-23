@@ -135,9 +135,12 @@ export function makeModal(overlay, {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (KEYS_OWNED_BY_A_MODAL.includes(e.key)) e.stopPropagation();
     onKey?.(e);
+    if (e.defaultPrevented) return;
     if (e.key === 'Escape' && onDismiss) {
       e.preventDefault();
       onDismiss();
+    } else if (e.key === 'Tab') {
+      cycleFocus(e, overlay);
     }
   };
   document.addEventListener('keydown', onKeyDown, false);
@@ -324,19 +327,15 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
-    // Escape, the backdrop, the inert background and the focus handover are the
-    // shared modality; Enter and Tab are this dialog's own, because only here is
-    // there a field to confirm from and a card to cycle inside.
+    // Escape, Tab, the backdrop, the inert background and the focus handover are
+    // the shared modality. Enter is this dialog's own — only here is there a
+    // field to confirm from.
     release = makeModal(overlay, {
       onDismiss: () => cleanup(dismissValue()),
       onKey: (e) => {
         if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
           e.preventDefault();
-          if (!primaryBtn.disabled) {
-            primaryBtn.click();
-          }
-        } else if (e.key === 'Tab') {
-          trapFocus(e, card);
+          if (!primaryBtn.disabled) primaryBtn.click();
         }
       },
     });
@@ -372,30 +371,43 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
 }
 
 // The inert background already makes it impossible to *land* on anything behind
-// the card. This is what keeps the cycle inside it: without it, Tab off the last
-// control steps into the browser's own chrome — the address bar, the tab strip —
-// and takes several presses to come back.
-function trapFocus(e, card) {
-  const focusable = card.querySelectorAll('button:not([disabled]), input');
-  if (focusable.length === 0) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (!card.contains(document.activeElement) || document.activeElement === card) {
-    // Focus drifted out of the card (e.g. a click on the backdrop or on
-    // non-focusable text), or is parked on the card itself, which is where a
-    // dialog that does not focus its field starts (`input.autoFocus: false`).
-    // The card is neither `first` nor `last`, so without this the browser was
-    // left to move focus on its own: forwards that lands on the field anyway,
-    // but backwards it steps to whatever precedes the overlay — a control on
-    // the page behind the modal, one Enter away from being pressed.
+// the overlay. This is what keeps the cycle inside it: `inert` takes the page
+// out of the tab order but builds no ring, so off the last control the focus
+// steps into the browser's own chrome — the address bar, the tab strip — and
+// takes several presses to come back. In a standalone PWA, where there is no
+// address bar, it simply disappears for a moment.
+//
+// Two kinds of control are left out. One inside an `inert` subtree cannot take
+// the focus at all, so it would stall the ring: the mood board is inert until it
+// has risen in, and the page-turn zones are while navigation is off. And one
+// that is not laid out is not there to be reached — the sync panel hides its
+// „Code erstellen" once a code exists, and a hidden stop on the way round would
+// look like a swallowed keypress.
+function cycleFocus(e, overlay) {
+  const focusable = [...overlay.querySelectorAll('button:not([disabled]), input')]
+    .filter((el) => el.getClientRects().length > 0 && !el.closest('[inert]'));
+  if (focusable.length === 0) {
+    // A modal that carries no controls at all (see showProgress). There is
+    // nowhere to move to inside it, and outside is the whole point of what the
+    // inert background prevents.
     e.preventDefault();
-    (e.shiftKey ? last : first).focus();
-  } else if (e.shiftKey && document.activeElement === first) {
+    return;
+  }
+  const at = focusable.indexOf(document.activeElement);
+  // -1 covers every way the focus can sit outside the ring: parked on the card
+  // itself, which is where a dialog that does not focus its field starts
+  // (`input.autoFocus: false`) and where the mood ritual opens; or dropped to
+  // <body> by a click on the backdrop. Left to itself the browser would step
+  // backwards out of the overlay from there.
+  if (at === -1) {
     e.preventDefault();
-    last.focus();
-  } else if (!e.shiftKey && document.activeElement === last) {
+    (e.shiftKey ? focusable[focusable.length - 1] : focusable[0]).focus();
+  } else if (e.shiftKey && at === 0) {
     e.preventDefault();
-    first.focus();
+    focusable[focusable.length - 1].focus();
+  } else if (!e.shiftKey && at === focusable.length - 1) {
+    e.preventDefault();
+    focusable[0].focus();
   }
 }
 
