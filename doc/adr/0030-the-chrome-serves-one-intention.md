@@ -77,6 +77,13 @@ Together these let the CSS escape hatches go without replacement. The
   tabs from the start again. Keyboard-only operation is not this app's audience
   per [ADR 22](0022-accessibility-targets-low-vision-not-screen-readers.md), and
   the reveal rule above keeps it from ever grasping at nothing.
+- **The focus rule outranks the modal convention.** A modal normally hands the
+  focus back to whatever opened it, and every other overlay of this app does
+  (#122). The sync panel is the one exception, because the thing that opened it
+  is the „👥" in the bar — and a focus resting there is precisely what #179 was.
+  It closes to `<body>` instead, and `makeModal` carries a `restoreFocus: false`
+  for saying so out loud. Every further control of the bar that opens something
+  inherits that exception; nothing outside the bar does.
 - Every new control in the bar has to be assigned one of the three waits. That
   is one decision more per button — and exactly the decision whose absence
   produced the defect.

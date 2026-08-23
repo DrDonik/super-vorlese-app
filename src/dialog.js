@@ -19,6 +19,154 @@ function enqueue(factory) {
   return run;
 }
 
+// While a modal is up these keys belong to it and must not also reach the
+// listeners behind it: the reader binds the page turn, the loupe and Escape on
+// `window`, and a book that turns its page under an open card is exactly the
+// surprise rule 7 warns about. stopPropagation rather than preventDefault — the
+// same keys still type, move the caret and press buttons inside the card.
+const KEYS_OWNED_BY_A_MODAL = [
+  'Escape', 'Enter', 'Tab', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown', '+', '-', '=',
+];
+
+// How many modals currently need a given element out of the way. A count, not a
+// flag, because overlays may overlap and need not close in the order they
+// opened: the reader can raise a „Raum geschlossen"-Dialog over a running book
+// transfer, and dismissing that dialog must not hand the shelf back while the
+// transfer's own overlay is still up.
+const inertCounts = new Map();
+
+// The modals currently on screen, oldest first — the last of them owns the
+// keyboard. Every modal keeps a listener of its own on `document`, and
+// stopPropagation holds an event back from other *nodes*, not from a sibling
+// listener on the same one: without this, one Escape would run every open
+// modal's dismissal at once and take a dialog and the panel underneath it
+// together, where Escape is meant to peel off exactly one layer (rule 1).
+// The case is an everyday one — „Buch wird noch geladen" opens over the sync
+// panel, the room can close over the mood ritual.
+// stopImmediatePropagation would not do the job: it leaves the listener that
+// was registered first standing, which is the bottom-most modal — precisely
+// the wrong one.
+const modalStack = [];
+
+function claimInert(el) {
+  const held = inertCounts.get(el) ?? 0;
+  inertCounts.set(el, held + 1);
+  if (held === 0) el.inert = true;
+}
+
+function releaseInert(el) {
+  const held = inertCounts.get(el) ?? 0;
+  if (held > 1) {
+    inertCounts.set(el, held - 1);
+    return;
+  }
+  inertCounts.delete(el);
+  el.inert = false;
+}
+
+// The modality every overlay of this app shares (issue #122). An overlay is more
+// than a card on a dimmed backdrop: while it is up, nothing behind it may be
+// reached, Escape must get out of *it* and not out of whatever lies underneath,
+// and the keys above must not act on the page hidden behind the card. The
+// dialogs here had all of that; the sync panel, the mood ritual and the mood
+// history each had some of it, and each a different some — one key meaning two
+// opposite things depending on which overlay was up (rule 1).
+//
+// The background is put out of reach with `inert` rather than with a Tab trap in
+// JavaScript: the browser implements it, so one attribute covers pointer,
+// keyboard and assistive technology at once, and unlike an enumeration of
+// focusable elements it cannot fall behind a DOM that grows. Every sibling on
+// the way from the overlay up to <body> is marked, which lets an overlay stay
+// where it belongs — the dialog card under <body>, the sync panel and the mood
+// ritual inside `.reader`, where they animate and scroll along with it.
+//
+// Returns release(): it drops this modal's claim on the background and hands the
+// focus back. Removing or hiding the overlay itself stays with the caller — the
+// sync panel keeps its element and only sets `hidden`.
+//
+// `onDismiss` absent means there is no way out (see showProgress): Escape is
+// then swallowed rather than falling through. `restoreFocus: false` is for an
+// overlay whose opener must not get the focus back — the reader's „👥", where a
+// returned focus would hold the whole bar on screen for the rest of the reading
+// (ADR 30).
+export function makeModal(overlay, {
+  onDismiss,
+  onKey,
+  focus,
+  dismissOnBackdrop = true,
+  restoreFocus = true,
+} = {}) {
+  // Where the focus goes when this modal releases, best candidate first. Usually
+  // that is simply whatever held it at the moment of opening — but a modal that
+  // opens over another one takes its candidate from inside that one's card, and
+  // the two need not close in the order they opened: a book transfer finishing
+  // under a „Raum geschlossen"-Dialog takes its progress card, and with it that
+  // candidate, off the page. The modal underneath has already worked out a
+  // target outside every overlay, so its list is inherited here and the chain
+  // holds however many are stacked. <body> is not a candidate: it is where the
+  // focus falls on its own, and putting it in the list would shadow a real
+  // target further down.
+  const opener = document.activeElement === document.body ? null : document.activeElement;
+  const restoreTo = [opener, ...(modalStack[modalStack.length - 1]?.restoreTo ?? [])];
+
+  const inerted = [];
+  for (let node = overlay; node && node !== document.body; node = node.parentElement) {
+    for (const sibling of node.parentElement?.children ?? []) {
+      if (sibling === node || !(sibling instanceof HTMLElement)) continue;
+      // Already inert for a reason of its own — the page-turn zones with
+      // navigation off, the mood board before it has risen in. Those are not
+      // ours to hand back, so they are left out of the bookkeeping entirely.
+      if (sibling.inert && !inertCounts.has(sibling)) continue;
+      claimInert(sibling);
+      inerted.push(sibling);
+    }
+  }
+
+  // Bound to document in the bubbling phase. A document-level listener fires
+  // wherever the focus sits (even if it dropped to <body>), so Escape stays
+  // reliable; the capture phase is avoided because stopping propagation there
+  // would block native keyboard behaviour — the caret in an input, Space on a
+  // button — inside the card itself.
+  const layer = { restoreTo };
+  modalStack.push(layer);
+
+  const onKeyDown = (e) => {
+    if (modalStack[modalStack.length - 1] !== layer) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (KEYS_OWNED_BY_A_MODAL.includes(e.key)) e.stopPropagation();
+    onKey?.(e);
+    if (e.defaultPrevented) return;
+    if (e.key === 'Escape' && onDismiss) {
+      e.preventDefault();
+      onDismiss();
+    } else if (e.key === 'Tab') {
+      cycleFocus(e, overlay);
+    }
+  };
+  document.addEventListener('keydown', onKeyDown, false);
+
+  const onClick = (e) => { if (e.target === overlay) onDismiss(); };
+  if (dismissOnBackdrop && onDismiss) overlay.addEventListener('click', onClick);
+
+  if (focus) focus.focus();
+
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    // By identity, not by popping: modals need not close in the order they
+    // opened, and the one left on top must inherit the keyboard.
+    const at = modalStack.indexOf(layer);
+    if (at !== -1) modalStack.splice(at, 1);
+    document.removeEventListener('keydown', onKeyDown, false);
+    overlay.removeEventListener('click', onClick);
+    // Before the focus is handed back: focus() on an element still inert does
+    // nothing, and would leave it on <body> instead.
+    for (const el of inerted) releaseInert(el);
+    if (restoreFocus) restoreTo.find((el) => el?.isConnected)?.focus();
+  };
+}
+
 let dialogSeq = 0;
 
 // The shared modal machinery behind showAlert / showConfirm / showPrompt, and
@@ -45,15 +193,13 @@ let dialogSeq = 0;
 // löschen"), and gets a row of its own above the closing button. It is not one
 // of `buttons` on purpose: those share the row evenly, which would put a delete
 // a fingerwidth from the button that ends the dialog normally.
-export function openDialog({ title, message, input, content, buttons, dangerButton, cancelValue }) {
+export function openDialog({ title, message, input, content, buttons, dangerButton, cancelValue, cardClass }) {
   return enqueue(() => new Promise((resolve) => {
-    const previouslyFocused = document.activeElement;
-
     const overlay = document.createElement('div');
     overlay.className = 'dialog-overlay';
 
     const card = document.createElement('div');
-    card.className = 'dialog-card';
+    card.className = cardClass ? `dialog-card ${cardClass}` : 'dialog-card';
     card.setAttribute('role', 'dialog');
     card.setAttribute('aria-modal', 'true');
 
@@ -115,15 +261,12 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
     }
 
     let cleaned = false;
-    let onKeyDown;
+    let release;
     const cleanup = (value) => {
       if (cleaned) return;
       cleaned = true;
-      document.removeEventListener('keydown', onKeyDown, false);
       overlay.remove();
-      if (previouslyFocused && previouslyFocused.isConnected) {
-        previouslyFocused.focus();
-      }
+      release?.();
       resolve(value);
     };
 
@@ -181,37 +324,21 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       sync();
     }
 
-    // Bind to document in the bubbling phase. A document-level listener
-    // fires regardless of where focus sits (even if it drops to <body>),
-    // ensuring Escape and the Tab trap remain reliable. We avoid the capture
-    // phase because stopping propagation during capture would block native
-    // keyboard interactions (like cursor movement in inputs or activating buttons).
-    onKeyDown = (e) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
-      const keysToBlock = ['Escape', 'Enter', 'Tab', 'ArrowLeft', 'ArrowRight', ' ', 'PageUp', 'PageDown'];
-      if (keysToBlock.includes(e.key)) {
-        e.stopPropagation();
-      }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        cleanup(dismissValue());
-      } else if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
-        e.preventDefault();
-        if (!primaryBtn.disabled) {
-          primaryBtn.click();
-        }
-      } else if (e.key === 'Tab') {
-        trapFocus(e, card);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown, false);
-
-    overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) cleanup(dismissValue());
-    });
-
     overlay.appendChild(card);
     document.body.appendChild(overlay);
+
+    // Escape, Tab, the backdrop, the inert background and the focus handover are
+    // the shared modality. Enter is this dialog's own — only here is there a
+    // field to confirm from.
+    release = makeModal(overlay, {
+      onDismiss: () => cleanup(dismissValue()),
+      onKey: (e) => {
+        if (e.key === 'Enter' && inputEl && document.activeElement === inputEl) {
+          e.preventDefault();
+          if (!primaryBtn.disabled) primaryBtn.click();
+        }
+      },
+    });
 
     if (inputEl && input.autoFocus === false) {
       // A field holding something the user did not come to retype. Selecting it
@@ -243,27 +370,44 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
   }));
 }
 
-function trapFocus(e, card) {
-  const focusable = card.querySelectorAll('button:not([disabled]), input');
-  if (focusable.length === 0) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (!card.contains(document.activeElement) || document.activeElement === card) {
-    // Focus drifted out of the card (e.g. a click on the backdrop or on
-    // non-focusable text), or is parked on the card itself, which is where a
-    // dialog that does not focus its field starts (`input.autoFocus: false`).
-    // The card is neither `first` nor `last`, so without this the browser was
-    // left to move focus on its own: forwards that lands on the field anyway,
-    // but backwards it steps to whatever precedes the overlay — a control on
-    // the page behind the modal, one Enter away from being pressed.
+// The inert background already makes it impossible to *land* on anything behind
+// the overlay. This is what keeps the cycle inside it: `inert` takes the page
+// out of the tab order but builds no ring, so off the last control the focus
+// steps into the browser's own chrome — the address bar, the tab strip — and
+// takes several presses to come back. In a standalone PWA, where there is no
+// address bar, it simply disappears for a moment.
+//
+// Two kinds of control are left out. One inside an `inert` subtree cannot take
+// the focus at all, so it would stall the ring: the mood board is inert until it
+// has risen in, and the page-turn zones are while navigation is off. And one
+// that is not laid out is not there to be reached — the sync panel hides its
+// „Code erstellen" once a code exists, and a hidden stop on the way round would
+// look like a swallowed keypress.
+function cycleFocus(e, overlay) {
+  const focusable = [...overlay.querySelectorAll('button:not([disabled]), input')]
+    .filter((el) => el.getClientRects().length > 0 && !el.closest('[inert]'));
+  if (focusable.length === 0) {
+    // A modal that carries no controls at all (see showProgress). There is
+    // nowhere to move to inside it, and outside is the whole point of what the
+    // inert background prevents.
     e.preventDefault();
-    (e.shiftKey ? last : first).focus();
-  } else if (e.shiftKey && document.activeElement === first) {
+    return;
+  }
+  const at = focusable.indexOf(document.activeElement);
+  // -1 covers every way the focus can sit outside the ring: parked on the card
+  // itself, which is where a dialog that does not focus its field starts
+  // (`input.autoFocus: false`) and where the mood ritual opens; or dropped to
+  // <body> by a click on the backdrop. Left to itself the browser would step
+  // backwards out of the overlay from there.
+  if (at === -1) {
     e.preventDefault();
-    last.focus();
-  } else if (!e.shiftKey && document.activeElement === last) {
+    (e.shiftKey ? focusable[focusable.length - 1] : focusable[0]).focus();
+  } else if (e.shiftKey && at === 0) {
     e.preventDefault();
-    first.focus();
+    focusable[focusable.length - 1].focus();
+  } else if (!e.shiftKey && at === focusable.length - 1) {
+    e.preventDefault();
+    focusable[0].focus();
   }
 }
 
@@ -304,20 +448,13 @@ export function showProgress({ title, message } = {}) {
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 
-  // The overlay is modal but carries no controls. Park focus on the card and
-  // swallow Tab so keyboard focus can't slip to background actions (library
-  // tiles, book cards) while the transfer runs. We block only Tab, leaving
-  // typing and assistive-technology shortcuts untouched.
-  const previouslyFocused = document.activeElement;
+  // Modal, but with no controls and no way out: the operation ends when it ends.
+  // Passing no `onDismiss` says exactly that — Escape is swallowed here instead
+  // of falling through to the reader behind the transfer and closing the book
+  // out from under it. The focus parks on the card, and the inert background
+  // keeps Tab from reaching the shelf underneath while it runs.
   card.tabIndex = -1;
-  card.focus();
-  const onKeyDown = (e) => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      card.focus();
-    }
-  };
-  document.addEventListener('keydown', onKeyDown, true);
+  const release = makeModal(overlay, { focus: card });
 
   let closed = false;
   return {
@@ -330,9 +467,8 @@ export function showProgress({ title, message } = {}) {
     close() {
       if (closed) return;
       closed = true;
-      document.removeEventListener('keydown', onKeyDown, true);
       overlay.remove();
-      if (previouslyFocused && previouslyFocused.isConnected) previouslyFocused.focus();
+      release();
     },
   };
 }
