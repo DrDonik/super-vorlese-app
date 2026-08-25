@@ -1,4 +1,7 @@
 import { ROOM_TTL_MS, ROOM_REFRESH_MS, DATABASE_URL } from './sync-constants.js';
+// The bookkeeping half of the transfer layer only; transfer.js imports nothing
+// itself, so giving up a code here can never loop back into this module.
+import { stopServing } from './transfer.js';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDeI6LYnu-34xlnAx7Onjwa_bI52boW8GM",
@@ -132,6 +135,50 @@ export async function lookupRoom(code) {
   return { code: normalizedCode, book: data.book || null, page: data.page };
 }
 
+// Once per app run: forget the saved codes of rooms that are not there any
+// more, so „Buch bearbeiten" never shows a code with nothing behind it and
+// never offers to disconnect from a room that is already gone (issue #175). A
+// room only ever dies by outliving its lease, so checking once per run is
+// enough — nothing can die while the app is open.
+//
+// Read-only against the database, unlike lookupRoom and reconnect, which delete
+// the expired node they stumble over. Those hang off something the user did;
+// this runs unbidden at every start, and starting the app should write nothing
+// at all. The node is the reaper's to remove anyway, with the day of grace
+// ADR 27 gives it — and no read here can renew a lease, which only ever rides a
+// page turn (see sendPage).
+export async function pruneDeadRooms() {
+  const entries = Object.entries(loadSavedRooms());
+  if (!entries.length) return;
+  const fb = await loadFirebase();
+  await Promise.all(entries.map(async ([bookId, entry]) => {
+    const code = typeof entry === 'string' ? entry : entry?.code;
+    // A book being read right now has just been checked by the path that opened
+    // it, and is not this sweep's business.
+    if (!code || activeSessions.has(bookId)) return;
+    let snapshot;
+    try {
+      snapshot = await fb.get(fb.ref(fb.db, `rooms/${code}`));
+    } catch {
+      // Offline is not the end of a synchronisation. A code is given up on a
+      // definite answer only, never on a read that failed to arrive.
+      return;
+    }
+    if (snapshot.exists() && !roomIsGone(snapshot.val())) return;
+    // Both re-checked after the read, not only before it: the book may have been
+    // opened while it was in flight. The entry may by then be a fresh code that
+    // nothing has looked at, and a session that reconnected in the meantime has
+    // just checked this room for itself and speaks for it now. Drop only what
+    // was actually read, and only while nobody is holding it.
+    if (getSavedRoom(bookId)?.code !== code || activeSessions.has(bookId)) return;
+    // A code that was already announced from „Buch bearbeiten" in this first
+    // moment of the run leaves the offer behind with it, so what this device
+    // serves stays exactly what it still holds a code for.
+    stopServing(code);
+    removeRoomForBook(bookId);
+  }));
+}
+
 export function getSessionForBook(bookId) {
   return activeSessions.get(bookId) || null;
 }
@@ -143,6 +190,12 @@ export function getSessionForBook(bookId) {
 // keeps their session either way, which is what ADR 7 was after (issue #50).
 export function closeSyncForBook(bookId) {
   const session = activeSessions.get(bookId);
+  // Before the code is dropped, and read from the saved entry rather than from
+  // the session, because a book can be on offer without one: „Buch bearbeiten"
+  // shows the code with no reader open (ADR 33). Giving the code up has to take
+  // the offer with it, or the partner could still pull the book afterwards.
+  const code = getSavedRoom(bookId)?.code;
+  if (code) stopServing(code);
   if (session) {
     session.stop();
   } else {

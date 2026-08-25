@@ -8,6 +8,7 @@ import { loadPdf, renderThumbnail, readTitlePage } from './pdf.js';
 import { importBundle } from './bundle.js';
 import { attachDebugViewportTrigger } from './debug-viewport.js';
 import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
+import { offerBook } from './offer.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { showAlert, showConfirm, openDialog } from './dialog.js';
 
@@ -857,13 +858,20 @@ export class LibraryView {
           tagWrites = write.catch(() => {});
           return write;
         };
+        // A code that is about to be on screen is a code about to be read out,
+        // so this dialog puts the book on offer exactly as the reader's sync
+        // panel does (ADR 33) — the gap issue #175 was about. Codes belonging to
+        // rooms that no longer exist were already forgotten at startup
+        // (pruneDeadRooms), so a dead one shows nothing here and offers nothing.
+        const syncCode = getSavedRoomCode(book.id);
+        if (syncCode) offerBook(book.id, syncCode);
         let edited;
         try {
           edited = await showBookEdit({
             title: book.title,
             tags: initialTags,
             allTags,
-            syncCode: getSavedRoomCode(book.id),
+            syncCode,
             onTagsChange,
           });
         } finally {

@@ -5,7 +5,7 @@ import { ReaderView } from './reader.js';
 import { CameraView } from './camera.js';
 import { findBookByContentHash, ensureContentHash, deleteBook } from './storage.js';
 import { importBundle } from './bundle.js';
-import { getFirebase } from './sync.js';
+import { getFirebase, pruneDeadRooms } from './sync.js';
 import { receiveBook } from './transfer.js';
 import { showAlert, showProgress } from './dialog.js';
 import { restoreDebugViewport } from './debug-viewport.js';
@@ -129,7 +129,7 @@ async function openRoom(room) {
       title: corrupt ? 'Übertragung fehlerhaft' : 'Verbindung nicht möglich',
       message: corrupt
         ? 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.'
-        : 'Dein Lesepartner muss online und im Buch sein, um es zu senden. Bitte versuche es erneut.',
+        : 'Dein Lesepartner muss die App offen und das Buch geöffnet haben, um es zu senden. Bitte versuche es erneut.',
     });
   }
 }
@@ -145,3 +145,10 @@ function showCamera() {
 }
 
 showLibrary();
+
+// After the shelf is on screen, never before it: the library reads from
+// IndexedDB and owes the network nothing, while this is the app's first (and,
+// on most evenings, only) reason to load Firebase at all. It quietly forgets the
+// Synchronisations-Codes whose rooms have run out, so „Buch bearbeiten" shows a
+// code only while there is still a room behind it (issue #175).
+pruneDeadRooms().catch(() => {});

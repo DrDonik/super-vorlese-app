@@ -1,10 +1,9 @@
 import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
 import { loadPdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
-import { SyncSession, getSessionForBook, closeSyncForBook, getFirebase, lookupRoom } from './sync.js';
+import { SyncSession, getSessionForBook, closeSyncForBook, lookupRoom } from './sync.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
-import { serveBook } from './transfer.js';
-import { exportBook } from './bundle.js';
+import { offerBook } from './offer.js';
 import { showAlert, showConfirm, makeModal } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 import { keepAwake, letSleep } from './wake-lock.js';
@@ -179,7 +178,6 @@ export class ReaderView {
     // Opened from the library to hand a Synchronisations-Code out: make sure
     // there is one and put it on screen (see ensureSharedCode).
     this.startShared = startShared;
-    this.serveStop = null;
     this.source = null;
     this.currentPage = 1;
     this.totalPages = 0;
@@ -2762,26 +2760,7 @@ export class ReaderView {
     return { hash, title, pageCount: meta.pageCount, type: meta.type || 'pdf' };
   }
 
-  // While we hold an active room as its creator, stand ready to stream the book
-  // to a partner who joins from the library without a copy.
-  maybeStartServing() {
-    if (this.serveStop) return;
-    const session = this.syncSession;
-    if (!session?.roomCode) return;
-    getFirebase().then((fb) => {
-      if (this.syncSession !== session || this.serveStop) return;
-      this.serveStop = serveBook(fb, session.roomCode, () => exportBook(this.bookId));
-    }).catch(() => {});
-  }
-
-  stopServing() {
-    if (!this.serveStop) return;
-    try { this.serveStop(); } catch {}
-    this.serveStop = null;
-  }
-
   syncStop() {
-    this.stopServing();
     if (this.syncSession) {
       this.syncSession.stopListeningPointers();
       this.syncSession.stopListeningMood();
@@ -2811,7 +2790,11 @@ export class ReaderView {
     active.hidden = false;
     active.querySelector('.sync-code-display').textContent = code;
     this.root.querySelector('.reader-sync-btn').classList.add('sync-active');
-    this.maybeStartServing();
+    // The code is on screen, so the book is on offer (ADR 33) — including when
+    // the panel itself is still folded away, which is how a reconnected book
+    // reaches this line. That case is the common one: the code was exchanged
+    // last week, and the partner is joining from the shelf today.
+    offerBook(this.bookId, code);
     if (this.syncSession) {
       this.syncSession.listenPointers((others) => this.renderRemotePointers(others));
       this.syncSession.listenMood((data) => this.handleMood(data));
@@ -2907,7 +2890,6 @@ export class ReaderView {
       this.coverUrl = null;
     }
     this.readerEl = null;
-    this.stopServing();
     if (this.syncSession) {
       this.syncSession.detach();
       this.syncSession = null;
