@@ -88,9 +88,19 @@ takes the focus.
 **A person who leaves stays out.** The retry above would otherwise drag someone
 back in on their next tap, which is precisely rule 7's surprise. A hand-made
 exit and a platform-made exit arrive as the same `fullscreenchange`, so they are
-told apart by what holds the focus when it fires: a text field means iOS did it
-and the book asks again; anything else means a person did it and the book stops
-asking until it is next opened.
+told apart by *when* it fires: the platform's exit is the answer to a focus
+event and follows it within a frame or two, while a swipe comes whenever the
+reader decides. Only an exit that both finds a text field in the focus and
+arrives within half a second of that field taking it counts as the platform's;
+everything else is a person, and the book stops asking until it is next opened.
+
+The focus alone is deliberately not enough, and the difference is not
+hypothetical: a keyboard stands for as long as somebody is typing a
+Synchronisations-Code, and on Android — inside the same touch gate — focusing a
+field does not end the session at all, so the field holds the focus through a
+swipe that was entirely deliberate. Reading the focus as a verdict rather than
+as one half of a coincidence would have re-entered the fullscreen on that
+person's next tap.
 
 Every failure is silent, as with the wake lock. A book with the browser's bars
 above it is the book exactly as it stood before.

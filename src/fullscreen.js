@@ -33,18 +33,29 @@
 //
 // Which leaves the one distinction this module has to draw: whoever swiped down
 // to leave meant it and must not be dragged back in by their next tap (rule 7).
-// Both arrive as the same `fullscreenchange`, so they are told apart by what
-// holds the focus when it fires — a text field means the platform did it,
-// anything else means a person did, and then the book stops asking.
+// Both arrive as the same `fullscreenchange`, so they are told apart by *when*
+// it fires. The platform's exit is the answer to a focus event and follows it
+// within a frame or two; a swipe comes whenever the reader decides, and a field
+// still holding the focus proves nothing on its own — a keyboard stands for as
+// long as somebody is typing, and a swipe in the middle of that is a decision
+// like any other.
 //
 // Every failure is silent. A book with the browser's bars above it is the book
 // as it stood before this file existed; a message about it would be noise no
 // grandparent can act on.
 
+// How long after a text field takes the focus an exit can still be the
+// platform's doing. The exit is dispatched in answer to the focus itself, so it
+// arrives within a frame or two; a person who focuses a field and then decides
+// to swipe the fullscreen away needs the keyboard to finish appearing first and
+// is far slower than this.
+const PLATFORM_EXIT_AFTER_FOCUS_MS = 500;
+
 let reading = false;    // a book is on screen
 let refused = false;    // this reader left the fullscreen by hand — stop asking
 let requesting = false; // a request is in flight; don't stack a second one
 let listening = false;
+let textEntryFocusedAt = 0; // when a text field last took the focus
 
 // The complement of the mouse test in reader.js: a device that cannot hover and
 // points coarsely is a phone or a tablet. A laptop with a touchscreen still
@@ -65,13 +76,24 @@ function isTextEntry(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
+function onFocusIn(e) {
+  if (reading && isTextEntry(e.target)) textEntryFocusedAt = performance.now();
+}
+
 function onFullscreenChange() {
-  // Registered once and left in place, like the wake lock's visibility
-  // listener: this is inert while no book is open, so there is nothing to tear
-  // down. leaveFullscreen() clears `reading` before it exits, so the change it
-  // causes itself lands here and is ignored.
+  // Both listeners are registered once and left in place, like the wake lock's
+  // visibility listener: they are inert while no book is open, so there is
+  // nothing to tear down. leaveFullscreen() clears `reading` before it exits,
+  // so the change it causes itself lands here and is ignored.
   if (document.fullscreenElement || !reading) return;
-  if (!isTextEntry(document.activeElement)) refused = true;
+  // Who ended it? A field still holding the focus is not evidence on its own —
+  // the keyboard can stand for as long as somebody is typing, and a swipe in
+  // the middle of that is a decision like any other. What distinguishes the
+  // platform's exit is that it *follows the focus*: it is the answer to the
+  // focus event, not to anything the reader did afterwards.
+  const causedByFocus = isTextEntry(document.activeElement)
+    && performance.now() - textEntryFocusedAt < PLATFORM_EXIT_AFTER_FOCUS_MS;
+  if (!causedByFocus) refused = true;
 }
 
 function enter() {
@@ -102,8 +124,10 @@ export function keepFullscreen() {
     if (!isTouchDevice() || isInstalled() || !document.fullscreenEnabled) return;
     reading = true;
     refused = false;
+    textEntryFocusedAt = 0;
     if (!listening) {
       document.addEventListener('fullscreenchange', onFullscreenChange);
+      document.addEventListener('focusin', onFocusIn);
       listening = true;
     }
   }
