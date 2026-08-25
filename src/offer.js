@@ -13,7 +13,7 @@
 // offer back is „Synchronisation trennen" (via closeSyncForBook), and otherwise
 // closing the app.
 
-import { getFirebase } from './sync.js';
+import { getFirebase, getSavedRoomCode } from './sync.js';
 import { exportBook } from './bundle.js';
 import { startServing } from './transfer.js';
 
@@ -28,6 +28,21 @@ import { startServing } from './transfer.js';
 export function offerBook(bookId, roomCode) {
   if (!bookId || !roomCode) return;
   getFirebase()
-    .then((fb) => startServing(fb, roomCode, () => exportBook(bookId)))
+    .then((fb) => {
+      // Checked again on the far side of the wait, and this is not a rare race:
+      // „Synchronisation trennen" and „Buch löschen" both sit in the very dialog
+      // whose opening started this offer, and loading Firebase the first time in
+      // a run takes long enough to tap one. stopServing() cannot help there —
+      // at that moment there is nothing in its map yet — so without this check
+      // the offer would come up *after* the withdrawal and quietly go on sharing
+      // a book the user just stopped sharing.
+      //
+      // The saved code is the authority rather than a flag of our own: it is
+      // what „this device shares this book" means everywhere else, and every way
+      // of giving a book up (disconnecting, deleting, replacing the code with a
+      // fresh one) already goes through closeSyncForBook and drops it.
+      if (getSavedRoomCode(bookId) !== roomCode) return;
+      startServing(fb, roomCode, () => exportBook(bookId));
+    })
     .catch(() => {});
 }

@@ -129,7 +129,7 @@ async function openRoom(room) {
       title: corrupt ? 'Übertragung fehlerhaft' : 'Verbindung nicht möglich',
       message: corrupt
         ? 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.'
-        : 'Dein Lesepartner muss die App offen und das Buch geöffnet haben, um es zu senden. Bitte versuche es erneut.',
+        : 'Dein Lesepartner muss die App offen haben und das Buch aufmachen. Bitte versuche es dann erneut.',
     });
   }
 }

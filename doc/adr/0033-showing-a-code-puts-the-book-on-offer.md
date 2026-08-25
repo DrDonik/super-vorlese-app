@@ -66,6 +66,12 @@ device whose books are never read together never offers anything.
 - `offerBook(bookId, roomCode)` (`src/offer.js`) is the policy in one place, used
   by `showSyncActive()` and by the library's pencil. It is fire-and-forget: a
   book that cannot be offered must not hold up the screen that showed the code.
+  Because it is, it re-reads the saved code once Firebase has loaded and only
+  then starts serving. Withdrawing an offer that has not begun cannot work
+  through `stopServing()` — there is nothing in its map yet — and the tap that
+  withdraws sits in the very dialog whose opening started the offer, so this
+  order is ordinary rather than exotic. The saved code is the authority because
+  it is already what „this device shares this book" means everywhere else.
 - The reader no longer owns the server. Leaving the view, and even destroying it,
   leaves the offer standing — that is the point.
 - **„Synchronisation trennen" withdraws it**, through `closeSyncForBook()`, which
@@ -120,5 +126,10 @@ synchronisation, and a code is given up on a definite answer only.
   shelf is on screen, and the shelf itself still owes the network nothing; a user
   with no codes never triggers it.
 - A device that is relaunched and goes straight to the shelf offers nothing until
-  a code is shown once. The partner's failure message names what to do about it:
-  the Lesepartner has to have the app open and the book opened.
+  a code is shown once. The partner's failure message is what covers this, and it
+  names an action rather than a precondition — have the app open, open the book —
+  because opening the book is the one route that always reaches the offer and the
+  only one a six-year-old can ask for over a video call. Saying "your partner has
+  to be in the book" would now be false (the offer outlives the reader), and
+  saying "your partner has to have the code on screen" would ask the child to
+  explain the mechanism to the grown-up.
