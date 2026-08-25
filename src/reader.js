@@ -880,11 +880,17 @@ export class ReaderView {
         // both distances in the same movement, so dragging feels unchanged.
         const threshold = this.mouseHoldTimer ? MOVE_CANCEL_PX : DRAG_START_PX;
         if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return;
-        // Nothing to move this way (see canPanAlong, which is false at 1x):
-        // let go of the gesture so it ends as the ordinary click it looks like
-        // — over a turn zone that is a page turn, which is what the same drag
-        // does on a touchscreen.
-        if (!this.canPanAlong(dx, dy)) { from = null; return; }
+        // Nothing to move this way (see canPanAlong, which is false at 1x), so
+        // the press never becomes a drag and ends as the ordinary click it
+        // looks like — over a turn zone that is a page turn, which is what the
+        // same drag does on a touchscreen, and on the page itself it is the
+        // chrome. The press is kept rather than dropped here for that second
+        // half: releasing it is how the chrome is asked for, and a hand that
+        // shifted while clicking must not lose it (issue #120). Deliberately
+        // without a distance of its own — at 1x no other mouse gesture is
+        // competing for the press, so bounding it would only re-open the kind
+        // of dead zone this recogniser has just been rid of.
+        if (!this.canPanAlong(dx, dy)) return;
         from.moved = true;
         capture();
       }

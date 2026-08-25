@@ -202,6 +202,11 @@ points, and pointing has always kept the chrome away.
   nothing — and the chrome is where the page-turn buttons are, so the reader is
   handed the thing they were reaching for.
 - `TAP_MAX_MS`, `TAP_MAX_PX` and the touch recogniser's `startTime` are gone.
+- A mouse press that finds nothing to move — the drag distance crossed, but the
+  page not pannable that way, at 1× or against an edge — keeps the press instead
+  of dropping it, so the release still reaches the chrome. It carries no
+  distance limit of its own: at 1× no other mouse gesture competes for the
+  press, so bounding it would only re-open a dead zone in the other axis.
 - Both recognisers now remember that a press *pointed*, rather than asking
   whether a pointer is still standing. The tap's old 600 ms ceiling happened to
   cover the one case where those differ — a page turn wipes every pointer
