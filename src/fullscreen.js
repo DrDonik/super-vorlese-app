@@ -24,7 +24,8 @@
 //   top of the reader's render() beside keepAwake(), before anything is
 //   awaited. A book that arrived over a transfer has no gesture left by then —
 //   covered by the same re-arm on the next touch that the wake lock uses, on
-//   the same two events, for the same reason.
+//   `touchend`: the one event that grants the activation on a touch device, and
+//   the only kind of device this runs on at all.
 //
 // - **A text field throws us out.** On iOS, focusing a text-entry element ends
 //   the fullscreen session; the Synchronisations-Code and the page-jump field
@@ -55,7 +56,8 @@ let reading = false;    // a book is on screen
 let refused = false;    // this reader left the fullscreen by hand — stop asking
 let requesting = false; // a request is in flight; don't stack a second one
 let listening = false;
-let textEntryFocusedAt = 0; // when a text field last took the focus
+let textEntryFocusedAt = 0;  // when a text field last took the focus
+let pendingSelfExits = 0;    // exits this module asked for, not yet reported
 
 // The complement of the mouse test in reader.js: a device that cannot hover and
 // points coarsely is a phone or a tablet. A laptop with a touchscreen still
@@ -76,6 +78,20 @@ function isTextEntry(el) {
   return tag === 'INPUT' || tag === 'TEXTAREA';
 }
 
+// Every exit this module asks for is counted, because the `fullscreenchange`
+// that reports it arrives a task later — by which time a *new* reading can
+// already have begun. The reader reaches itself directly (the sync panel's
+// „Verbinden" goes through openRoom() straight back into showReader), and there
+// destroy() and render() run in the same task: without this count the old
+// book's exit would land on the new book's session and be read as a person
+// walking out of a fullscreen they never had.
+function exitOurselves() {
+  pendingSelfExits += 1;
+  document.exitFullscreen().catch(() => {
+    pendingSelfExits -= 1;
+  });
+}
+
 function onFocusIn(e) {
   if (reading && isTextEntry(e.target)) textEntryFocusedAt = performance.now();
 }
@@ -83,9 +99,13 @@ function onFocusIn(e) {
 function onFullscreenChange() {
   // Both listeners are registered once and left in place, like the wake lock's
   // visibility listener: they are inert while no book is open, so there is
-  // nothing to tear down. leaveFullscreen() clears `reading` before it exits,
-  // so the change it causes itself lands here and is ignored.
-  if (document.fullscreenElement || !reading) return;
+  // nothing to tear down.
+  if (document.fullscreenElement) return;
+  if (pendingSelfExits > 0) {
+    pendingSelfExits -= 1;
+    return;
+  }
+  if (!reading) return;
   // Who ended it? A field still holding the focus is not evidence on its own —
   // the keyboard can stand for as long as somebody is typing, and a swipe in
   // the middle of that is a decision like any other. What distinguishes the
@@ -110,7 +130,7 @@ function enter() {
     requesting = false;
     // The book was closed while the request was in flight — otherwise the
     // library would inherit a full screen nobody asked it for.
-    if (!reading) document.exitFullscreen().catch(() => {});
+    if (!reading) exitOurselves();
   }).catch(() => {
     requesting = false;
   });
@@ -137,5 +157,5 @@ export function keepFullscreen() {
 export function leaveFullscreen() {
   if (!reading) return;
   reading = false;
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+  if (document.fullscreenElement) exitOurselves();
 }

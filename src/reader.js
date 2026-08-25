@@ -418,14 +418,15 @@ export class ReaderView {
     // keepAwake() is inert while the lock is held (ADR 25).
     reader.addEventListener('touchend', keepAwake, { capture: true, passive: true });
     reader.addEventListener('pointerdown', keepAwake, true);
-    // Fullscreen rides along on exactly those two events, and for exactly that
-    // reason — it needs the same activation, and it is equally inert once the
-    // book has what it asked for. It has one case of its own besides the
-    // transfer: on iOS a text field ends the fullscreen session, so the touch
-    // after the Synchronisations-Code or a page jump is what brings the screen
-    // back (ADR 34).
+    // Fullscreen re-arms for the same reasons and needs the same activation, but
+    // on `touchend` alone: it only ever runs on a touch device (ADR 34), and
+    // there `pointerdown` is precisely the event that grants nothing. Asking on
+    // it would spend the attempt on a rejection and could leave the request that
+    // follows on `touchend` with nothing to do. Besides the transfer it has a
+    // case of its own: on iOS a text field ends the fullscreen session, so the
+    // touch after the Synchronisations-Code or a page jump is what brings the
+    // screen back.
     reader.addEventListener('touchend', keepFullscreen, { capture: true, passive: true });
-    reader.addEventListener('pointerdown', keepFullscreen, true);
 
     this.setupSync(reader);
 

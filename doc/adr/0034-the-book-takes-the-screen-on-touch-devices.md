@@ -79,11 +79,24 @@ rule changes: the page just gets the pixels the bars had. This is why the change
 needs no CSS.
 
 **Asking again is modelled on the wake lock** ([ADR 25](0025-screen-stays-awake-while-reading.md)),
-down to the two events: `touchend` and `pointerdown`, the pair that grants the
-activation on both kinds of pointer. It covers the two cases where the opening
-gesture is not enough — a book that arrived over a WebRTC transfer, where the
-activation expired minutes ago, and iOS ending the session when a text field
-takes the focus.
+but on `touchend` alone rather than its pair. The wake lock also listens on
+`pointerdown` because that is what grants the activation for a *mouse*, and this
+never runs where there is one; on a touch device `pointerdown` is precisely the
+event that grants nothing. Asking on it would spend the attempt on a certain
+rejection and could leave the request that follows on `touchend` with nothing to
+do. The retry covers the two cases where the opening gesture is not enough — a
+book that arrived over a WebRTC transfer, where the activation expired minutes
+ago, and iOS ending the session when a text field takes the focus.
+
+**An exit this app asked for is not evidence about anybody.** `leaveFullscreen()`
+clears the session before `exitFullscreen()` reports back, and the reader reaches
+itself directly — the sync panel's „Verbinden" goes through `openRoom()` straight
+back into `showReader()`, so one book's `destroy()` and the next one's `render()`
+run in the same task. The `fullscreenchange` for the first book's exit then
+arrives inside the second book's session, and read as a person's decision it
+would lock that second book out of the screen it just asked for. So exits this
+module causes are counted and discounted; only what is left over is somebody's
+choice.
 
 **A person who leaves stays out.** The retry above would otherwise drag someone
 back in on their next tap, which is precisely rule 7's surprise. A hand-made
