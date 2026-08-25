@@ -340,3 +340,32 @@ export function serveBook(fb, roomCode, getBundle) {
     for (const peerId of [...peers.keys()]) closePeer(peerId);
   };
 }
+
+// --- One offer per room, for as long as the app runs ----------------------
+// serveBook() above is the mechanism; this is the bookkeeping around it, and
+// the policy it serves is ADR 33: a book goes on offer when this device shows
+// its Synchronisations-Code, and stays on offer until the app closes.
+//
+// Keyed by room code rather than by book, because the same code can be
+// announced from two places — the reader's sync panel and „Buch bearbeiten" —
+// and two servers on one device would both answer the same joiner, racing each
+// other to write the one `signal/<peerId>/answer` node.
+const serving = new Map();
+
+// Idempotent: the second and every later announcement of a code this device is
+// already serving is simply the same offer, still standing.
+export function startServing(fb, roomCode, getBundle) {
+  if (!roomCode || serving.has(roomCode)) return;
+  serving.set(roomCode, serveBook(fb, roomCode, getBundle));
+}
+
+// The one way an offer is taken back before the app closes: „Synchronisation
+// trennen" (and deleting the book, which leaves through the same door). Both
+// mean the book is no longer shared, so it must stop being pullable by whoever
+// still holds the code.
+export function stopServing(roomCode) {
+  const stop = serving.get(roomCode);
+  if (!stop) return;
+  serving.delete(roomCode);
+  try { stop(); } catch {}
+}
