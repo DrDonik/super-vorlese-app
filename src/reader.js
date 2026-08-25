@@ -515,13 +515,17 @@ export class ReaderView {
 
   // Unified touch recogniser for the reading stage. It distinguishes three
   // gestures so they never collide:
-  //   • quick tap            → show the chrome, or take it away again if it is
+  //   • tap                  → show the chrome, or take it away again if it is
   //                            already up (see tapChrome) — but not over a
   //                            page-turn zone, which turns the page via its own
-  //                            click handler
+  //                            click handler. Any press that neither turned the
+  //                            page nor pointed nor moved it counts, however
+  //                            long it lasted (issue #120)
   //   • long press (≥700ms)  → "point at the page": four chevrons converge on
   //                            the finger and follow it until release; the
-  //                            chrome stays hidden so pointing is unobstructed
+  //                            chrome stays hidden so pointing is unobstructed.
+  //                            Reading alone there is nobody to point for, so
+  //                            the press places nothing and stays a tap
   //   • drag                 → turn the page, as a horizontal swipe always has,
   //                            unless the loupe has magnified the page and the
   //                            page can actually move that way, in which case
@@ -536,15 +540,24 @@ export class ReaderView {
     // Captured once: the canvas element is reused across page renders, so a
     // pointer can be measured against the page without a per-touchmove DOM query.
     const canvas = stage.querySelector('.reader-canvas');
-    const TAP_MAX_MS = 600;
-    const TAP_MAX_PX = 15;
+    // One distance, two outcomes: a touch that travels this far sideways turns
+    // the page, and anything short of it is a tap. The two are complementary
+    // rather than separately tuned windows, so a shaky hand cannot fall between
+    // them. There is deliberately no maximum duration for a tap either: by the
+    // time one would expire, the long press has already claimed the touch (and
+    // touchend returns above) or it never will (issue #120). Every hand that
+    // presses slowly, wobbles, or does both therefore still means something.
     const SWIPE_PX = 40;
 
     let startX = null;
     let startY = null;
-    let startTime = 0;
     let onZone = false;
     let aborted = false; // a second finger cancels the one-finger gesture
+    // Whether this touch ever placed a pointer — not whether one is still
+    // standing. A page turn (either side's) wipes every pointer mid-gesture,
+    // and without this the finger still on the glass would come up as a tap and
+    // throw the chrome over the page that has just arrived.
+    let pointed = false;
     // The pinch in progress, or null. Holds where the fingers started so the
     // factor and the offset are both measured against that moment rather than
     // accumulated frame by frame, which would drift.
@@ -582,15 +595,19 @@ export class ReaderView {
       const t = e.touches[0];
       startX = t.clientX;
       startY = t.clientY;
-      startTime = Date.now();
       onZone = !!e.target.closest('.reader-zone');
       aborted = false;
       panning = false;
+      pointed = false;
       clearTimer();
       this.longPressTimer = setTimeout(() => {
         this.longPressTimer = null;
         const pos = this.pageFraction(canvas, startX, startY);
-        this.beginLocalPointer(pos.x, pos.y);
+        // Reading alone this places nothing (see beginLocalPointer) — there is
+        // nobody to point for. The touch then stays what it looks like, and the
+        // release below reveals the chrome, instead of a long press running out
+        // into nothing (issue #120).
+        pointed = this.beginLocalPointer(pos.x, pos.y);
       }, LONG_PRESS_MS);
     }, { passive: true });
 
@@ -632,13 +649,18 @@ export class ReaderView {
       if (aborted || startX == null) return;
       const t = e.touches[0];
       if (!t) return;
-      if (this.localPointerActive) {
+      if (pointed) {
         // Suppress scroll / rubber-band / history-swipe so dragging the pointer
         // (e.g. circling the bunny) is smooth. Only while pointing — normal
         // reading scroll/swipe stays untouched, hence the non-passive listener.
         if (e.cancelable) e.preventDefault();
-        const pos = this.pageFraction(canvas, t.clientX, t.clientY);
-        this.moveLocalPointer(pos.x, pos.y);
+        // The pointer itself is gone once a page turn has wiped it, and this
+        // finger has nothing left to move. It stays this gesture all the same:
+        // what it does next is nothing, not turn the page it was pointing at.
+        if (this.localPointerActive) {
+          const pos = this.pageFraction(canvas, t.clientX, t.clientY);
+          this.moveLocalPointer(pos.x, pos.y);
+        }
         return;
       }
       const dx = t.clientX - startX;
@@ -677,7 +699,7 @@ export class ReaderView {
         if (e.cancelable) e.preventDefault();
         return;
       }
-      if (this.localPointerActive) {
+      if (pointed) {
         finishPointer();
         startX = startY = null;
         // Suppress the synthetic click the browser would otherwise fire on the
@@ -698,16 +720,15 @@ export class ReaderView {
         if (e.touches.length === 0) { startX = startY = null; aborted = false; }
         return;
       }
-      const dt = Date.now() - startTime;
       const end = e.changedTouches[0];
       const dx = end ? end.clientX - startX : 0;
       const dy = end ? end.clientY - startY : 0;
       const absX = Math.abs(dx);
       const absY = Math.abs(dy);
-      if (this.navEnabled && absX > SWIPE_PX && absX > absY) {
+      if (this.navEnabled && absX >= SWIPE_PX && absX > absY) {
         if (dx < 0) this.goNext();
         else this.goPrev();
-      } else if (dt < TAP_MAX_MS && absX < TAP_MAX_PX && absY < TAP_MAX_PX && !onZone) {
+      } else if (absX < SWIPE_PX && absY < SWIPE_PX && !onZone) {
         // Where the finger went down, not where it came up: what the tap was
         // aimed at is what the top-edge exception in tapChrome is about.
         this.tapChrome(startY);
@@ -726,6 +747,7 @@ export class ReaderView {
       startX = startY = null;
       aborted = false;
       panning = false;
+      pointed = false;
     });
 
     this.attachMouseGestures(stage);
@@ -792,6 +814,9 @@ export class ReaderView {
         panX: this.panX,
         panY: this.panY,
         moved: false,
+        // As in the touch recogniser: that this press pointed, which outlives
+        // the pointer itself when a page turn wipes it mid-press.
+        pointed: false,
         id: e.pointerId,
         // A click over a zone turns the page (the zone's own handler) and must
         // not also mean the chrome. With navigation off the zones let the press
@@ -812,7 +837,10 @@ export class ReaderView {
         // beginLocalPointer), and capturing anyway would send the click that
         // follows to the stage instead of the turn zone underneath it: a reader
         // who rests the button on a zone for a moment would stop turning pages.
-        if (this.beginLocalPointer(pos.x, pos.y)) capture();
+        if (this.beginLocalPointer(pos.x, pos.y)) {
+          if (from) from.pointed = true;
+          capture();
+        }
       }, LONG_PRESS_MS);
     });
 
@@ -828,11 +856,15 @@ export class ReaderView {
       // The button was released somewhere we never heard about (a drag ended
       // over browser chrome, say). Drop the gesture instead of resuming it.
       if (!(e.buttons & 1)) { endGesture(); return; }
-      if (this.localPointerActive) {
+      if (from.pointed) {
         // Pointing: the cluster follows the cursor and the page stays put, so
-        // the bunny can be circled with a mouse just as with a finger.
-        const pos = this.pageFraction(canvas, e.clientX, e.clientY);
-        this.moveLocalPointer(pos.x, pos.y);
+        // the bunny can be circled with a mouse just as with a finger. After a
+        // page turn has wiped the pointer there is nothing left to move, and as
+        // on the glass the press stays this gesture and does nothing more.
+        if (this.localPointerActive) {
+          const pos = this.pageFraction(canvas, e.clientX, e.clientY);
+          this.moveLocalPointer(pos.x, pos.y);
+        }
         return;
       }
       const dx = e.clientX - from.x;
@@ -848,11 +880,17 @@ export class ReaderView {
         // both distances in the same movement, so dragging feels unchanged.
         const threshold = this.mouseHoldTimer ? MOVE_CANCEL_PX : DRAG_START_PX;
         if (Math.abs(dx) < threshold && Math.abs(dy) < threshold) return;
-        // Nothing to move this way (see canPanAlong, which is false at 1x):
-        // let go of the gesture so it ends as the ordinary click it looks like
-        // — over a turn zone that is a page turn, which is what the same drag
-        // does on a touchscreen.
-        if (!this.canPanAlong(dx, dy)) { from = null; return; }
+        // Nothing to move this way (see canPanAlong, which is false at 1x), so
+        // the press never becomes a drag and ends as the ordinary click it
+        // looks like — over a turn zone that is a page turn, which is what the
+        // same drag does on a touchscreen, and on the page itself it is the
+        // chrome. The press is kept rather than dropped here for that second
+        // half: releasing it is how the chrome is asked for, and a hand that
+        // shifted while clicking must not lose it (issue #120). Deliberately
+        // without a distance of its own — at 1x no other mouse gesture is
+        // competing for the press, so bounding it would only re-open the kind
+        // of dead zone this recogniser has just been rid of.
+        if (!this.canPanAlong(dx, dy)) return;
         from.moved = true;
         capture();
       }
@@ -868,16 +906,17 @@ export class ReaderView {
     this._mousePanUp = (e) => {
       if (!from || e.pointerType !== 'mouse' || e.pointerId !== from.id) return;
       const dragged = from.moved;
-      const pointed = this.localPointerActive;
+      const pointed = from.pointed;
       // A press that became neither gesture is a plain click, and on the page
       // itself it means the chrome, exactly as a tap does on a touchscreen
-      // (rule 1). What makes it a click rather than a hold is the pointing
-      // timer still being pending: a button held past those 700 ms that placed
-      // no pointer — reading alone there is nobody to point for — was an
-      // attempt to point, not a click. And only a real release counts; a
-      // cancelled or stolen gesture ends here too, and ends as nothing.
-      const clicked = e.type === 'pointerup' && !dragged && !pointed
-        && !from.onZone && !!this.mouseHoldTimer;
+      // (rule 1) — including when it was held well past the 700 ms, because
+      // reading alone there is nobody to point for and the hold placed nothing.
+      // How long the button was down decides as little here as on the glass
+      // (issue #120): what decides is whether a pointer was actually placed,
+      // and a press that placed one is that gesture, not a click. Only a real
+      // release counts; a cancelled or stolen gesture ends here too, and ends
+      // as nothing.
+      const clicked = e.type === 'pointerup' && !dragged && !pointed && !from.onZone;
       const pressY = from.y;
       endGesture();
       // Releasing still delivers a click to whatever lies underneath. Over a

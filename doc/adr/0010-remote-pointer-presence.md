@@ -154,3 +154,66 @@ in principle do, and it is always current: the help is opened by pressing the
   spot on the page to point *at* without inventing a cursor, and
   [ADR 22](0022-accessibility-targets-low-vision-not-screen-readers.md) puts
   this app's accessibility effort elsewhere.
+
+## Amendment (2026-08-25): every press on the page means something
+
+Issue #120 found the recogniser described above turning slow and shaky hands
+away. It sorted a press into tap or long press with two independently tuned
+sets of numbers — a tap was under 600 ms and under 15 px, a long press held for
+700 ms and cancelled at 10 px — and between those numbers sat gaps in which a
+touch was neither: held for 650 ms, or wobbling 20 px, or simply held with a
+finger that had drifted 12 px. The gaps miss a quick, steady hand entirely and
+catch older and smaller ones daily, which is precisely the audience of ADR 0010.
+The chrome hides itself after four seconds, so a reader whose taps keep landing
+in a gap is left with a page and no controls at all.
+
+### Decision
+
+**Two thresholds, not four, and each one boundary between two meanings.**
+
+- *Distance.* `SWIPE_PX` (40 px) alone separates turning the page from tapping
+  it: at or beyond it sideways the page turns, short of it the press is a tap.
+  The former tap radius is gone, so there is nothing between the two.
+- *Duration.* A tap has no maximum duration at all. By the time one could
+  expire, the 700 ms long press has either claimed the touch — in which case
+  `touchend` has already returned above the tap branch — or it never will.
+
+That is the whole fix for the dead zones: they are closed by construction rather
+than by choosing kinder numbers, so no future tweak to one threshold can reopen
+one. `MOVE_CANCEL_PX` still aborts a long press at 10 px, which now only means
+that a wobbly press is a tap instead of a point — not that it is nothing.
+
+**Reading alone, a held press is a tap.** Without a room `beginLocalPointer`
+places no pointer, and a press held past 700 ms therefore now falls through to
+the tap it looks like and reveals the chrome, on both kinds of input: the mouse
+recogniser no longer requires its hold timer to still be pending to count a
+release as a click, only that no pointer was placed. The gesture keeps meaning
+the nearest available thing rather than nothing at all, and it means the same on
+an iPad and at a laptop (rule 1). With a partner nothing changes: the press
+points, and pointing has always kept the chrome away.
+
+### Consequences
+
+- There is no duration at which a press on the page does nothing, and no
+  distance below the swipe threshold either. The one deliberate remainder is a
+  vertical drag of 40 px or more: that is an aimed movement, not a wobble, and
+  the reading stage has nothing to scroll.
+- A swipe that falls short of `SWIPE_PX` now reveals the chrome instead of doing
+  nothing — and the chrome is where the page-turn buttons are, so the reader is
+  handed the thing they were reaching for.
+- `TAP_MAX_MS`, `TAP_MAX_PX` and the touch recogniser's `startTime` are gone.
+- A mouse press that finds nothing to move — the drag distance crossed, but the
+  page not pannable that way, at 1× or against an edge — keeps the press instead
+  of dropping it, so the release still reaches the chrome. It carries no
+  distance limit of its own: at 1× no other mouse gesture competes for the
+  press, so bounding it would only re-open a dead zone in the other axis.
+- Both recognisers now remember that a press *pointed*, rather than asking
+  whether a pointer is still standing. The tap's old 600 ms ceiling happened to
+  cover the one case where those differ — a page turn wipes every pointer
+  (`clearAllPointers`) while the finger or button is still down — and without
+  the memory that press would have come up as a tap and thrown the chrome over
+  the page that just arrived. A gesture that pointed stays that gesture until it
+  is released, on the glass and at the mouse alike.
+- The help overlay is unchanged: it already scopes „auf die Seite zeigen" to
+  „beim gemeinsamen Lesen", which is now literally true rather than merely the
+  only case where it did anything.
