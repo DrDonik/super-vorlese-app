@@ -53,7 +53,9 @@ cannot hold both, the words go and the targets stay.**
 - **Where the visible control must stay small, the target is cast by a
   pseudo-element.** The camera's discard ✕ sits on a 64px preview and a 44px
   disc would bury the photo it exists to let you check, so the ✕ keeps its 20px
-  and a 44px field reaches down into the thumbnail behind it.
+  and a 44px field reaches down into the thumbnail behind it. *(This example is
+  retired by [ADR 35](0035-a-photo-is-looked-at-before-it-is-discarded.md); the
+  rule it illustrates stands.)*
 - **At 600px and below the reader's chrome drops its words**: „← Bibliothek"
   becomes „←", „Seite 12 / 148" becomes „12 / 148". Tablets and desktops keep
   the full labels. That is the file's one existing phone breakpoint, shared with
@@ -103,11 +105,12 @@ static — it cannot drift out of step the way a per-page label would.
   discarding is immediate and has no undo — the page must be photographed again
   — so the half furthest from the ✕, where a finger steadying the strip lands,
   triggers nothing.
-  *Amended by [ADR 35](0035-a-discarded-photo-is-held-until-the-next-one.md): a
-  discarded photo is now held and offered back until the next handhold, so what
-  this target costs when it is hit by accident is one tap on „Rückgängig" rather
-  than a page photographed again. The floor, the target and the inert half stay
-  exactly as decided here.*
+  *Retired by [ADR 35](0035-a-photo-is-looked-at-before-it-is-discarded.md): the
+  ✕ and the field behind it are gone. The whole tile is now one button that
+  shows the photo, and discarding moved into that preview. The floor stands and
+  so does the pseudo-element as a tool — this was its only worked example, and
+  needing an invisible target twice the size of its control turned out to be the
+  layout saying a destructive action was in the wrong place.*
 - New controls inherit the floor by copying the pattern; there is no linter to
   catch a regression ([ADR 8](0008-no-tests-or-linter.md)). The check is a
   browser at 320px, and the number to compare against is 44.

@@ -1,6 +1,10 @@
 import { savePhotoBook, uid } from './storage.js';
 import { renderImageThumbnail } from './image.js';
-import { showAlert, showConfirm, showPrompt } from './dialog.js';
+import { openDialog, showAlert, showConfirm, showPrompt } from './dialog.js';
+
+// What the preview's „Verwerfen" resolves to. A symbol so it can never collide
+// with anything the dialog might hand back on a normal way out.
+const DISCARD = Symbol('discard');
 
 function defaultTitle() {
   const d = new Date();
@@ -150,20 +154,62 @@ export class CameraView {
     this.pages.push(blob);
     const url = URL.createObjectURL(blob);
     this.thumbUrls.push(url);
-    const item = document.createElement('div');
+    // The whole tile is the button, and the only thing it does is show the photo
+    // properly (ADR 35). „Foto ansehen" rather than „Seite 3 ansehen": the page
+    // number moves as pages are discarded, and a label maintained against that
+    // is exactly the drift ADR 22 declines. The preview names the page instead,
+    // where it is read off the strip as it stands.
+    const item = document.createElement('button');
+    item.type = 'button';
     item.className = 'camera-thumb';
-    item.innerHTML = `
-      <img alt="" />
-      <button class="camera-thumb-del" type="button" aria-label="Foto verwerfen">✕</button>
-    `;
+    item.setAttribute('aria-label', 'Foto ansehen');
+    item.innerHTML = '<img alt="" />';
     item.querySelector('img').src = url;
-    item.querySelector('.camera-thumb-del').addEventListener('click', () => {
-      this.removePage(index, item, url);
-    });
+    item.addEventListener('click', () => this.openPage(index, item, url));
     item.dataset.index = String(index);
     this.insertThumb(item, index);
     this.strip.scrollLeft = this.strip.scrollWidth;
     this.updateCount();
+  }
+
+  // Which page this is on the strip as it stands, counting only the photos still
+  // in it. The capture index cannot answer that: discard page 2 and the third
+  // shot taken *is* page 2, which is what the person looking at the strip sees.
+  pageNumberOf(index) {
+    let n = 0;
+    for (let i = 0; i <= index; i++) if (this.pages[i]) n++;
+    return n;
+  }
+
+  // Big enough to answer the only question a thumbnail raises — is this page
+  // sharp, straight and whole? — and the one place discarding is offered, so
+  // nobody throws away a photo they have not seen (ADR 35). An ordinary dialog:
+  // `dangerButton` already puts a destructive action in a row of its own, a
+  // fingerwidth away from the way out, which is exactly the distance this needs.
+  async openPage(index, item, url) {
+    const image = document.createElement('img');
+    image.className = 'camera-preview-image';
+    image.src = url;
+    image.alt = '';
+    const chosen = await openDialog({
+      title: `Seite ${this.pageNumberOf(index)}`,
+      content: image,
+      cardClass: 'camera-preview-card',
+      dangerButton: { label: 'Verwerfen', value: DISCARD },
+      buttons: [{ label: 'Schliessen', value: undefined, primary: true }],
+      cancelValue: undefined,
+    });
+    if (chosen !== DISCARD) return;
+    this.removePage(index, item, url);
+    // The dialog hands focus back to whatever opened it, and that tile has just
+    // left the strip — so the focus would fall to <body> and a keyboard user
+    // would start over at the top (issue #129). It goes to the shutter instead:
+    // having dealt with this page, the way on is the next one, and „Rückgängig"
+    // is one Shift+Tab back, where a way back belongs. On a device whose camera
+    // the browser would not open, the shutter is disabled and cannot take it —
+    // there the offer that just appeared is the only live control left.
+    const next = this.shutter.disabled ? this.undoBar.querySelector('.camera-undo-btn') : this.shutter;
+    next.focus({ preventScroll: true });
   }
 
   // Puts a thumbnail where its page number says it belongs — at the end for a
@@ -176,13 +222,14 @@ export class CameraView {
     this.strip.insertBefore(item, after ?? null);
   }
 
-  // Discarding is a slip waiting to happen — no confirmation, and a target that
-  // reaches well into the photo (ADR 23) — so the photo is held rather than
-  // dropped, and the strip offers it back (ADR 35). Exactly one: a second
-  // discard is a deliberate second act, and holding more would mean carrying
-  // rejected photos through a session that already fills memory with the kept
-  // ones. The object URL stays alive with it — it is what the thumbnail is
-  // still hanging on.
+  // Only ever reached from the preview, so this is a photo its owner has looked
+  // at and judged. What it can still be is the wrong judgement — two shots of one
+  // page, and the better one goes — which on a strip you glance at next is
+  // noticed in seconds. So the photo is held rather than dropped and the strip
+  // offers it back (ADR 35). Exactly one: a second discard is a deliberate second
+  // act, and holding more would mean carrying rejected photos through a session
+  // that already fills memory with the kept ones. The object URL stays alive with
+  // it — it is what the thumbnail is still hanging on.
   removePage(index, item, url) {
     this.commitDiscard();
     this.discarded = { index, item, url, blob: this.pages[index] };
@@ -208,16 +255,16 @@ export class CameraView {
     this.discarded = null;
     this.undoBar.hidden = true;
     this.pages[held.index] = held.blob;
-    // The same element, with its ✕ and its listener intact: it was taken out of
-    // the strip, not thrown away.
+    // The same element, with its picture and its listener intact: it was taken
+    // out of the strip, not thrown away.
     this.insertThumb(held.item, held.index);
     held.item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     this.updateCount();
     // „Rückgängig" has just disappeared from under the finger that pressed it,
     // so the focus would fall to <body> and a keyboard user would start over at
-    // the top. It goes back to the ✕ this round trip began at — the same photo,
-    // the same control.
-    held.item.querySelector('.camera-thumb-del')?.focus({ preventScroll: true });
+    // the top. It goes onto the restored tile — the photo this round trip was
+    // about, back where it belongs and ready to be looked at again.
+    held.item.focus({ preventScroll: true });
   }
 
   livePages() {

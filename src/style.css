@@ -1828,6 +1828,9 @@ button {
   display: none;
 }
 
+/* The tile is the button, and its whole 64px is the target — well past the 44px
+   floor, and this time what is tappable is exactly what is visible (ADR 35). It
+   carries the one thing a thumbnail is good for: showing the photo properly. */
 .camera-thumb {
   position: relative;
   flex: 0 0 auto;
@@ -1836,6 +1839,9 @@ button {
   border-radius: 8px;
   overflow: hidden;
   background: #222;
+  padding: 0;
+  border: none;
+  cursor: pointer;
 }
 
 .camera-thumb img {
@@ -1843,46 +1849,6 @@ button {
   height: 100%;
   object-fit: cover;
   display: block;
-}
-
-/* The ✕ stays small on purpose — it sits on a 64px preview and a 44px disc
-   would bury the photo it is meant to let you check. The target underneath it
-   is the full 44px instead, cast by the pseudo-element below. */
-.camera-thumb-del {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  border: none;
-  /* px aus demselben Grund wie oben, und aus dem, den ADR 23 für diese Scheibe
-     schon nennt: sie sitzt auf einem 64px-Foto. Mitwachsend würde sie genau das
-     Bild zudecken, zu dessen Kontrolle sie da ist. Das Ziel darunter sind
-     ohnehin volle 44px (siehe ::after). */
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
-}
-
-/* The real target: 44px anchored to the thumbnail's top-right corner, so it
-   reaches down and left into the photo rather than out over the neighbouring
-   thumbnail — which .camera-thumb's overflow: hidden would clip anyway, and
-   where a stray tap would discard the wrong photo. The thumbnail carries no
-   other action, so the lower-left of it stays deliberately inert: the half of
-   the preview furthest from the ✕ is where a finger steadying the strip
-   lands. What this target costs when it is hit by accident is now one tap on
-   „Rückgängig" rather than photographing the page again (ADR 35). */
-.camera-thumb-del::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 44px;
-  height: 44px;
 }
 
 /* The offer to take the last discard back. A row of its own between the strip
@@ -2773,6 +2739,28 @@ button {
    their full size, and grows in height with its content until it fills the
    screen — one finish stays a modest dialog, many turn it into a tall scrolling
    archive. The narrower side padding buys the tiles ~40px more on a phone. */
+/* The camera's page preview (ADR 35). Here rather than with the other camera
+   rules for the same reason .mood-history-card is here: it widens .dialog-card,
+   and at equal specificity only a later rule can.
+   Wider than an ordinary card and with next to no side padding — the photo is
+   the content, not something illustrating a sentence. */
+.camera-preview-card {
+  max-width: 640px;
+  padding: 20px 16px;
+}
+
+/* Fitted, never cropped — the question this answers is whether the whole page
+   made it into the frame, so a crop would answer it wrongly. Capped against the
+   viewport so a portrait page still leaves the buttons on screen. */
+.camera-preview-image {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #000;
+}
+
 .mood-history-card {
   max-width: 640px;
   max-height: 100%;
