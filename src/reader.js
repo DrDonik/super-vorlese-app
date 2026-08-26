@@ -7,6 +7,7 @@ import { offerBook } from './offer.js';
 import { showAlert, showConfirm, makeModal } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 import { keepAwake, letSleep } from './wake-lock.js';
+import { keepFullscreen, leaveFullscreen } from './fullscreen.js';
 
 // The chrome serves one intention at a time and then gets out of the way
 // (ADR 30). Two waits, because "I am looking for a control" and "I have just
@@ -265,8 +266,10 @@ export class ReaderView {
     // First statement, before any await: the tap on the cover that led here is
     // still the current user gesture, and iOS grants the wake lock only on one
     // (ADR 25). Loading the book takes seconds on a large PDF — asking after it
-    // would be too late.
+    // would be too late. The same gesture, and the same deadline, buy the full
+    // screen in a browser tab (ADR 34).
     keepAwake();
+    keepFullscreen();
 
     this.root.innerHTML = `
       <div class="reader">
@@ -415,6 +418,15 @@ export class ReaderView {
     // keepAwake() is inert while the lock is held (ADR 25).
     reader.addEventListener('touchend', keepAwake, { capture: true, passive: true });
     reader.addEventListener('pointerdown', keepAwake, true);
+    // Fullscreen re-arms for the same reasons and needs the same activation, but
+    // on `touchend` alone: it only ever runs on a touch device (ADR 34), and
+    // there `pointerdown` is precisely the event that grants nothing. Asking on
+    // it would spend the attempt on a rejection and could leave the request that
+    // follows on `touchend` with nothing to do. Besides the transfer it has a
+    // case of its own: on iOS a text field ends the fullscreen session, so the
+    // touch after the Synchronisations-Code or a page jump is what brings the
+    // screen back.
+    reader.addEventListener('touchend', keepFullscreen, { capture: true, passive: true });
 
     this.setupSync(reader);
 
@@ -2886,8 +2898,10 @@ export class ReaderView {
 
   destroy() {
     // No book on screen any more, so the device may sleep on its own schedule
-    // again (ADR 25).
+    // again (ADR 25) — and the browser gets its bars back, because the library
+    // behind this is a surface where they are wanted (ADR 34).
     letSleep();
+    leaveFullscreen();
     window.removeEventListener('keydown', this.boundKeys);
     window.removeEventListener('resize', this.boundResize);
     // A modal still standing when the book leaves would keep its document
