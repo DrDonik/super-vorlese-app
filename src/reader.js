@@ -1459,12 +1459,20 @@ export class ReaderView {
     // key with „+" on the common layouts, so it lands whether or not Shift was
     // held. These two walk the ladder rather than wrapping around it: „−" on a
     // page that is already at 1× should do nothing, not jump it to 2×.
-    if (e.key === '+' || e.key === '=') {
+    //
+    // Mit ⌘, Strg oder ⌥ gehören sie dem Browser: das ist sein Fenster-Zoom,
+    // und die fünfte Ergänzung von ADR 24 nimmt ausdrücklich nur die Gesten, die
+    // aus Versehen passieren, nicht den Tastendruck, der ein Entschluss ist.
+    // Shift steht nicht in der Liste — auf den üblichen Belegungen ist es das,
+    // was aus „=" überhaupt erst ein „+" macht. Dieselbe Prüfung wie in
+    // dialog.js, aus demselben Grund.
+    const modified = e.ctrlKey || e.metaKey || e.altKey;
+    if (!modified && (e.key === '+' || e.key === '=')) {
       e.preventDefault();
       this.stepZoom(true);
       return;
     }
-    if (e.key === '-') {
+    if (!modified && e.key === '-') {
       e.preventDefault();
       this.stepZoom(false);
       return;

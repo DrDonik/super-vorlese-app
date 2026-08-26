@@ -436,8 +436,14 @@ it is `nativeZoomActive`, the reading stage's own rule, now asked everywhere.
   route taken here suppresses a gesture and steps aside the moment the platform
   disagrees; that one does neither.
 - **The keyboard is untouched.** ⌘/Ctrl and `+` / `−` / `0` still zoom the
-  window on a desktop. A gesture can be made by accident and is what this is
-  about; a keystroke is a decision.
+  window on a desktop. A gesture slips out of a hand resting on a trackpad and
+  is what this is about; a keystroke is a decision, and taking it away would be
+  shutting a door rather than choosing which side of it a gesture opens.
+  The reader had to be told: its loupe binds bare `+` / `=` / `−`, and it was
+  swallowing them with ⌘ or Ctrl held as well, so the promise above was untrue
+  inside an open book. It now ignores them when a modifier is down — Shift
+  excepted, which is what makes a `=` into a `+` in the first place — the same
+  test `dialog.js` already applies to a modal's keys, for the same reason.
 
 ## Fifth amendment consequences
 
