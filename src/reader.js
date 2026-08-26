@@ -8,6 +8,7 @@ import { showAlert, showConfirm, makeModal } from './dialog.js';
 import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 import { keepAwake, letSleep } from './wake-lock.js';
 import { keepFullscreen, leaveFullscreen } from './fullscreen.js';
+import { nativeZoomActive } from './native-zoom.js';
 
 // The chrome serves one intention at a time and then gets out of the way
 // (ADR 30). Two waits, because "I am looking for a control" and "I have just
@@ -650,7 +651,7 @@ export class ReaderView {
         aborted = true;
         if (e.touches.length === 2) {
           if (!pinch && !pinchGivenUp) pinch = this.beginPinch(e.touches[0], e.touches[1]);
-          if (pinch && this.nativeZoomActive()) {
+          if (pinch && nativeZoomActive()) {
             // The browser is zooming despite the suppression. Stepping aside at
             // the start of a gesture is not enough if it only takes hold
             // halfway through: carrying on here is precisely the two zooms on
@@ -973,19 +974,6 @@ export class ReaderView {
 
   // --- Pinch (ADR 24, second amendment) -----------------------------------
 
-  // Whether the document itself is natively zoomed, in which case the pinch is
-  // left alone. Two things ride on this one check. A reader who pinched in the
-  // library — where there is no loupe to take the gesture over — carries that
-  // zoom into the book, and the only way back out of it is the same gesture; a
-  // reader must never be shut inside a state the app then refuses to hear about
-  // (rule 7). And should a platform ignore the suppression below and zoom
-  // anyway, this is where the app stops fighting it: the loupe steps aside and
-  // the reader is left with exactly what they had before, rather than with two
-  // zooms at once.
-  nativeZoomActive() {
-    return (window.visualViewport?.scale ?? 1) > 1.01;
-  }
-
   // The pinch is free between 1× and PINCH_MAX rather than snapping to the
   // ladder: a page that jumps back out of the fingers that just placed it is
   // the app overruling the reader (rule 7), and the loupe holds a factor
@@ -1006,7 +994,7 @@ export class ReaderView {
   // same thing on both.
   beginPinchAt(clientX, clientY) {
     const stage = this.root.querySelector('.reader-stage');
-    if (!stage || this.nativeZoomActive()) return null;
+    if (!stage || nativeZoomActive()) return null;
     const r = stage.getBoundingClientRect();
     const centre = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     this.pinching = true;
@@ -1115,7 +1103,7 @@ export class ReaderView {
       // The document itself is natively zoomed. Scrolling and unzooming it are
       // then the browser's to do, and the reader's only way back out of it (see
       // nativeZoomActive), so the event is left entirely alone.
-      if (this.nativeZoomActive()) return;
+      if (nativeZoomActive()) return;
       // Everything over the stage belongs to the page — including what comes to
       // nothing. A sideways two-finger swipe is the browser's back gesture, and
       // this app pushes no history to go back to: it would leave the book, which
@@ -1177,6 +1165,10 @@ export class ReaderView {
   //
   // So: always cancelled, so the browser never zooms the window; and taken over
   // wherever the fingers of the touch recogniser are not the ones making it.
+  //
+  // Das Abfangen allein besorgt seit der fünften Ergänzung `native-zoom.js` für
+  // die ganze App. Hier bleibt es trotzdem stehen: die Bühne fängt nicht nur
+  // ab, sie übernimmt die Geste, und dafür braucht sie die Ereignisse selbst.
   attachGesturePinch(stage) {
     // The gesture in progress, or null — which is also what a gesture left to
     // the touch handlers looks like from here, and it stays null until the next
@@ -1191,7 +1183,7 @@ export class ReaderView {
       pinch = null;
     };
     stage.addEventListener('gesturestart', (e) => {
-      if (this.nativeZoomActive()) { handBack(); return; }
+      if (nativeZoomActive()) { handBack(); return; }
       if (e.cancelable) e.preventDefault();
       // On iOS the same two fingers are already working the loupe through the
       // touch handlers. Cancelling is the whole job there; taking the gesture
@@ -1200,7 +1192,7 @@ export class ReaderView {
       pinch = this.beginPinchAt(e.clientX, e.clientY);
     });
     stage.addEventListener('gesturechange', (e) => {
-      if (this.nativeZoomActive()) { handBack(); return; }
+      if (nativeZoomActive()) { handBack(); return; }
       if (e.cancelable) e.preventDefault();
       if (!pinch) return;
       // `scale` is cumulative from the start of the gesture, exactly as the
@@ -1210,7 +1202,7 @@ export class ReaderView {
       this.applyPinchAt(pinch, pinch.zoom * e.scale, e.clientX, e.clientY);
     });
     stage.addEventListener('gestureend', (e) => {
-      if (e.cancelable && !this.nativeZoomActive()) e.preventDefault();
+      if (e.cancelable && !nativeZoomActive()) e.preventDefault();
       if (!pinch) return;
       pinch = null;
       this.endPinch();
@@ -1467,12 +1459,20 @@ export class ReaderView {
     // key with „+" on the common layouts, so it lands whether or not Shift was
     // held. These two walk the ladder rather than wrapping around it: „−" on a
     // page that is already at 1× should do nothing, not jump it to 2×.
-    if (e.key === '+' || e.key === '=') {
+    //
+    // Mit ⌘, Strg oder ⌥ gehören sie dem Browser: das ist sein Fenster-Zoom,
+    // und die fünfte Ergänzung von ADR 24 nimmt ausdrücklich nur die Gesten, die
+    // aus Versehen passieren, nicht den Tastendruck, der ein Entschluss ist.
+    // Shift steht nicht in der Liste — auf den üblichen Belegungen ist es das,
+    // was aus „=" überhaupt erst ein „+" macht. Dieselbe Prüfung wie in
+    // dialog.js, aus demselben Grund.
+    const modified = e.ctrlKey || e.metaKey || e.altKey;
+    if (!modified && (e.key === '+' || e.key === '=')) {
       e.preventDefault();
       this.stepZoom(true);
       return;
     }
-    if (e.key === '-') {
+    if (!modified && e.key === '-') {
       e.preventDefault();
       this.stepZoom(false);
       return;

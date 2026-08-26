@@ -388,3 +388,92 @@ zoom untouched.
   way. And the counter-check, that this took only the one gesture: the pinch
   still magnifies the library, the reader's pinch still works the loupe (`none`
   on the stage), and the help list still scrolls under a finger (`pan-y`).
+
+## Fifth amendment (2026-08-26): the pinch goes everywhere too
+
+The fourth amendment took the double-tap app-wide and left the pinch deliberately
+standing, on the second amendment's reasoning: outside the reading stage there is
+no loupe to take the gesture over, and low vision (ADR 22) must keep the one
+magnification those screens have. Testing on the device showed what that sentence
+costs, and it is more than it buys.
+
+**The same screen means two things at once.** With the sync panel open over a
+book, a pinch on the page works the loupe and a pinch on the panel zooms the
+browser. Nothing distinguishes them but which layer the fingers happened to land
+on — the stage says `touch-action: none`, the panel above it inherited
+`manipulation` from the root. Rule 1 in its plainest form, and unlike a
+difference between *places* (the library is not the reader) this one is a
+difference between two halves of one display.
+
+**And it leaves a trace.** `nativeZoomActive` hands the pinch back to the browser
+whenever `visualViewport.scale > 1`, so someone who magnifies the panel and then
+closes it finds the loupe stopped working: the gesture on the page now zooms the
+window too, until they pinch all the way back out. Nothing on screen says why.
+The same path runs from the library into the book, and it has been open since the
+second amendment.
+
+**One rule for the whole app: two fingers magnify the page, and nothing else —
+unless the browser has already zoomed, in which case the gesture is the
+browser's, so that the way back is never barred.** The second half is not new;
+it is `nativeZoomActive`, the reading stage's own rule, now asked everywhere.
+
+- **`touch-action: pan-x pan-y` at the root**, which is the fourth amendment's
+  value minus the `pinch-zoom` keyword: scrolling in both directions, and no
+  gesture beyond it. Stricter values further down stay stricter, exactly as
+  before.
+- **Two channels CSS cannot reach**, and they are the two the third amendment
+  already had to tell apart for the stage. WebKit's `gesture*` events: a trackpad
+  pinch has no finger on any glass and therefore no `touch-action` that applies
+  to it, and on iOS they are the belt to the CSS braces, since whether an
+  installed web app honours the property there can only be established on the
+  device. And `ctrl` + wheel, which is how Chrome and Firefox report a trackpad
+  pinch, for which there is no CSS at all. Both live in `src/native-zoom.js`,
+  installed once on the document; `nativeZoomActive` moves there with them, so
+  the stage and the app-wide suppression ask one question rather than two that
+  could drift apart.
+- **Not `user-scalable=no`.** iOS has ignored it since version 10, for the good
+  reason that it was the lever pages used to forbid magnification outright. The
+  route taken here suppresses a gesture and steps aside the moment the platform
+  disagrees; that one does neither.
+- **The keyboard is untouched.** ⌘/Ctrl and `+` / `−` / `0` still zoom the
+  window on a desktop. A gesture slips out of a hand resting on a trackpad and
+  is what this is about; a keystroke is a decision, and taking it away would be
+  shutting a door rather than choosing which side of it a gesture opens.
+  The reader had to be told: its loupe binds bare `+` / `=` / `−`, and it was
+  swallowing them with ⌘ or Ctrl held as well, so the promise above was untrue
+  inside an open book. It now ignores them when a modifier is down — Shift
+  excepted, which is what makes a `=` into a `+` in the first place — the same
+  test `dialog.js` already applies to a modal's keys, for the same reason.
+
+## Fifth amendment consequences
+
+- The library, the camera and every dialog lose the native pinch, which was
+  their only in-app magnification. What replaces it was already built: since
+  ADR 31 every font size follows the system font setting, which is the better
+  magnification for text — it reflows rather than pushing the controls off the
+  screen, and it is the setting an iPad reader has already made once for every
+  app. Below the app, iOS's own accessibility zoom is untouched by anything
+  here. What is genuinely gone is magnifying a *cover* on the shelf, judged a
+  small loss against a gesture that meant two things.
+- The camera is the case that loses nothing at all: a pinch there reads as „come
+  closer", and the browser's zoom instead enlarges the viewfinder and its
+  surround while the photograph stays exactly as it was.
+- The second amendment's „the library and the dialogs keep the browser's pinch"
+  is withdrawn, and with it the fourth amendment's counter-check that the pinch
+  still magnifies the library. What remains of that reasoning is
+  `nativeZoomActive`, which is now the app's escape hatch rather than the
+  library's.
+- A non-passive `wheel` listener on the document is the price of the second
+  channel: `ctrl` is only visible inside the listener, so it cannot be scoped
+  more narrowly, and the browser can no longer scroll the library off the main
+  thread on a desktop. A list of tiles, and only where a wheel is involved.
+- Unverifiable in CI as ever (ADR 8). Acceptance is an iPad and a Mac: pinch the
+  library, pinch the camera, pinch the sync panel with a book open, pinch a
+  dialog — nothing may move. Pinch the page: the loupe. On the Mac the same four
+  with the trackpad, in Safari and in Chrome, since the two take different
+  channels. The escape hatch cannot be staged deliberately any more — with the
+  suppression working there is no longer a way to zoom the document natively by
+  hand — and that is the right shape for it: it is reachable exactly where the
+  suppression fails, which is the one situation it was written for. What it
+  looks like when it does its job is a screen that magnifies as it did before
+  any of this, rather than one where two zooms fight over the same two fingers.

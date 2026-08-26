@@ -9,6 +9,7 @@ import { getFirebase, pruneDeadRooms } from './sync.js';
 import { receiveBook } from './transfer.js';
 import { showAlert, showProgress } from './dialog.js';
 import { restoreDebugViewport } from './debug-viewport.js';
+import { suppressNativeZoomGestures } from './native-zoom.js';
 
 // An installed PWA on iOS is frozen (not reloaded) when reopened, so it never
 // checks for a new version on its own — only a force-quit picks one up. Check
@@ -23,6 +24,11 @@ registerSW({
     });
   },
 });
+
+// Die zwei Zoom-Kanäle, an die das `touch-action` an der Wurzel nicht kommt
+// (ADR 24, fünfte Ergänzung). Einmal fürs ganze Dokument, vor der ersten
+// Ansicht, damit keine Bildschirmseite eine Lücke hat.
+suppressNativeZoomGestures();
 
 const app = document.getElementById('app');
 let currentView = null;
