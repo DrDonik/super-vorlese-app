@@ -323,3 +323,68 @@ that. Where there is nothing to move, nothing happens.**
 - None of this can be verified in CI — there are no tests (ADR 8) and no Safari
   in the agent environment. The diagnosis rests on the code and on the
   maintainer's observation; acceptance needs a real Mac and a real iPad.
+
+## Fourth amendment (2026-08-26): the double-tap goes everywhere, the pinch stays
+
+The second amendment said that outside the reader „the browser's own pinch is
+left exactly as it was". That sentence was about the pinch, but what it actually
+left alone was every browser gesture, the double-tap zoom among them — and on an
+installed iPad web app that one fires in the library and in the camera, where
+nothing in this app has ever asked for two quick taps.
+
+Two quick taps on the same spot are nevertheless something people do here, and
+the camera is the plain case: photographing a book means tapping the shutter
+again and again in the same place. The app answers by magnifying itself. That
+is rule 7 at its most literal — a surprise, in place of the thing the finger
+asked for.
+
+The library has a second case, and there the app was contradicting itself: the
+viewport debugger opens on five quick taps on „Bibliothek"
+(`attachDebugViewportTrigger`). The app asks for a rapid run of taps in one
+place and the browser zooms away on the second of them.
+
+The delay is the second half of the cost, and it is paid on every tap rather
+than only on the accidental ones: while a second tap could still mean something,
+iOS holds the first for about 300 ms to find out. Every tile in the library and
+every press of the shutter has been waiting on a gesture nobody wants.
+
+**`touch-action: manipulation` at the root of the document.** It names exactly
+one gesture — the double-tap zoom — and leaves scrolling and the two-finger
+zoom untouched.
+
+- **The pinch is not affected, and that is the point.** The second amendment's
+  reasoning stands unchanged: the library and the dialogs have no loupe to take
+  the pinch over, and low vision (ADR 22) must keep the one magnification those
+  screens have. This amendment narrows that earlier sentence rather than
+  reversing it — the pinch stays everywhere it was; the double-tap goes.
+- **The root is the right place because the browser intersects down the tree.**
+  The effective behaviour of a touch is the intersection of `touch-action` along
+  the ancestor chain, so a stricter value further down still wins: the reading
+  stage keeps `none` and the help list keeps `pan-y`. Nothing that already
+  suppressed more suppresses less now.
+- **The scattered `manipulation` declarations come out.** Eight controls carried
+  the property themselves — dialog buttons, the mood cards, the loupe. Each is
+  now covered by the root, and the loupe's was never doing anything anyway: it
+  sits inside a stage that says `none`. One rule, in one place, so the next
+  control added to this app is right without anyone remembering to make it so.
+
+## Fourth amendment consequences
+
+- Double-tapping to *undo* a native zoom is gone with it. The reversal is the
+  reverse pinch — the mirror of the gesture that caused the state, which is a
+  reversal rule 6 accepts, and the same trade the second amendment made on the
+  reading stage.
+- Two of the Eight Golden Rules are answered by removing something rather than
+  adding it: the surprise (rule 7) and the delay before every acknowledgement
+  (rule 3).
+- Like the third amendment, this cannot be verified in CI (ADR 8) and shows
+  nothing on a desktop browser, where the double-tap zoom does not exist.
+  Acceptance is a real iPad, in the installed web app: the shutter twice
+  quickly in the camera; in the library the sort pills, the filter chips or the
+  free space beside the tiles, all of which stay on the shelf. **Not** a tile —
+  the first tap already opens the book, so the second one lands in the reader,
+  which has been immune since the second amendment. Five quick taps on
+  „Bibliothek" should now reach the viewport debugger rather than zooming on the
+  way. And the counter-check, that this took only the one gesture: the pinch
+  still magnifies the library, the reader's pinch still works the loupe (`none`
+  on the stage), and the help list still scrolls under a finger (`pan-y`).

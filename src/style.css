@@ -134,6 +134,23 @@ html, body, #app {
      Rand ihres Knopfes oder ihrer Karte. Passt ein Wort auf seine Zeile, ändert
      sich nichts, darum ist bei normaler Schriftgrösse nichts anders. */
   overflow-wrap: break-word;
+  /* Der Doppel-Tipp-Zoom des Browsers, app-weit abgeschaltet (ADR 24, vierte
+     Ergänzung). Kein einziger Handgriff dieser App hört auf zwei schnelle
+     Tipps, wohl aber tippt man schnell zweimal auf dieselbe Stelle: der
+     Auslöser der Kamera beim Abfotografieren einer Seite ist der Regelfall.
+     `manipulation` nimmt genau diese eine Geste und lässt Scrollen und den
+     Zwei-Finger-Zoom stehen — den braucht die Bibliothek weiterhin, sie hat
+     keine Lupe, die ihn ersetzen könnte (ADR 22).
+
+     Die Regel steht an der Wurzel, weil der Browser die Werte entlang der
+     Ahnenkette schneidet: was weiter unten strenger ist, bleibt strenger
+     (`none` auf der Lesebühne, `pan-y` auf der Hilfe-Liste). Alles andere
+     braucht die Eigenschaft darum nicht mehr selbst zu setzen.
+
+     Dass der Verzug von rund 300 ms mitgeht, den iOS auf jeden Tipp legt,
+     solange ein zweiter noch etwas bedeuten könnte, ist der zweite Grund:
+     Kachel und Auslöser antworten sofort statt auf Verdacht zu warten. */
+  touch-action: manipulation;
 }
 
 /* iOS: die Systemschriftgrösse heisst hier Dynamic Type, und rem allein erreicht
@@ -936,7 +953,6 @@ button {
   font-variant-numeric: tabular-nums;
   line-height: 1;
   cursor: pointer;
-  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -1262,7 +1278,6 @@ button {
   font-weight: 600;
   cursor: pointer;
   width: 100%;
-  touch-action: manipulation;
   /* `anywhere` statt des geerbten `break-word`: die Beschriftung ist als
      Flex-Element so breit wie „Synchronisations-", und das ist bei doppelter
      Schrift breiter als die Karte. `break-word` bricht erst innerhalb der
@@ -2092,7 +2107,6 @@ button {
   border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
-  touch-action: manipulation;
 }
 
 .dialog-btn:hover {
@@ -2240,7 +2254,6 @@ button {
   min-width: 0;
   font-weight: 600;
   cursor: pointer;
-  touch-action: manipulation;
 }
 
 .tag-add:not(:disabled):hover {
@@ -2323,7 +2336,6 @@ button {
   border: none;
   border-radius: 999px;
   cursor: pointer;
-  touch-action: manipulation;
   box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   animation: finish-cue-pulse 2.4s ease-in-out infinite;
 }
@@ -2402,7 +2414,6 @@ button {
   color: var(--fg);
   font-size: 1rem;
   cursor: pointer;
-  touch-action: manipulation;
 }
 
 .mood-cancel:hover {
@@ -2550,7 +2561,6 @@ button {
   border: none;
   background: none;
   cursor: pointer;
-  touch-action: manipulation;
 }
 
 .mood-icon:active {
@@ -2680,7 +2690,6 @@ button {
   border-radius: 10px;
   font-weight: 600;
   cursor: pointer;
-  touch-action: manipulation;
 }
 
 .mood-result-done:hover {
