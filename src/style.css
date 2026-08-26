@@ -1843,6 +1843,9 @@ button {
   display: none;
 }
 
+/* The tile is the button, and its whole 64px is the target — well past the 44px
+   floor, and this time what is tappable is exactly what is visible (ADR 35). It
+   carries the one thing a thumbnail is good for: showing the photo properly. */
 .camera-thumb {
   position: relative;
   flex: 0 0 auto;
@@ -1851,6 +1854,9 @@ button {
   border-radius: 8px;
   overflow: hidden;
   background: #222;
+  padding: 0;
+  border: none;
+  cursor: pointer;
 }
 
 .camera-thumb img {
@@ -1860,44 +1866,51 @@ button {
   display: block;
 }
 
-/* The ✕ stays small on purpose — it sits on a 64px preview and a 44px disc
-   would bury the photo it is meant to let you check. The target underneath it
-   is the full 44px instead, cast by the pseudo-element below. */
-.camera-thumb-del {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  width: 20px;
-  height: 20px;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.75);
-  color: #fff;
-  border: none;
-  /* px aus demselben Grund wie oben, und aus dem, den ADR 23 für diese Scheibe
-     schon nennt: sie sitzt auf einem 64px-Foto. Mitwachsend würde sie genau das
-     Bild zudecken, zu dessen Kontrolle sie da ist. Das Ziel darunter sind
-     ohnehin volle 44px (siehe ::after). */
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0;
+/* The offer to take the last discard back. A row of its own between the strip
+   and the controls, not a line inside the strip: .camera-strip:empty hides
+   itself, and throwing away the only photo is exactly when this has to stay on
+   screen. Same dark ground as the strip, so the two read as one band under the
+   viewfinder rather than as something new appearing. The message and its answer
+   sit together in the middle rather than pushed to opposite edges: on an iPad
+   that is 800px of travel between reading what happened and reaching what to do
+   about it, and the two would stop reading as one thing. */
+.camera-undo {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--fg-dim);
+  font-size: 0.875rem;
 }
 
-/* The real target: 44px anchored to the thumbnail's top-right corner, so it
-   reaches down and left into the photo rather than out over the neighbouring
-   thumbnail — which .camera-thumb's overflow: hidden would clip anyway, and
-   where a stray tap would discard the wrong photo. The thumbnail carries no
-   other action, so the lower-left of it stays deliberately inert: discarding is
-   immediate and unpaid-for (the page has to be photographed again), and the
-   half of the preview furthest from the ✕ is where a finger steadying the strip
-   lands. */
-.camera-thumb-del::after {
-  content: '';
-  position: absolute;
-  top: -2px;
-  right: -2px;
-  width: 44px;
-  height: 44px;
+/* `display: flex` above would otherwise beat the browser's own [hidden] rule
+   and the row would never go away — the same reason .camera-fallback carries
+   this line. */
+.camera-undo[hidden] {
+  display: none;
+}
+
+/* Quiet: this is a way back, not the way on — the shutter below it is that, and
+   ADR 4 keeps the signal colours for connected and destructive. But a full 44px
+   target like everything else (ADR 23), with the word itself inside it rather
+   than something smaller sitting in the middle. --surface, not
+   --surface-glass: the glass token is a dark wash for controls lying over a
+   photo or a book page, and on this black bar it would leave the word looking
+   like text nobody can press. */
+.camera-undo-btn {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .camera-controls {
@@ -2735,6 +2748,28 @@ button {
    their full size, and grows in height with its content until it fills the
    screen — one finish stays a modest dialog, many turn it into a tall scrolling
    archive. The narrower side padding buys the tiles ~40px more on a phone. */
+/* The camera's page preview (ADR 35). Here rather than with the other camera
+   rules for the same reason .mood-history-card is here: it widens .dialog-card,
+   and at equal specificity only a later rule can.
+   Wider than an ordinary card and with next to no side padding — the photo is
+   the content, not something illustrating a sentence. */
+.camera-preview-card {
+  max-width: 640px;
+  padding: 20px 16px;
+}
+
+/* Fitted, never cropped — the question this answers is whether the whole page
+   made it into the frame, so a crop would answer it wrongly. Capped against the
+   viewport so a portrait page still leaves the buttons on screen. */
+.camera-preview-image {
+  display: block;
+  width: 100%;
+  max-height: 60vh;
+  object-fit: contain;
+  border-radius: 12px;
+  background: #000;
+}
+
 .mood-history-card {
   max-width: 640px;
   max-height: 100%;
