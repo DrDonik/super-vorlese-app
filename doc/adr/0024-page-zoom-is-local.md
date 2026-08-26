@@ -338,6 +338,11 @@ again and again in the same place. The app answers by magnifying itself. That
 is rule 7 at its most literal — a surprise, in place of the thing the finger
 asked for.
 
+The library has a second case, and there the app was contradicting itself: the
+viewport debugger opens on five quick taps on „Bibliothek"
+(`attachDebugViewportTrigger`). The app asks for a rapid run of taps in one
+place and the browser zooms away on the second of them.
+
 The delay is the second half of the cost, and it is paid on every tap rather
 than only on the accidental ones: while a second tap could still mean something,
 iOS holds the first for about 300 ms to find out. Every tile in the library and
@@ -374,5 +379,8 @@ zoom untouched.
   (rule 3).
 - Like the third amendment, this cannot be verified in CI (ADR 8) and shows
   nothing on a desktop browser, where the double-tap zoom does not exist.
-  Acceptance is a real iPad, in the installed web app: tap a tile twice quickly
-  in the library, and the shutter twice quickly in the camera.
+  Acceptance is a real iPad, in the installed web app: the shutter twice
+  quickly in the camera; in the library the sort pills, the filter chips or the
+  free space beside the tiles, all of which stay on the shelf. **Not** a tile —
+  the first tap already opens the book, so the second one lands in the reader,
+  which has been immune since the second amendment.
