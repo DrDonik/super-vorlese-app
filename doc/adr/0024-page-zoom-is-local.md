@@ -383,4 +383,8 @@ zoom untouched.
   quickly in the camera; in the library the sort pills, the filter chips or the
   free space beside the tiles, all of which stay on the shelf. **Not** a tile —
   the first tap already opens the book, so the second one lands in the reader,
-  which has been immune since the second amendment.
+  which has been immune since the second amendment. Five quick taps on
+  „Bibliothek" should now reach the viewport debugger rather than zooming on the
+  way. And the counter-check, that this took only the one gesture: the pinch
+  still magnifies the library, the reader's pinch still works the loupe (`none`
+  on the stage), and the help list still scrolls under a finger (`pan-y`).
