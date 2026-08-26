@@ -134,23 +134,30 @@ html, body, #app {
      Rand ihres Knopfes oder ihrer Karte. Passt ein Wort auf seine Zeile, ändert
      sich nichts, darum ist bei normaler Schriftgrösse nichts anders. */
   overflow-wrap: break-word;
-  /* Der Doppel-Tipp-Zoom des Browsers, app-weit abgeschaltet (ADR 24, vierte
-     Ergänzung). Kein einziger Handgriff dieser App hört auf zwei schnelle
-     Tipps, wohl aber tippt man schnell zweimal auf dieselbe Stelle: der
-     Auslöser der Kamera beim Abfotografieren einer Seite ist der Regelfall.
-     `manipulation` nimmt genau diese eine Geste und lässt Scrollen und den
-     Zwei-Finger-Zoom stehen — den braucht die Bibliothek weiterhin, sie hat
-     keine Lupe, die ihn ersetzen könnte (ADR 22).
+  /* Die Zoom-Gesten des Browsers, app-weit abgeschaltet: der Doppel-Tipp
+     (ADR 24, vierte Ergänzung) und der Zwei-Finger-Pinch (fünfte Ergänzung).
+     `pan-x pan-y` ist genau das: Scrollen in beide Richtungen, sonst keine
+     Geste. Was der Pinch überall dort vergrösserte, wo keine Lupe ihn
+     übernimmt, bedeutete auf ein und derselben Bildschirmseite Verschiedenes,
+     sobald ein Dialog über dem Buch lag — und ein Zoom von dort legte die Lupe
+     still (siehe native-zoom.js).
+
+     Kein einziger Handgriff dieser App hört auf zwei schnelle Tipps, wohl aber
+     tippt man schnell zweimal auf dieselbe Stelle: der Auslöser der Kamera beim
+     Abfotografieren einer Seite ist der Regelfall. Mit dem Doppel-Tipp geht der
+     Verzug von rund 300 ms, den iOS auf jeden Tipp legt, solange ein zweiter
+     noch etwas bedeuten könnte: Kachel und Auslöser antworten sofort statt auf
+     Verdacht zu warten.
 
      Die Regel steht an der Wurzel, weil der Browser die Werte entlang der
      Ahnenkette schneidet: was weiter unten strenger ist, bleibt strenger
      (`none` auf der Lesebühne, `pan-y` auf der Hilfe-Liste). Alles andere
-     braucht die Eigenschaft darum nicht mehr selbst zu setzen.
+     braucht die Eigenschaft darum nicht selbst zu setzen.
 
-     Dass der Verzug von rund 300 ms mitgeht, den iOS auf jeden Tipp legt,
-     solange ein zweiter noch etwas bedeuten könnte, ist der zweite Grund:
-     Kachel und Auslöser antworten sofort statt auf Verdacht zu warten. */
-  touch-action: manipulation;
+     Für die Finger auf dem Glas steht damit alles hier; die zwei Kanäle, die
+     `touch-action` nicht erreicht — WebKits Gesten-Ereignisse und `ctrl` +
+     Wheel — liegen in native-zoom.js. */
+  touch-action: pan-x pan-y;
 }
 
 /* iOS: die Systemschriftgrösse heisst hier Dynamic Type, und rem allein erreicht
