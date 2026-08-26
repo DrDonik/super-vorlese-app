@@ -16,6 +16,9 @@ export class CameraView {
     this.stream = null;
     this.pages = [];
     this.thumbUrls = [];
+    // The one photo a „Rückgängig" can still bring back, or null. See
+    // removePage() for why exactly one.
+    this.discarded = null;
     this.capturing = false;
     this.saving = false;
   }
@@ -30,6 +33,10 @@ export class CameraView {
           <div class="camera-counter" aria-live="polite">0 Seiten</div>
         </div>
         <div class="camera-strip" aria-label="Aufgenommene Seiten"></div>
+        <div class="camera-undo" hidden>
+          <span>Foto verworfen.</span>
+          <button class="camera-undo-btn" type="button">Rückgängig</button>
+        </div>
         <div class="camera-controls">
           <label class="camera-fallback" hidden>
             <input type="file" accept="image/*" multiple hidden />
@@ -47,6 +54,7 @@ export class CameraView {
     this.video = cam.querySelector('.camera-video');
     this.message = cam.querySelector('.camera-message');
     this.strip = cam.querySelector('.camera-strip');
+    this.undoBar = cam.querySelector('.camera-undo');
     this.shutter = cam.querySelector('.camera-shutter');
     this.doneBtn = cam.querySelector('.camera-done');
     this.counter = cam.querySelector('.camera-counter');
@@ -56,6 +64,7 @@ export class CameraView {
     cam.querySelector('.camera-cancel').addEventListener('click', () => this.cancel());
     this.shutter.addEventListener('click', () => this.capture());
     this.doneBtn.addEventListener('click', () => this.finish());
+    cam.querySelector('.camera-undo-btn').addEventListener('click', () => this.restoreDiscard());
     this.fallbackInput.addEventListener('change', (e) => this.importFromGallery(e.target.files));
 
     await this.startCamera();
@@ -133,6 +142,10 @@ export class CameraView {
   }
 
   addPage(blob) {
+    // Taking the next photo answers the question the offer above asks, so it
+    // settles the discard before it: whoever has moved on to the next page is
+    // not coming back for the one they just threw away.
+    this.commitDiscard();
     const index = this.pages.length;
     this.pages.push(blob);
     const url = URL.createObjectURL(blob);
@@ -148,16 +161,63 @@ export class CameraView {
       this.removePage(index, item, url);
     });
     item.dataset.index = String(index);
-    this.strip.appendChild(item);
+    this.insertThumb(item, index);
     this.strip.scrollLeft = this.strip.scrollWidth;
     this.updateCount();
   }
 
+  // Puts a thumbnail where its page number says it belongs — at the end for a
+  // new photo, back between its neighbours for a restored one. `pages` keeps the
+  // emptied slot of a discarded photo, so the index a thumbnail was given at
+  // capture time still names its place in the book once it returns. For pages
+  // that is not cosmetic: the strip is the order they will be bound in.
+  insertThumb(item, index) {
+    const after = [...this.strip.children].find((el) => Number(el.dataset.index) > index);
+    this.strip.insertBefore(item, after ?? null);
+  }
+
+  // Discarding is a slip waiting to happen — no confirmation, and a target that
+  // reaches well into the photo (ADR 23) — so the photo is held rather than
+  // dropped, and the strip offers it back (ADR 35). Exactly one: a second
+  // discard is a deliberate second act, and holding more would mean carrying
+  // rejected photos through a session that already fills memory with the kept
+  // ones. The object URL stays alive with it — it is what the thumbnail is
+  // still hanging on.
   removePage(index, item, url) {
+    this.commitDiscard();
+    this.discarded = { index, item, url, blob: this.pages[index] };
     this.pages[index] = null;
-    URL.revokeObjectURL(url);
     item.remove();
+    this.undoBar.hidden = false;
     this.updateCount();
+  }
+
+  // Lets the held photo go for good. Revoked here and not only in destroy(), so
+  // a long session that discards its way through many shots never holds on to
+  // more than the one that is still on offer.
+  commitDiscard() {
+    if (!this.discarded) return;
+    URL.revokeObjectURL(this.discarded.url);
+    this.discarded = null;
+    this.undoBar.hidden = true;
+  }
+
+  restoreDiscard() {
+    const held = this.discarded;
+    if (!held) return;
+    this.discarded = null;
+    this.undoBar.hidden = true;
+    this.pages[held.index] = held.blob;
+    // The same element, with its ✕ and its listener intact: it was taken out of
+    // the strip, not thrown away.
+    this.insertThumb(held.item, held.index);
+    held.item.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    this.updateCount();
+    // „Rückgängig" has just disappeared from under the finger that pressed it,
+    // so the focus would fall to <body> and a keyboard user would start over at
+    // the top. It goes back to the ✕ this round trip began at — the same photo,
+    // the same control.
+    held.item.querySelector('.camera-thumb-del')?.focus({ preventScroll: true });
   }
 
   livePages() {
@@ -244,8 +304,11 @@ export class CameraView {
 
   destroy() {
     this.stopCamera();
+    // thumbUrls carries the held photo's URL too — it was never taken out — so
+    // this covers the discard on offer along with everything still in the strip.
     for (const url of this.thumbUrls) URL.revokeObjectURL(url);
     this.thumbUrls = [];
     this.pages = [];
+    this.discarded = null;
   }
 }

@@ -1872,10 +1872,10 @@ button {
    reaches down and left into the photo rather than out over the neighbouring
    thumbnail — which .camera-thumb's overflow: hidden would clip anyway, and
    where a stray tap would discard the wrong photo. The thumbnail carries no
-   other action, so the lower-left of it stays deliberately inert: discarding is
-   immediate and unpaid-for (the page has to be photographed again), and the
-   half of the preview furthest from the ✕ is where a finger steadying the strip
-   lands. */
+   other action, so the lower-left of it stays deliberately inert: the half of
+   the preview furthest from the ✕ is where a finger steadying the strip
+   lands. What this target costs when it is hit by accident is now one tap on
+   „Rückgängig" rather than photographing the page again (ADR 35). */
 .camera-thumb-del::after {
   content: '';
   position: absolute;
@@ -1883,6 +1883,53 @@ button {
   right: -2px;
   width: 44px;
   height: 44px;
+}
+
+/* The offer to take the last discard back. A row of its own between the strip
+   and the controls, not a line inside the strip: .camera-strip:empty hides
+   itself, and throwing away the only photo is exactly when this has to stay on
+   screen. Same dark ground as the strip, so the two read as one band under the
+   viewfinder rather than as something new appearing. The message and its answer
+   sit together in the middle rather than pushed to opposite edges: on an iPad
+   that is 800px of travel between reading what happened and reaching what to do
+   about it, and the two would stop reading as one thing. */
+.camera-undo {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0 16px;
+  background: rgba(0, 0, 0, 0.7);
+  color: var(--fg-dim);
+  font-size: 0.875rem;
+}
+
+/* `display: flex` above would otherwise beat the browser's own [hidden] rule
+   and the row would never go away — the same reason .camera-fallback carries
+   this line. */
+.camera-undo[hidden] {
+  display: none;
+}
+
+/* Quiet: this is a way back, not the way on — the shutter below it is that, and
+   ADR 4 keeps the signal colours for connected and destructive. But a full 44px
+   target like everything else (ADR 23), with the word itself inside it rather
+   than something smaller sitting in the middle. --surface, not
+   --surface-glass: the glass token is a dark wash for controls lying over a
+   photo or a book page, and on this black bar it would leave the word looking
+   like text nobody can press. */
+.camera-undo-btn {
+  flex: none;
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--fg);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .camera-controls {

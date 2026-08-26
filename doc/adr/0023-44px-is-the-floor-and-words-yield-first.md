@@ -103,6 +103,11 @@ static — it cannot drift out of step the way a per-page label would.
   discarding is immediate and has no undo — the page must be photographed again
   — so the half furthest from the ✕, where a finger steadying the strip lands,
   triggers nothing.
+  *Amended by [ADR 35](0035-a-discarded-photo-is-held-until-the-next-one.md): a
+  discarded photo is now held and offered back until the next handhold, so what
+  this target costs when it is hit by accident is one tap on „Rückgängig" rather
+  than a page photographed again. The floor, the target and the inert half stay
+  exactly as decided here.*
 - New controls inherit the floor by copying the pattern; there is no linter to
   catch a regression ([ADR 8](0008-no-tests-or-linter.md)). The check is a
   browser at 320px, and the number to compare against is 44.
