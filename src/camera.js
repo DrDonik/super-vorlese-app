@@ -163,8 +163,12 @@ export class CameraView {
     item.type = 'button';
     item.className = 'camera-thumb';
     item.setAttribute('aria-label', 'Foto ansehen');
-    item.innerHTML = '<img alt="" />';
-    item.querySelector('img').src = url;
+    // Built rather than parsed from a string: one element does not need an HTML
+    // round trip, and it leaves the strip with no HTML sink at all.
+    const thumb = document.createElement('img');
+    thumb.alt = '';
+    thumb.src = url;
+    item.appendChild(thumb);
     item.addEventListener('click', () => this.openPage(index, item, url));
     item.dataset.index = String(index);
     this.insertThumb(item, index);
