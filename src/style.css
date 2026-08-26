@@ -828,8 +828,14 @@ button {
      including the two-finger pinch, which now works the loupe instead of the
      browser's zoom (ADR 24, second amendment). The stage never scrolls, so
      nothing is given up by saying so. WebKit also needs its gesture events
-     cancelled; see suppressNativePinch. */
+     cancelled; see attachGesturePinch. */
   touch-action: none;
+  /* The wheel's counterpart: the stage swallows what it cannot use rather than
+     passing it out to the page behind and to the browser's back gesture, which
+     would leave the book (ADR 24, third amendment). The wheel handler's
+     preventDefault is what actually does that; this is the belt to its braces,
+     for the scroll chaining no handler ever sees. */
+  overscroll-behavior: contain;
 }
 
 .reader-canvas {

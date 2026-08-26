@@ -248,3 +248,78 @@ over, and low vision (ADR 22) must keep the one magnification those screens have
   double-taps on a reading stage land on a turn zone.
 - Nothing about this is synchronised, and nothing about it is stored: the pinch
   sets the same local, per-reading factor the button always set.
+
+## Third amendment (2026-08-26): the Mac gets the same gestures
+
+The second amendment took the pinch away from the browser everywhere. On a
+MacBook it took it away and gave nothing back: `suppressNativePinch` cancelled
+WebKit's `gesturestart` / `gesturechange` / `gestureend` on every device, and its
+comment explained why that was safe — „so the page is zoomed once, by the touch
+handlers above, which have the same two fingers". A trackpad has no fingers on
+any glass; it fires no touch events at all, and on macOS Safari those three
+gesture events are the *whole* channel the pinch has. So the page was zoomed not
+once but never, and the trackpad was left with `ctrl` + scrolling — the
+Chrome/Firefox convention — as its only way to magnify a page. Two-finger
+swiping did nothing at all, on a magnified page as much as on an unmagnified one.
+
+That is a regression against this ADR's own first rule, that the same gesture
+means the same thing wherever the reader is sitting, and the remedy is not to
+build a pinch for the Mac but to let the suppression become an adoption.
+
+**The wheel and the two fingers move the page — they never mean more than
+that. Where there is nothing to move, nothing happens.**
+
+| input | at 1× | magnified |
+| --- | --- | --- |
+| trackpad pinch | zooms | zooms |
+| `ctrl` + wheel/scroll | zooms (unchanged) | zooms (unchanged) |
+| wheel / two fingers vertically | nothing | moves the page vertically |
+| two fingers horizontally | nothing | moves the page horizontally |
+
+- **Swiping sideways does not turn the page at 1×.** Otherwise the same gesture
+  would mean two different things depending on whether the page happens to
+  overhang its stage — turning here, moving there. The distinction that matters:
+  *having nothing to do* (scrolling a document that fits its window) is not the
+  same as *doing something else*. A drag with a finger or a mouse is a different
+  case and keeps its page turn: a press is a deliberate approach to the page,
+  where a scroll often *begins* by accident — a hand brushing the trackpad —
+  and rule 5 says an accident must not turn the page.
+- **„Nothing" means swallowed, not ignored.** A sideways two-finger swipe is the
+  browser's back gesture on a Mac, and this app pushes no history to go back to:
+  the reader would leave the app, and with it the book, which lives only in
+  memory. Reading alone that loses the page; reading together it leaves the room.
+  Wheel events over the stage are therefore consumed even where they move
+  nothing, with `overscroll-behavior: contain` on the stage as the belt to that
+  braces.
+- **Where the gesture comes from decides, not what the device is.** The gesture
+  events are adopted only when no fingers are on the glass — counted live, and
+  with a grace period after the last one lifts. On iOS the touch handlers still
+  have the same two fingers, so there the events stay merely cancelled and
+  nothing about the iPad changes. An iPad with a trackpad attached is both
+  devices at once, which is exactly why the question is asked of the gesture
+  rather than of the user agent.
+- **No re-render for moving.** A zoom changes what the page must be rendered at;
+  an offset does not. Moving is a transform and stays one, so it costs a
+  composite and nothing else.
+- **The chrome stays away**, as it already does for the mouse drag and after a
+  pinch (ADR 30): the bar would sit over the very part of the page the reader is
+  moving into view.
+
+## Third amendment consequences
+
+- A trackpad pinch and `ctrl` + wheel now reach the loupe through two different
+  code paths, one per browser family: WebKit fires gesture events, everyone else
+  a `ctrl`-wheel. Both anchor under the cursor through the same `applyPinchAt`,
+  and a wheel arriving while a gesture is in progress is ignored, so a browser
+  that ever fired both could not zoom twice.
+- The Mac now has three ways to magnify (pinch, `ctrl`+wheel, the button) and
+  the iPad two. That is one gesture per convention rather than three ideas: each
+  is what that device's readers already reach for.
+- Scrolling a magnified page has no indicator — no scrollbar, no hint that there
+  is more page below. Deliberately left out of this change: it is output where
+  this was input, and the iPad has had the same gap since issue #117. A real
+  scrollbar is also not cheap here, since the loupe moves the page by transform
+  and the stage needs `overflow: hidden` and `touch-action: none`.
+- None of this can be verified in CI — there are no tests (ADR 8) and no Safari
+  in the agent environment. The diagnosis rests on the code and on the
+  maintainer's observation; acceptance needs a real Mac and a real iPad.
