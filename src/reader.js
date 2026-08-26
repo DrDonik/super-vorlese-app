@@ -93,6 +93,19 @@ const WHEEL_DELTA_PX = { 0: 1, 1: 16, 2: 100 };
 // A wheel zoom renders once the hand comes to rest, not once per notch.
 const WHEEL_COMMIT_MS = 160;
 
+// The touch events that tell whether fingers are on the glass; see watchTouches.
+const TOUCH_WATCH_EVENTS = ['touchstart', 'touchend', 'touchcancel'];
+
+// How long after the last finger has lifted a WebKit gesture event still counts
+// as that touch's own (see fingersOnGlass). Covers the ordering of two event
+// streams the platform emits for one gesture — which is the platform's to
+// decide, not something to rely on — and comfortably outlasts the gap between
+// the last touchend and the gestureend belonging to the same pinch. Half a
+// second: long enough that no part of one gesture falls outside it, short
+// enough that a reader who lets go and reaches for the trackpad is never held
+// up by it.
+const GESTURE_TOUCH_GRACE_MS = 500;
+
 // The factor as it goes on the button. One decimal, German comma, and no
 // trailing „,0": the full-width step lands on whatever the page and the screen
 // make of it, and „2,1×" is as much of that as anyone needs to read.
@@ -763,8 +776,9 @@ export class ReaderView {
     });
 
     this.attachMouseGestures(stage);
-    this.attachWheelZoom(stage);
-    this.suppressNativePinch(stage);
+    this.attachWheelGestures(stage);
+    this.watchTouches();
+    this.attachGesturePinch(stage);
   }
 
   // The mouse's half of the stage gestures: hold the button to point at the
@@ -984,36 +998,60 @@ export class ReaderView {
     return Math.min(PINCH_MAX, factor);
   }
 
-  // Everything the gesture is measured against, taken once: the fingers' first
-  // distance and midpoint, the factor and offset they started from, and the
-  // stage's centre (which cannot move while two fingers are down, so it is
-  // worth not re-measuring sixty times a second).
-  beginPinch(a, b) {
+  // Everything a pinch is measured against, taken once: the point it took hold
+  // of, the factor and offset it started from, and the stage's centre (which
+  // cannot move while the gesture lasts, so it is worth not re-measuring sixty
+  // times a second). Two fingers and a trackpad differ only in how they report
+  // the factor; where they take hold, and what that spot is promised, is the
+  // same thing on both.
+  beginPinchAt(clientX, clientY) {
     const stage = this.root.querySelector('.reader-stage');
     if (!stage || this.nativeZoomActive()) return null;
-    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
-    if (!dist) return null;
     const r = stage.getBoundingClientRect();
     const centre = { x: r.left + r.width / 2, y: r.top + r.height / 2 };
     this.pinching = true;
     this.applyZoomState();
     return {
-      dist,
       centre,
       zoom: this.zoom,
       panX: this.panX,
       panY: this.panY,
-      midX: (a.clientX + b.clientX) / 2 - centre.x,
-      midY: (a.clientY + b.clientY) / 2 - centre.y,
+      midX: clientX - centre.x,
+      midY: clientY - centre.y,
     };
   }
 
+  // The touch pinch's start: the same beginning, plus the fingers' first
+  // distance, which is what their factor is measured against.
+  beginPinch(a, b) {
+    const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+    if (!dist) return null;
+    const pinch = this.beginPinchAt((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
+    if (pinch) pinch.dist = dist;
+    return pinch;
+  }
+
+  // Puts a factor and a point of interest onto the page: the factor clamped,
+  // and the offset from the promise that the spot the gesture took hold of
+  // stays under it. That second half is what makes a pinch feel like handling
+  // the page rather than operating a control — and it carries the two-finger
+  // drag along for nothing, because a midpoint that has moved is only the same
+  // page point asking to be somewhere else.
+  applyPinchAt(pinch, factor, clientX, clientY) {
+    const zoom = this.clampPinch(factor);
+    const ratio = zoom / pinch.zoom;
+    const midX = clientX - pinch.centre.x;
+    const midY = clientY - pinch.centre.y;
+    this.zoom = zoom;
+    this.panX = midX - (pinch.midX - pinch.panX) * ratio;
+    this.panY = midY - (pinch.midY - pinch.panY) * ratio;
+    this.clampPan();
+    this.applyPan();
+    this.applyZoomState();
+  }
+
   // Follows the fingers: the factor from how far apart they are now against
-  // where they began, and the offset from the promise that the spot they took
-  // hold of stays under them. That second half is what makes a pinch feel like
-  // handling the page rather than operating a control — and it carries the
-  // two-finger drag along for nothing, because a midpoint that has moved is
-  // only the same page point asking to be somewhere else.
+  // where they began, and the midpoint they are holding the page by.
   //
   // Both are measured from the start of the gesture rather than from the last
   // frame, so the page cannot drift away from the fingers over a long pinch,
@@ -1021,16 +1059,12 @@ export class ReaderView {
   movePinch(pinch, a, b) {
     const dist = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
     if (!dist) return;
-    const factor = this.clampPinch(pinch.zoom * (dist / pinch.dist));
-    const ratio = factor / pinch.zoom;
-    const midX = (a.clientX + b.clientX) / 2 - pinch.centre.x;
-    const midY = (a.clientY + b.clientY) / 2 - pinch.centre.y;
-    this.zoom = factor;
-    this.panX = midX - (pinch.midX - pinch.panX) * ratio;
-    this.panY = midY - (pinch.midY - pinch.panY) * ratio;
-    this.clampPan();
-    this.applyPan();
-    this.applyZoomState();
+    this.applyPinchAt(
+      pinch,
+      pinch.zoom * (dist / pinch.dist),
+      (a.clientX + b.clientX) / 2,
+      (a.clientY + b.clientY) / 2,
+    );
   }
 
   // On release the factor is already in force and already on the button; what
@@ -1066,52 +1100,147 @@ export class ReaderView {
     this.applyZoomState();
   }
 
-  // Trackpad pinch and Ctrl+wheel, which every browser reports as a wheel event
-  // with ctrlKey set. Taken over for the same reason as the touch pinch: left
-  // to the browser it zooms the whole window, chrome and all, so the same
-  // gesture would mean two different things depending on which device the
-  // reader happens to be sitting at (rule 1).
-  attachWheelZoom(stage) {
+  // The wheel: a mouse wheel, a trackpad's two fingers, and — outside WebKit —
+  // a trackpad pinch, all arriving as the one event. They need not be told
+  // apart, because they all mean the same two things (ADR 24, third amendment):
+  // with `ctrl` the wheel zooms, and without it it moves the page. Where there
+  // is nothing to move, nothing happens.
+  //
+  // Zooming is taken over for the same reason as the touch pinch: left to the
+  // browser it zooms the whole window, chrome and all, so the same gesture
+  // would mean two different things depending on which device the reader
+  // happens to be sitting at (rule 1).
+  attachWheelGestures(stage) {
     stage.addEventListener('wheel', (e) => {
-      if (!e.ctrlKey || this.nativeZoomActive()) return;
+      // The document itself is natively zoomed. Scrolling and unzooming it are
+      // then the browser's to do, and the reader's only way back out of it (see
+      // nativeZoomActive), so the event is left entirely alone.
+      if (this.nativeZoomActive()) return;
+      // Everything over the stage belongs to the page — including what comes to
+      // nothing. A sideways two-finger swipe is the browser's back gesture, and
+      // this app pushes no history to go back to: it would leave the book, which
+      // lives only in memory. So the event is consumed at 1× as well, where it
+      // moves nothing.
       e.preventDefault();
-      const r = stage.getBoundingClientRect();
-      const midX = e.clientX - (r.left + r.width / 2);
-      const midY = e.clientY - (r.top + r.height / 2);
-      const delta = e.deltaY * (WHEEL_DELTA_PX[e.deltaMode] ?? 1);
-      const factor = this.clampPinch(this.zoom * Math.exp(-delta * WHEEL_ZOOM_RATE));
-      const ratio = factor / this.zoom;
-      // Same anchoring as the pinch, with the cursor for a midpoint: what is
-      // under the pointer stays under it.
-      this.zoom = factor;
-      this.panX = midX - (midX - this.panX) * ratio;
-      this.panY = midY - (midY - this.panY) * ratio;
-      this.clampPan();
-      this.applyPan();
-      this.applyZoomState();
-      // A trackpad pinch arrives as a stream of small notches; rendering each
-      // one would queue up dozens of renders for a single gesture. Notches that
-      // change nothing — against the ceiling, or back at the factor already on
-      // screen — leave any render already waiting alone rather than pushing it
-      // further away.
-      if (Math.abs(this.zoom - this.renderedZoom) > 0.001) {
-        clearTimeout(this._wheelZoomT);
-        this._wheelZoomT = setTimeout(() => this.renderCurrent(), WHEEL_COMMIT_MS);
-      }
+      // Safari reports its trackpad pinch as gesture events, which are already
+      // working the loupe; a wheel arriving mid-gesture must not zoom on top of
+      // it.
+      if (this.pinching) return;
+      if (e.ctrlKey) { this.wheelZoom(stage, e); return; }
+      // Moving the page is a transform and nothing more: no re-render (the page
+      // keeps the factor it was rendered at, unlike a zoom), and no chrome —
+      // the bar comes up for a tap, and would sit over the very part of the
+      // page the reader is moving into view (ADR 30).
+      if (this.zoomFactor() === 1) return;
+      const px = WHEEL_DELTA_PX[e.deltaMode] ?? 1;
+      // The page goes the way the eye does: scrolling down carries it up.
+      // clampPan holds it at its own edges — including through the momentum
+      // macOS keeps sending after the fingers have left the trackpad.
+      this.panTo(this.panX - e.deltaX * px, this.panY - e.deltaY * px);
     }, { passive: false });
   }
 
-  // WebKit's own pinch, which is what iOS actually fires on two fingers, and
-  // which `touch-action` does not reliably hold back there. Cancelled outright
-  // so the page is zoomed once — by the touch handlers above, which have the
-  // same two fingers — rather than twice.
-  suppressNativePinch(stage) {
-    ['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => {
-      stage.addEventListener(type, (e) => {
-        if (this.nativeZoomActive()) return;
-        if (e.cancelable) e.preventDefault();
-      });
+  // One notch of a wheel, or one step of a trackpad pinch outside WebKit.
+  wheelZoom(stage, e) {
+    const r = stage.getBoundingClientRect();
+    const midX = e.clientX - (r.left + r.width / 2);
+    const midY = e.clientY - (r.top + r.height / 2);
+    const delta = e.deltaY * (WHEEL_DELTA_PX[e.deltaMode] ?? 1);
+    const factor = this.clampPinch(this.zoom * Math.exp(-delta * WHEEL_ZOOM_RATE));
+    const ratio = factor / this.zoom;
+    // Same anchoring as the pinch, with the cursor for a midpoint: what is
+    // under the pointer stays under it.
+    this.zoom = factor;
+    this.panX = midX - (midX - this.panX) * ratio;
+    this.panY = midY - (midY - this.panY) * ratio;
+    this.clampPan();
+    this.applyPan();
+    this.applyZoomState();
+    // A trackpad pinch arrives as a stream of small notches; rendering each
+    // one would queue up dozens of renders for a single gesture. Notches that
+    // change nothing — against the ceiling, or back at the factor already on
+    // screen — leave any render already waiting alone rather than pushing it
+    // further away.
+    if (Math.abs(this.zoom - this.renderedZoom) > 0.001) {
+      clearTimeout(this._wheelZoomT);
+      this._wheelZoomT = setTimeout(() => this.renderCurrent(), WHEEL_COMMIT_MS);
+    }
+  }
+
+  // WebKit's own pinch. On iOS it accompanies the touch events the recogniser
+  // above already works the loupe with; on a Mac trackpad there are no touch
+  // events at all, and these three are the *only* channel the pinch has. Which
+  // is why cancelling them outright — all this did until ADR 24's third
+  // amendment — left a MacBook with no pinch whatsoever: the comment promised
+  // that „the touch handlers above have the same two fingers", and on a
+  // trackpad there are no fingers to have.
+  //
+  // So: always cancelled, so the browser never zooms the window; and taken over
+  // wherever the fingers of the touch recogniser are not the ones making it.
+  attachGesturePinch(stage) {
+    // The gesture in progress, or null — which is also what a gesture left to
+    // the touch handlers looks like from here, and it stays null until the next
+    // gesturestart rather than being picked up halfway through.
+    let pinch = null;
+    // Hands a gesture back where it was found: the native zoom has taken hold
+    // mid-flight, and carrying on would freeze a half-finished local zoom
+    // underneath the browser's own (see the same case in the touch recogniser).
+    const handBack = () => {
+      if (!pinch) return;
+      this.cancelPinch(pinch);
+      pinch = null;
+    };
+    stage.addEventListener('gesturestart', (e) => {
+      if (this.nativeZoomActive()) { handBack(); return; }
+      if (e.cancelable) e.preventDefault();
+      // On iOS the same two fingers are already working the loupe through the
+      // touch handlers. Cancelling is the whole job there; taking the gesture
+      // as well would zoom the page twice.
+      if (this.fingersOnGlass()) return;
+      pinch = this.beginPinchAt(e.clientX, e.clientY);
     });
+    stage.addEventListener('gesturechange', (e) => {
+      if (this.nativeZoomActive()) { handBack(); return; }
+      if (e.cancelable) e.preventDefault();
+      if (!pinch) return;
+      // `scale` is cumulative from the start of the gesture, exactly as the
+      // fingers' distance is measured against their first one, so nothing
+      // drifts and pinching back puts the page back. The cursor anchors it, as
+      // it already does for the wheel.
+      this.applyPinchAt(pinch, pinch.zoom * e.scale, e.clientX, e.clientY);
+    });
+    stage.addEventListener('gestureend', (e) => {
+      if (e.cancelable && !this.nativeZoomActive()) e.preventDefault();
+      if (!pinch) return;
+      pinch = null;
+      this.endPinch();
+    });
+  }
+
+  // Keeps count of the fingers on the glass, for fingersOnGlass. On the window
+  // and in the capture phase, because a pinch whose second finger came down on
+  // a chrome button is still two fingers and its touchstart never reaches the
+  // stage — the same case the touch recogniser handles by counting `touches`
+  // rather than its own listeners' calls.
+  watchTouches() {
+    this._touchCount = 0;
+    this._lastTouchAt = -Infinity;
+    this._touchWatch = (e) => {
+      this._touchCount = e.touches.length;
+      this._lastTouchAt = performance.now();
+    };
+    TOUCH_WATCH_EVENTS.forEach((type) => {
+      window.addEventListener(type, this._touchWatch, { capture: true, passive: true });
+    });
+  }
+
+  // Whether the gesture now arriving is being made by fingers. Asked instead of
+  // the user agent on purpose: an iPad with a trackpad attached is both devices
+  // at once, and the question is never what the device is but where this one
+  // gesture is coming from.
+  fingersOnGlass() {
+    if (this._touchCount > 0) return true;
+    return performance.now() - this._lastTouchAt < GESTURE_TOUCH_GRACE_MS;
   }
 
   // A mouse drag that ends over a page-turn zone still delivers a click to it.
@@ -2926,6 +3055,12 @@ export class ReaderView {
     if (this._chromePressState) {
       window.removeEventListener('pointerdown', this._chromePressState, true);
       this._chromePressState = null;
+    }
+    if (this._touchWatch) {
+      TOUCH_WATCH_EVENTS.forEach((type) => {
+        window.removeEventListener(type, this._touchWatch, true);
+      });
+      this._touchWatch = null;
     }
     this.closeHelp(); // also detaches its window pointerdown listener
     clearTimeout(this.hideTimer);
