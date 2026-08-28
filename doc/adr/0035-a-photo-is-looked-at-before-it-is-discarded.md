@@ -21,7 +21,10 @@ belief that it exists elsewhere too. A confirmation cannot catch that, because
 the person confirms exactly what they meant to do — and neither can an undo
 offer measured in seconds, because that regret arrives weeks later, when somebody
 goes looking for the book. That half of the issue is still open, and it is a
-question about durability, not about undo.
+question about durability, not about undo. *(Answered by
+[ADR 36](0036-books-are-for-tonight-and-the-shelf-is-not-an-archive.md): the
+app does not make books durable, and the confirmation names the one thing on
+that path that no re-photographing brings back.)*
 
 The camera was the opposite case, and worse than the issue described. The strip
 under the viewfinder showed each photo at 64px with a 20px ✕ on it, behind which
@@ -125,3 +128,8 @@ merits, not because it was already written.
 - The book half of issue #131 is not addressed here and the issue stays open for
   it. If books ever get an undo, this is the wording and the shape to copy
   (rule 1).
+  *(Superseded by
+  [ADR 36](0036-books-are-for-tonight-and-the-shelf-is-not-an-archive.md):
+  books get no undo, and #131 closes with that. The camera's offer stands — the
+  two halves turned out to be different problems, which is what this ADR said
+  from the start.)*

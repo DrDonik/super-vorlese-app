@@ -1,7 +1,7 @@
 import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
-  getCompletionsMany,
+  getCompletionsMany, getCompletions,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import { loadPdf, renderThumbnail, readTitlePage } from './pdf.js';
@@ -995,14 +995,30 @@ export class LibraryView {
   }
 
   // Reached from the „Buch bearbeiten" dialog, which has closed by the time
-  // this runs — dialogs are serialized and never stack (see dialog.js). The
-  // confirmation stays even though getting here already takes two deliberate
-  // taps: deleting a photographed book destroys the only copy of those pages,
-  // and nothing in the app can bring it back (issue #131).
+  // this runs — dialogs are serialized and never stack (see dialog.js). Getting
+  // here already takes two deliberate taps, so the confirmation is not there to
+  // slow the path down; it is there to say what this particular book costs.
+  //
+  // Deleting is the ordinary end of a book's life in this app (ADR 36) and the
+  // pages come back with the camera, so the plain question is the right one for
+  // most books. What does not come back is the mood history: deleteBook takes
+  // the completion records with it, and a re-photographed book is a new id with
+  // an empty one. Those evenings are the only thing on this path that no repeat
+  // of the original action restores, so they — and nothing else — are named.
   async confirmAndDelete(book) {
+    // Read fresh rather than reusing the list the card's mood strip was built
+    // from: this number is about to be put in front of someone as the reason to
+    // think again, and it is one lookup on a path used a few times a year.
+    const evenings = (await getCompletions(book.id)).length;
+    let message = `„${book.title}" wirklich löschen?`;
+    // „gehen verloren" is the camera's word for the same kind of loss in the
+    // same kind of dialog („Die Fotos gehen verloren."), so the app says it the
+    // one way (rule 1).
+    if (evenings === 1) message += ' Ein gemeinsamer Abend geht damit verloren.';
+    else if (evenings > 1) message += ` ${evenings} gemeinsame Abende gehen damit verloren.`;
     const confirmed = await showConfirm({
       title: 'Buch löschen',
-      message: `„${book.title}" wirklich löschen?`,
+      message,
       confirmLabel: 'Löschen',
       destructive: true,
     });
