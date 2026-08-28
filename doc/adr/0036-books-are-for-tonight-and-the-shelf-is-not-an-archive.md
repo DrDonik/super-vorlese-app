@@ -108,7 +108,10 @@ the response is proportional to the significance of the action).
 
 - `confirmAndDelete` reads the book's completions before it asks. One extra
   IndexedDB lookup on a path used a few times a year, read fresh rather than
-  taken from the shelf's render snapshot, because the number is the argument.
+  taken from the shelf's render snapshot, because the number is the argument. A
+  failed read falls back to the plain question: the sentence is the reason to
+  think again, not a precondition of asking, and a store that cannot be read
+  must not turn the tap into nothing happening.
 - The wording borrows the camera's („Die Fotos gehen verloren.") rather than
   inventing a second phrase for the same kind of loss in the same kind of
   dialog (rule 1). „Gemeinsame Abende" is a new term, and it names what

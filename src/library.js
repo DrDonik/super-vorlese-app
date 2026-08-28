@@ -1009,7 +1009,15 @@ export class LibraryView {
     // Read fresh rather than reusing the list the card's mood strip was built
     // from: this number is about to be put in front of someone as the reason to
     // think again, and it is one lookup on a path used a few times a year.
-    const evenings = (await getCompletions(book.id)).length;
+    //
+    // A failed read falls back to the plain question rather than up the stack.
+    // The sentence is the reason to think again, not a precondition of asking —
+    // a store that cannot be read must not turn the tap into nothing happening,
+    // which is the one outcome this dialog exists to rule out (rule 3). It is
+    // also barely reachable: the shelf read every book's completions to build
+    // the card that was just tapped, so getting here means the store broke in
+    // between, and then the plain question is the honest one.
+    const evenings = (await getCompletions(book.id).catch(() => [])).length;
     let message = `„${book.title}" wirklich löschen?`;
     // „gehen verloren" is the camera's word for the same kind of loss in the
     // same kind of dialog („Die Fotos gehen verloren."), so the app says it the
