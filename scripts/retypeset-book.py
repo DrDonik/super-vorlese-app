@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
 """Setzt von einfachvorlesen.de geladene Bücher neu — siehe doc/adr/0028.
 
-Zwei Schritte, damit Handkorrekturen einen Rebuild überleben:
+Gib dem Skript, was du gerade hast — es erkennt am Pfad, was zu tun ist.
 
-    extract   PDF(s) -> buch.json + bilder/     (Struktur auslesen)
-    build     buch.json -> buch.typ -> PDF      (neu setzen)
+Quell-PDFs: auslesen und setzen.
 
-Zwischen beiden liegt buch.json. Wer eine Kapitelgrenze verschiebt, einen
-Absatz zusammenzieht oder ein Bild umhängt, ändert dort — und `build` bleibt
-beliebig oft wiederholbar.
+    PDF(s) -> buch.json + bilder/ -> buch.typ -> fertiges PDF
 
-Beispiele:
+    python3 scripts/retypeset-book.py doc/books/downloads/moppi-*-teil-*.pdf
 
-    python3 scripts/retypeset-book.py extract doc/books/downloads/moppi-*-teil-*.pdf
-    python3 scripts/retypeset-book.py build doc/books/work/moppi-und-moehre
+Die Quellen wandern danach nach doc/books/processed/, das fertige Buch nach
+doc/books/retypeset/.
+
+Ein Arbeitsordner: nur neu setzen. Zwischen den beiden Hälften liegt nämlich
+buch.json, damit Handkorrekturen einen Rebuild überleben. Wer im fertigen PDF
+etwas findet — eine falsch gesetzte Kapitelgrenze, einen zerrissenen Absatz,
+ein falsch einsortiertes Bild —, ändert dort und ruft erneut auf, beliebig oft.
+
+    python3 scripts/retypeset-book.py doc/books/work/moppi-und-moehre
 """
 
 from __future__ import annotations
@@ -36,6 +40,8 @@ REPO = Path(__file__).resolve().parent.parent
 FONT_DIR = REPO / "scripts" / "fonts"
 WORK_ROOT = REPO / "doc" / "books" / "work"
 LIBRARY = REPO / "doc" / "books"
+PROCESSED_DIR = LIBRARY / "processed"  # ausgelesene Quell-PDFs
+RETYPESET_DIR = LIBRARY / "retypeset"  # fertig gesetzte Bücher
 
 # ── Die Signatur der Quelle ────────────────────────────────────────────────
 # einfachvorlesen.de setzt seine PDFs vollautomatisch und deshalb messerscharf
@@ -741,7 +747,10 @@ def render_typst(recipe) -> str:
 def build(work_dir, preview=False):
     recipe_path = work_dir / "buch.json"
     if not recipe_path.exists():
-        raise SystemExit(f"Kein buch.json in {work_dir}. Erst `extract` laufen lassen.")
+        raise SystemExit(
+            f"Kein buch.json in {work_dir}. Für ein neues Buch die Quell-PDFs "
+            "übergeben statt eines Arbeitsordners."
+        )
     recipe = json.loads(recipe_path.read_text(encoding="utf-8"))
 
     typst_path = work_dir / "buch.typ"
@@ -786,10 +795,14 @@ def build(work_dir, preview=False):
         print(f"  Vorschau: {preview_dir} ({len(sample)} Seiten)")
     doc.close()
 
+    # Das fertige Buch gehört nicht in den Arbeitsordner, sondern zu seinesgleichen.
+    # Ein Rebuild nach einer buch.json-Korrektur ersetzt die dortige Fassung.
+    RETYPESET_DIR.mkdir(parents=True, exist_ok=True)
+    final_pdf = RETYPESET_DIR / pdf_path.name
+    shutil.move(str(pdf_path), str(final_pdf))
+
     print(f"„{recipe['meta']['title']}“ — {page_count} Seiten")
-    print(f"  -> {pdf_path}")
-    print("\nIn die Bibliothek übernehmen:")
-    print(f'  mv "{pdf_path}" "{LIBRARY}/retypeset/"')
+    print(f"  -> {final_pdf.relative_to(REPO)}")
 
 
 def sort_parts(paths):
@@ -803,49 +816,69 @@ def sort_parts(paths):
 
 
 def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    sub = parser.add_subparsers(dest="command", required=True)
-
-    p_extract = sub.add_parser("extract", help="Struktur aus den Quell-PDFs lesen")
-    p_extract.add_argument("pdfs", nargs="+", type=Path)
-    p_extract.add_argument(
-        "-o", "--out", type=Path, help="Arbeitsordner (Vorgabe: doc/books/work/<titel>)"
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-
-    p_build = sub.add_parser("build", help="Buch aus buch.json neu setzen")
-    p_build.add_argument("work_dir", type=Path)
-    p_build.add_argument(
+    parser.add_argument(
+        "quellen",
+        nargs="+",
+        type=Path,
+        metavar="PFAD",
+        help="Quell-PDFs (auslesen und setzen) oder ein Arbeitsordner (nur setzen)",
+    )
+    parser.add_argument(
+        "-o",
+        "--out",
+        type=Path,
+        help="Arbeitsordner für die Quell-PDFs (Vorgabe: doc/books/work/<titel>)",
+    )
+    parser.add_argument(
         "--preview", action="store_true", help="Stichprobenseiten als PNG rendern"
     )
-
     args = parser.parse_args()
 
-    if args.command == "extract":
-        missing = [p for p in args.pdfs if not p.exists()]
-        if missing:
-            raise SystemExit("Nicht gefunden: " + ", ".join(str(p) for p in missing))
-        pdfs = sort_parts(args.pdfs)
-        if len(pdfs) > 1:
-            print("Teile in dieser Reihenfolge:")
-            for pdf in pdfs:
-                print(f"  {pdf.name}")
+    # Ein Ordner ist ein bereits ausgelesenes Buch und will nur neu gesetzt werden.
+    if len(args.quellen) == 1 and args.quellen[0].is_dir():
+        build(args.quellen[0], preview=args.preview)
+        return
 
-        # Der Titel steht erst nach dem Lesen fest, deshalb erst in einen
-        # vorläufigen Ordner schreiben und danach umbenennen.
-        out_dir = args.out or (WORK_ROOT / ("." + slugify(pdfs[0].stem)))
-        out_dir.mkdir(parents=True, exist_ok=True)
-        recipe = extract(pdfs, out_dir)
-        if not args.out:
-            final = WORK_ROOT / slugify(recipe["meta"]["title"])
-            if final.exists():
-                shutil.rmtree(final)
-            out_dir.rename(final)
-            print(f"  Arbeitsordner: {final}")
-            out_dir = final
-        print(f"\nNeu setzen:\n  python3 {Path(__file__).relative_to(REPO)} "
-              f'build "{out_dir.relative_to(REPO)}" --preview')
-    else:
-        build(args.work_dir, preview=args.preview)
+    missing = [p for p in args.quellen if not p.exists()]
+    if missing:
+        raise SystemExit("Nicht gefunden: " + ", ".join(str(p) for p in missing))
+    folders = [p for p in args.quellen if p.is_dir()]
+    if folders:
+        raise SystemExit(
+            "Ein Arbeitsordner lässt sich nur allein und ohne weitere Pfade neu "
+            "setzen: " + ", ".join(str(p) for p in folders)
+        )
+
+    pdfs = sort_parts(args.quellen)
+    if len(pdfs) > 1:
+        print("Teile in dieser Reihenfolge:")
+        for pdf in pdfs:
+            print(f"  {pdf.name}")
+
+    # Der Titel steht erst nach dem Lesen fest, deshalb erst in einen
+    # vorläufigen Ordner schreiben und danach umbenennen.
+    out_dir = args.out or (WORK_ROOT / ("." + slugify(pdfs[0].stem)))
+    out_dir.mkdir(parents=True, exist_ok=True)
+    recipe = extract(pdfs, out_dir)
+    if not args.out:
+        final = WORK_ROOT / slugify(recipe["meta"]["title"])
+        if final.exists():
+            shutil.rmtree(final)
+        out_dir.rename(final)
+        print(f"  Arbeitsordner: {final}")
+        out_dir = final
+
+    # Ausgelesen ist ausgelesen: die Quellen aus dem Download-Ordner nehmen,
+    # damit dort nur liegt, was noch ansteht.
+    PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+    for pdf in pdfs:
+        shutil.move(str(pdf), str(PROCESSED_DIR / pdf.name))
+    print(f"  Quellen: {PROCESSED_DIR.relative_to(REPO)}")
+
+    build(out_dir, preview=args.preview)
 
 
 if __name__ == "__main__":

@@ -48,8 +48,11 @@ the script was lost with the directory it lived in.
 **Books are re-typeset by `scripts/retypeset-book.py` before being added to the
 shelf, in two steps with an editable recipe between them.**
 
-    extract   PDF(s) -> buch.json + bilder/
-    build     buch.json -> buch.typ -> PDF
+    PDF(s) -> buch.json + bilder/
+    buch.json -> buch.typ -> PDF
+
+*The 2026-08-28 amendment below merged the two invocations into one command
+that dispatches on the path; the two steps and the recipe between them stand.*
 
 - **The intermediate file is the point.** `extract` writes `buch.json`, a plain
   list of paragraphs, headings and images. A wrong chapter split or an
@@ -133,11 +136,13 @@ shelf, in two steps with an editable recipe between them.**
 - **The finished PDF stays in the working directory.** The script prints the
   `cp` command; what enters the library is the maintainer's decision, and the
   original download is never overwritten.
+  *Reversed by the 2026-08-28 amendment below: the script files the PDF under
+  `doc/books/retypeset/` and the read sources under `doc/books/processed/`.*
 
 Sources, recipes and output all live under `doc/books/`, which is not tracked —
 there is no licence to republish these books, and the repository holds only the
 tool ([ADR 8](0008-no-tests-or-linter.md) applies: the check is a rendered page
-looked at, not a test suite). `build --preview` renders sample pages as PNG for
+looked at, not a test suite). `--preview` renders sample pages as PNG for
 exactly that.
 
 ### Alternatives considered
@@ -175,3 +180,55 @@ glyphs that book happened to use.
   survives, but it is not carried back into the source PDF.
 - Typst and PyMuPDF become development-time dependencies. Neither is shipped to
   the browser; the app only ever sees the finished PDF.
+
+## Amendment (2026-08-28): one command, and the files put themselves away
+
+The two-step CLI made the maintainer say out loud what the paths already
+said. `extract` was followed by a printed `build` line to copy back, `build`
+by a printed `mv` line to copy back, and in between the source PDFs stayed in
+`downloads/` long after they had been read. Three transcriptions of something
+the script knew.
+
+- **The invocation is one command that dispatches on the path.** PDFs mean
+  read-and-set, a directory means set-again:
+
+      python3 scripts/retypeset-book.py doc/books/downloads/moppi-*-teil-*.pdf
+      python3 scripts/retypeset-book.py doc/books/work/moppi-und-moehre
+
+  The subcommand words carried no information the argument did not already
+  carry, and one rule — *give it what you have* — replaces two names to
+  remember (rule 8). The two halves and the recipe between them are unchanged;
+  only the way in is.
+
+- **Reading the sources runs the setting.** A recipe is never wanted for its
+  own sake; the reason to look at `buch.json` is something wrong in the
+  finished PDF, and that cannot be seen before it exists. So the second half
+  runs straight after the first, and the correction loop starts where it
+  actually starts — at the output (rule 4).
+
+- **`--preview` is off by default** and now applies to both ways in. The
+  finished PDF is the thing to look at; the PNGs are for a quick glance
+  without opening it.
+
+- **The files move themselves.** Read sources go to `doc/books/processed/`,
+  so `downloads/` holds exactly what is still owed. The finished book goes to
+  `doc/books/retypeset/`, next to its kind; a rebuild replaces the copy there,
+  which is what correcting a book means. This reverses „the finished PDF stays
+  in the working directory" above: the printed `cp` line was framed as leaving
+  the maintainer the decision, but the decision it left was a transcription,
+  and the real one — which books reach the shelf — is made in the app's own
+  import, not in this folder. The working directory keeps `buch.json`,
+  `buch.typ` and `bilder/`, so nothing needed for a rebuild moves.
+
+## Amendment consequences
+
+- A new book is one command and ends with a PDF in `retypeset/`; nothing is
+  copied by hand, and no output line has to be read to know the next step.
+- The source PDFs leave `downloads/` on the way. They are not deleted — a
+  re-extraction points at `processed/` instead — but the folder no longer
+  doubles as an archive.
+- Old habits break: `retypeset-book.py build <ordner>` now fails with
+  „Nicht gefunden: build". Accepted under the personal-app rule; the failure
+  is immediate and names the offending word.
+- `--out` only makes sense on the PDF way in and is ignored on the other. Both
+  flags being global is the price of dropping the subcommands.
