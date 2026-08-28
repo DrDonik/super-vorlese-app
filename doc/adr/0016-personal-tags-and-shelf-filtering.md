@@ -85,6 +85,10 @@ shelf that is silently half empty. It survives the library view being remounted
   from each book and adding the new one achieves the same result.
 - A book exported and re-imported — on a second device of one's own, say —
   arrives without tags. Accepted as the price of keeping them personal.
+- *[ADR 36](0036-books-are-for-tonight-and-the-shelf-is-not-an-archive.md)
+  fixes the ceiling this feature grows to: sorting and tags are a way to find
+  tonight's book, not a system to keep. No folders, no collections, no metadata
+  beyond title and tags.*
 - On iOS an installed PWA is frozen rather than reloaded (ADR 11), so there the
   filter also survives what a user would call closing the app. The selected chip
   stays visible above the grid throughout, so a short shelf always carries its
