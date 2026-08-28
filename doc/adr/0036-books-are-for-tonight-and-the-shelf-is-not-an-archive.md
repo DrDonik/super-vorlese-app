@@ -111,7 +111,10 @@ the response is proportional to the significance of the action).
   taken from the shelf's render snapshot, because the number is the argument. A
   failed read falls back to the plain question: the sentence is the reason to
   think again, not a precondition of asking, and a store that cannot be read
-  must not turn the tap into nothing happening.
+  must not turn the tap into nothing happening. Where the same store breaks the
+  deletion itself the answer is the opposite one — an alert — because there the
+  silence would be a lie: the book stays on the shelf while the user has every
+  reason to believe it is gone.
 - The wording borrows the camera's („Die Fotos gehen verloren.") rather than
   inventing a second phrase for the same kind of loss in the same kind of
   dialog (rule 1). „Gemeinsame Abende" is a new term, and it names what

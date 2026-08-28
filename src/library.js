@@ -1032,7 +1032,17 @@ export class LibraryView {
     });
     if (!confirmed) return;
     closeSyncForBook(book.id);
-    await deleteBook(book.id);
+    try {
+      await deleteBook(book.id);
+    } catch (err) {
+      // The same principle one step further on: a delete that quietly does not
+      // happen leaves the book on the shelf with nothing said, and the user has
+      // every reason to believe it is gone. Saying so is the only honest
+      // outcome — there is nothing here to retry on their behalf.
+      console.error('Löschen fehlgeschlagen', err);
+      await showAlert({ message: 'Das Buch konnte nicht gelöscht werden.' });
+      return;
+    }
     await this.renderGrid();
   }
 
