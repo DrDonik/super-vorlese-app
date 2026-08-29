@@ -26,13 +26,11 @@
 // that needs no plural for a given phrase may use a plain string where German
 // uses forms (see `pdf.ageTag`).
 //
-// English quotes here are “…” and the apostrophe is ’, both typographic — so
-// unlike the German „…" (whose upper half is a straight quote, project-wide
-// convention) no value in this file carries a straight quote at all.
-//
-// The rule that matters either way: never < or > in a value. Some of these are
-// interpolated into markup, and a value with quotes belongs only where it
-// reaches textContent or setAttribute — check the call site before adding one.
+// English quotes are “…” and the apostrophe is ’, both typographic — as are the
+// German „…" next door since the same day. So the one rule this file needs is
+// absolute and needs no exceptions: never " < > in a value. Part of these texts
+// is interpolated into markup (button names, aria-labels), and with no straight
+// quote anywhere the question of which ones never comes up.
 
 export const en = {
   // ── Words that recur ─────────────────────────────────────────────────
