@@ -79,8 +79,13 @@ function sortBooks(books, mode) {
 //
 // Filtering, not grouping by tag: a book can carry several tags, so tag
 // headings would either repeat a book on the shelf or need an arbitrary
-// "primary tag" rule. One filter at a time also spares everyone boolean logic
-// (rule 8) and can never produce a combination that matches nothing.
+// "primary tag" rule.
+//
+// Chips combine with AND: "Noch nicht gelesen" plus "Ab 7 Jahren" is the shelf
+// a household actually asks for, and neither chip alone answers it. The boolean
+// logic single select was meant to spare everyone stays out of sight — there is
+// no operator to choose, and a chip that would leave the shelf empty is greyed
+// out rather than tappable (rule 5), so no combination can match nothing.
 
 const FILTER_DONE = 'done';
 const FILTER_OPEN = 'open';
@@ -92,12 +97,12 @@ const MAX_TAG_LENGTH = 20;
 // is: a filter *hides* books, and nobody should open the app to a shelf that is
 // silently half empty. A module-level value outlives the view being remounted
 // (open a book, come back) and dies with the page — exactly the lifetime we
-// want. Within a session the selected chip stays visible right above the grid,
-// so the missing books are always explained and one tap from coming back.
-let activeFilter = null;
+// want. Within a session the selected chips stay visible right above the grid,
+// so the missing books are always explained and one tap each from coming back.
+const activeFilters = new Set();
 
 // Where the shelf stood when it was last left, in pixels. Same lifetime and the
-// same reasoning as activeFilter above: the view is thrown away and rebuilt
+// same reasoning as activeFilters above: the view is thrown away and rebuilt
 // whenever a book, the camera or a shared session takes over the screen, so the
 // position has to outlive the instance — but it must not outlive the session,
 // where a remembered offset would explain nothing.
@@ -149,8 +154,7 @@ function collectTags(books) {
 // The chips on offer for the shelf in front of us. „Schon gelesen" / „Noch
 // nicht gelesen" appear only as a pair and only while they actually divide the
 // shelf: with every book finished — or none — one chip would show everything
-// and the other nothing. Because every chip is derived from these very books,
-// no chip can filter the shelf down to an empty grid.
+// and the other nothing.
 //
 // Finished means the book has a shared-reading completion (ADR 11/12), the fact
 // the app already records when two readers end a book together. No tag is ever
@@ -158,6 +162,14 @@ function collectTags(books) {
 // tonight", so a tag put on that event would be wrong more often than right.
 // The age recommendation an import sets (ADR 29) is the other kind of thing —
 // it is printed on the title page, read off it, and never inferred.
+//
+// Which chips *exist* is derived from the whole shelf, never from what the
+// active filters leave of it: a chip that vanished the moment it stopped
+// matching would move the rest of the row out from under the finger, and would
+// hide the very fact that there is no unread book about dragons. Which of them
+// are usable right now is isChipDead() below instead — same chips, same places.
+// Between the two, no filter and no combination of filters can produce an empty
+// grid, which is the guarantee single select used to give.
 function buildFilterChips(books, doneFlags) {
   const chips = [];
   const doneCount = doneFlags.filter(Boolean).length;
@@ -172,11 +184,40 @@ function buildFilterChips(books, doneFlags) {
 }
 
 function matchesFilter(book, isDone, filter) {
-  if (!filter) return true;
   if (filter === FILTER_DONE) return isDone;
   if (filter === FILTER_OPEN) return !isDone;
   const tag = filter.slice(TAG_FILTER_PREFIX.length);
   return bookTags(book).some((t) => sameTag(t, tag));
+}
+
+// AND across every selected chip. An empty selection is the whole shelf, which
+// falls out of `every` on its own.
+function matchesFilters(book, isDone, filters) {
+  return [...filters].every((filter) => matchesFilter(book, isDone, filter));
+}
+
+// What the current selection leaves of a shelf, as indices into it, so a caller
+// can carry its parallel arrays — thumbnails, completions — along without
+// running the same comparison a second time.
+function filteredIndices(books, doneFlags) {
+  const kept = [];
+  for (let i = 0; i < books.length; i++) {
+    if (matchesFilters(books[i], doneFlags[i], activeFilters)) kept.push(i);
+  }
+  return kept;
+}
+
+// A chip is dead when adding it to the selection would leave the grid empty, so
+// the row can only ever be walked into a shelf that still holds something
+// (rule 5). Selected chips are never dead: removing a filter only ever widens
+// the result, so the tap that undoes a choice is always available (rule 6).
+//
+// This is also what keeps „Schon gelesen" and „Noch nicht gelesen" apart
+// without a rule of their own — no book is both, so pressing one empties the
+// other by the same arithmetic that empties an unread-dragons chip.
+function isChipDead(id, shownBooks, shownDoneFlags) {
+  if (activeFilters.has(id)) return false;
+  return !shownBooks.some((book, i) => matchesFilter(book, shownDoneFlags[i], id));
 }
 
 // Collapses whitespace and caps the length, so no chip can stretch the filter
@@ -465,6 +506,10 @@ export class LibraryView {
     // Am window statt am Regal, deshalb aufzuräumen; siehe attachDropTarget().
     this.dropHandlers = null;
     this.dragDepth = 0;
+    // The books, completions and chips the last render measured; see
+    // refreshFilterBar(). Null until the first render, and again whenever the
+    // shelf is empty.
+    this.shelf = null;
   }
 
   async render() {
@@ -548,8 +593,8 @@ export class LibraryView {
   // exactly where it is — the shelf must not shift for a book that never moved.
   //
   // Returns the card, so callers can put the focus back on the control they
-  // destroyed by rebuilding. No card means the book is gone or the active filter
-  // no longer holds it, and then nothing scrolls at all: there is nothing to
+  // destroyed by rebuilding. No card means the book is gone or the active filters
+  // no longer hold it, and then nothing scrolls at all: there is nothing to
   // show, and hunting for it would only lose the place the shelf still has.
   revealBook(bookId) {
     const grid = this.root.querySelector('.library-grid');
@@ -635,8 +680,12 @@ export class LibraryView {
   }
 
   // Rebuilt on every render rather than once like the sort pills, because the
-  // chips themselves come and go as books are tagged, finished or deleted.
-  renderFilterBar(chips) {
+  // chips themselves come and go as books are tagged, finished or deleted —
+  // and because which of them are dead changes with every tap on a neighbour.
+  //
+  // Takes the books the grid is about to show so it can answer "would this chip
+  // leave anything?" against exactly that shelf; see isChipDead().
+  renderFilterBar(chips, shownBooks, shownDoneFlags) {
     const bar = this.root.querySelector('.library-filter');
     if (!bar) return;
     bar.hidden = chips.length === 0;
@@ -647,26 +696,56 @@ export class LibraryView {
       el.className = 'filter-chip';
       el.dataset.filter = chip.id;
       el.textContent = chip.label;
-      el.setAttribute('aria-pressed', String(chip.id === activeFilter));
+      el.setAttribute('aria-pressed', String(activeFilters.has(chip.id)));
+      // disabled rather than aria-disabled: a chip that cannot narrow anything
+      // has nothing to say when tapped, and a real disabled button also drops
+      // out of the tab order instead of costing a keyboard user a stop.
+      el.disabled = isChipDead(chip.id, shownBooks, shownDoneFlags);
       el.addEventListener('click', () => this.setFilter(chip.id));
       bar.appendChild(el);
     }
   }
 
-  // Tapping the active chip clears the filter: the control that hid the books
-  // brings them back, so there is no separate „Alle" chip to look for (rule 6).
+  // Redraws the chip row from the shelf the last render measured, without going
+  // back to storage. Everything the greying needs — the books, their tags, their
+  // completions — was already in hand a moment ago, so which chips this tap just
+  // killed can be shown at once instead of after a read.
+  refreshFilterBar() {
+    if (!this.shelf) return;
+    const { books, doneFlags, chips } = this.shelf;
+    const kept = filteredIndices(books, doneFlags);
+    this.renderFilterBar(chips, kept.map((i) => books[i]), kept.map((i) => doneFlags[i]));
+  }
+
+  // Chips toggle one by one and combine with AND. Tapping a pressed chip drops
+  // that one filter: the control that hid the books brings them back, so there
+  // is no separate „Alle" chip to look for (rule 6). Nothing here has to guard
+  // against an empty shelf — a chip that would produce one is already dead.
   async setFilter(id) {
-    activeFilter = activeFilter === id ? null : id;
+    if (!activeFilters.delete(id)) activeFilters.add(id);
     // renderFilterBar rebuilds the row, so the chip that was just activated is
     // destroyed and focus would fall back to <body> — leaving a keyboard user
     // to tab in from the top of the page again. Put focus back on the chip's
     // replacement, but only if it had focus: on a tap it does not, and forcing
-    // it there would raise a focus ring nobody asked for.
+    // it there would raise a focus ring nobody asked for. The tapped chip is
+    // always there to receive it: pressed chips are never dead, and a chip that
+    // was just unpressed only widened the shelf.
     const hadFocus = this.root.querySelector('.library-filter .filter-chip:focus') !== null;
-    await this.renderGrid();
-    if (hadFocus) {
+    const keepFocus = () => {
+      if (!hadFocus) return;
       this.root.querySelector(`.library-filter [data-filter="${CSS.escape(id)}"]`)?.focus();
-    }
+    };
+
+    // Before the await, not only after it. renderGrid() goes to storage first,
+    // and until it comes back the row on screen still offers the neighbours this
+    // tap has just killed — two quick taps walked straight past the greying into
+    // the empty shelf it exists to prevent. The row now answers the first tap on
+    // the spot, so the second one lands on a chip that is already dead.
+    this.refreshFilterBar();
+    keepFocus();
+
+    await this.renderGrid();
+    keepFocus();
     this.scrollToTop();
   }
 
@@ -691,8 +770,9 @@ export class LibraryView {
     if (sortBar) sortBar.hidden = allBooks.length === 0;
 
     if (allBooks.length === 0) {
-      activeFilter = null;
-      this.renderFilterBar([]);
+      activeFilters.clear();
+      this.shelf = null;
+      this.renderFilterBar([], [], []);
       grid.innerHTML = '';
       grid.appendChild(this.buildConnectTile());
       const empty = document.createElement('div');
@@ -728,27 +808,52 @@ export class LibraryView {
 
     const doneFlags = allCompletions.map((list) => list.length > 0);
     const chips = buildFilterChips(allBooks, doneFlags);
-    // The chip we were filtering by can disappear under us — the last book
+    // A chip we were filtering by can disappear under us — the last book
     // carrying that tag gets deleted or retagged, or finishing the final open
-    // book collapses the „gelesen" pair. Fall back to the whole shelf rather
-    // than leaving a filter active that nothing on screen explains.
-    if (activeFilter && !chips.some((c) => c.id === activeFilter)) activeFilter = null;
-    this.renderFilterBar(chips);
-    const allTags = collectTags(allBooks);
-
-    const books = [];
-    const thumbs = [];
-    const completionsLists = [];
-    for (let i = 0; i < allBooks.length; i++) {
-      if (!matchesFilter(allBooks[i], doneFlags[i], activeFilter)) continue;
-      books.push(allBooks[i]);
-      thumbs.push(allThumbs[i]);
-      completionsLists.push(allCompletions[i]);
+    // book collapses the „gelesen" pair. Drop just that one filter rather than
+    // leaving a filter active that nothing on screen explains; the rest of the
+    // selection is still on the row, still explaining the shelf it produced.
+    for (const filter of activeFilters) {
+      if (!chips.some((c) => c.id === filter)) activeFilters.delete(filter);
     }
+    const allTags = collectTags(allBooks);
+    // What refreshFilterBar() answers the next tap from, so the greying does not
+    // have to wait for a second trip to storage. Everything it holds is measured
+    // right here, and every render replaces it.
+    this.shelf = { books: allBooks, doneFlags, chips };
+
+    const kept = filteredIndices(allBooks, doneFlags);
+    const books = kept.map((i) => allBooks[i]);
+    const thumbs = kept.map((i) => allThumbs[i]);
+    const completionsLists = kept.map((i) => allCompletions[i]);
+
+    // After the filtering, because a chip is dead or alive relative to the
+    // shelf that is about to be drawn.
+    this.renderFilterBar(chips, books, kept.map((i) => doneFlags[i]));
 
     const newUrls = [];
     const fragment = document.createDocumentFragment();
     fragment.appendChild(this.buildConnectTile());
+    // The one way to an empty shelf that greying out cannot close: not a tap —
+    // no live chip can produce this and no pressed chip is ever unpressable —
+    // but the shelf changing under a selection that is already made. Take the
+    // last 7+ book the two of them had finished off „Ab 7 Jahren", and „Schon
+    // gelesen" plus „Ab 7 Jahren" is suddenly nobody.
+    //
+    // Dropping a filter to repair it was rejected: the shelf would answer an
+    // edit to one book by showing a dozen others, which is a bigger surprise
+    // than the empty shelf and a worse lie about what was asked for (rule 7).
+    // The chips above are lit, they are the explanation, and either of them
+    // takes one tap to undo — so the way out is the same one that got here.
+    if (books.length === 0) {
+      const empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.innerHTML = `
+        <p>Kein Buch passt zu allen Filtern.</p>
+        <p>Tippe oben auf einen der eingeschalteten Filter, um ihn wieder auszuschalten.</p>
+      `;
+      fragment.appendChild(empty);
+    }
     for (let i = 0; i < books.length; i++) {
       const book = books[i];
       // „Buch öffnen" is a real button covering the whole card, with cover,
@@ -949,7 +1054,7 @@ export class LibraryView {
         }
 
         // Changed tags can add or drop a filter chip, and can push this very
-        // book out of the active filter, so the shelf has to be rebuilt. A new
+        // book out of the active filters, so the shelf has to be rebuilt. A new
         // title only moves the card under A–Z; the other orders keep it where
         // it is, and then there is nothing to rebuild at all.
         if (tagsChanged || (titleChanged && !titleFailed && this.sortMode === 'title')) {
@@ -959,7 +1064,7 @@ export class LibraryView {
           // The rebuild also destroyed the pencil this focus came from, so it
           // goes back on the new card's — the same book, the same control.
           // Nothing moves when a removed tag took the book out of the active
-          // filter: revealBook() finds no card, and the shelf stays put.
+          // filters: revealBook() finds no card, and the shelf stays put.
           this.revealBook(book.id)?.querySelector('.book-edit')?.focus({ preventScroll: true });
         }
 
@@ -983,7 +1088,7 @@ export class LibraryView {
     // to keep scrolling. Where a rebuild *is* a move — sorting, filtering, an
     // import that puts new books at the front — the caller asks for the top
     // itself. A shelf that got shorter simply clamps, so a book that leaves the
-    // active filter takes nothing with it.
+    // active filters takes nothing with it.
     const scrollTop = grid.scrollTop;
     grid.innerHTML = '';
     grid.appendChild(fragment);
