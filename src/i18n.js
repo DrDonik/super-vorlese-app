@@ -16,13 +16,24 @@
 // else — plural forms, sorting, dates — follows from the resolved locale.
 
 import { de } from './i18n/de.js';
+import { deDE } from './i18n/de-DE.js';
 import { en } from './i18n/en.js';
 
-// Every language the app actually ships. Deliberately derived from what is here
-// rather than from a wish list: a language listed without a dictionary would
-// resolve, then fall through key by key, and the app would claim to speak
-// something it does not.
-const DICTIONARIES = { de, en };
+// Every language the app actually ships, keyed by the tag it answers to.
+// Deliberately derived from what is here rather than from a wish list: a
+// language listed without a dictionary would resolve, then fall through key by
+// key, and the app would claim to speak something it does not.
+//
+// A key with a region is a *variant*: it carries only what differs from its base
+// language and leans on it for the rest (see `chain` below). `de-DE.js` is one
+// file under two tags because Austria spells like Germany, and a second file
+// holding the same fourteen lines would only be a second file to forget.
+const DICTIONARIES = {
+  de,
+  'de-de': deDE,
+  'de-at': deDE,
+  en,
+};
 
 // The language the strings are written in. Every key exists here, so it is the
 // last stop for anything a translation has not caught up with yet — a partly
@@ -34,17 +45,23 @@ const SOURCE_LANG = 'de';
 // but anyone else who opens it is far more likely to get somewhere in English.
 const FALLBACK_LANG = 'en';
 
-// The first of the browser's preferences the app can actually speak. Matched on
-// the primary subtag only — `de-CH`, `de-DE` and `de-AT` all get the German
-// dictionary — while the full tag is kept for Intl, so a German browser in
-// Germany still gets German date formats.
+// The first of the browser's preferences the app can actually speak. Each
+// preference is tried from its longest form down to its bare language before
+// the next one is looked at — the ordinary BCP-47 lookup — so `de-DE` finds the
+// German variant, `de-CH` falls past it to plain German, and `de-DE-1901` finds
+// the variant too. The full tag is kept for Intl either way, so a German
+// browser in Germany gets German date formats whichever dictionary it landed on.
 function resolveLanguage() {
   const wanted = navigator.languages?.length
     ? navigator.languages
     : [navigator.language].filter(Boolean);
   for (const tag of wanted) {
-    const primary = String(tag).toLowerCase().split('-')[0];
-    if (DICTIONARIES[primary]) return { lang: primary, tag: String(tag) };
+    const parts = String(tag).toLowerCase().split('-');
+    while (parts.length) {
+      const candidate = parts.join('-');
+      if (DICTIONARIES[candidate]) return { lang: candidate, tag: String(tag) };
+      parts.pop();
+    }
   }
   const lang = DICTIONARIES[FALLBACK_LANG] ? FALLBACK_LANG : SOURCE_LANG;
   // No regional tag to keep: the browser's own is for a language that is not on
@@ -55,7 +72,8 @@ function resolveLanguage() {
 
 const resolved = resolveLanguage();
 
-// Which dictionary is on. Also what `<html lang>` is set to below.
+// Which dictionary is on — a bare language, or a language with a region when a
+// variant answered. Also what `<html lang>` is set to below.
 export const lang = resolved.lang;
 
 // What every Intl object and every toLocale* call in the app is built from.
@@ -78,7 +96,11 @@ export const locale = (() => {
 // Silbentrennung, Anführungszeichen und die Aussprache durch VoiceOver hängen
 // daran, und index.html kann es nicht wissen — dort steht die Sprache, in der
 // die Datei geschrieben ist, nicht die, in der die App gerade läuft.
-document.documentElement.lang = lang;
+//
+// Der volle Tag und nicht der Name des Wörterbuchs: Ein Schweizer Browser liest
+// Schweizer Deutsch, also ist `de-CH` die genauere Auskunft als das `de`, unter
+// dem dieses Wörterbuch geführt wird — und die Silbentrennung darf sie haben.
+document.documentElement.lang = locale ?? lang;
 
 const pluralRules = new Intl.PluralRules(locale);
 
@@ -103,26 +125,38 @@ function selectForm(value, vars) {
   return value[pluralRules.select(n)] ?? value.other;
 }
 
-// Falls through the active dictionary, then English, then German.
+// Where a key is looked for, in order. Computed once, because it only depends
+// on the language, and read on every single t() call.
 //
-// English sits in the middle on purpose, and it is the whole reason the chain
-// has three links rather than two. A half-finished French dictionary should
-// show its gaps in English, not in German: the same reasoning that makes
-// English the fallback for a language the app does not speak at all applies key
-// by key inside a language it speaks badly. German is last because it is the
-// source and therefore the only dictionary guaranteed complete — so the chain
-// always ends in a real sentence rather than a blank.
+// The base language comes first after a regional variant, and that is what lets
+// `de-DE.js` be fourteen lines instead of two hundred: everything it does not
+// say, plain German answers.
 //
-// For a German reader the middle link is unreachable in practice: it can only
-// be taken if de.js is missing a key, which is a defect in de.js, and English
-// is then still a better thing to show than the bare key.
+// English sits next, and it is the reason the chain is longer than two. A
+// half-finished French dictionary should show its gaps in English, not in
+// German: the same reasoning that makes English the fallback for a language the
+// app does not speak at all applies key by key inside one it speaks badly.
 //
+// German is last because it is the source and therefore the only dictionary
+// guaranteed complete — so the chain always ends in a real sentence rather than
+// a blank. For a German reader the English link is unreachable in practice: it
+// can only be taken if de.js is missing a key, which is a defect in de.js, and
+// English is then still better than the bare key.
+const chain = [...new Set([
+  lang,
+  lang.includes('-') ? lang.split('-')[0] : null,
+  FALLBACK_LANG,
+  SOURCE_LANG,
+].filter(Boolean))];
+
 // A bare key on screen means the key itself is wrong — which is exactly when it
 // should show.
 function lookup(key) {
-  return DICTIONARIES[lang]?.[key]
-    ?? DICTIONARIES[FALLBACK_LANG]?.[key]
-    ?? DICTIONARIES[SOURCE_LANG]?.[key];
+  for (const dict of chain) {
+    const value = DICTIONARIES[dict]?.[key];
+    if (value != null) return value;
+  }
+  return undefined;
 }
 
 export function t(key, vars) {

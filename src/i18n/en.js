@@ -27,10 +27,12 @@
 // uses forms (see `pdf.ageTag`).
 //
 // English quotes are “…” and the apostrophe is ’, both typographic — as are the
-// German „…" next door since the same day. So the one rule this file needs is
-// absolute and needs no exceptions: never " < > in a value. Part of these texts
-// is interpolated into markup (button names, aria-labels), and with no straight
-// quote anywhere the question of which ones never comes up.
+// German ones next door, which come in two sets since German split by region:
+// «…» in de.js for Switzerland, „…" in de-DE.js for Germany and Austria. So the
+// one rule this file needs is absolute and needs no exceptions: never " < > in
+// a value. Part of these texts is interpolated into markup (button names,
+// aria-labels), and with no straight quote anywhere in any dictionary the
+// question of which ones never comes up.
 
 export const en = {
   // ── Words that recur ─────────────────────────────────────────────────

@@ -2,9 +2,15 @@
 // vollständig: Übersetzungen dürfen Lücken haben, diese Datei nicht (siehe
 // i18n.js). Wer einen neuen Text in die App schreibt, schreibt ihn zuerst hier.
 //
-// Rechtschreibung ist schweizerisch: „ss" statt „ß", also „schliessen",
-// „vergrössern", „heisst". Das gilt für alle `de-*`-Browser, auch für Berlin —
-// die App ist für einen Haushalt gebaut, und der ist in der Schweiz.
+// Rechtschreibung und Typografie sind schweizerisch: «…» statt „…", und „ss"
+// statt „ß" — also «Der Grüffelo», „schliessen", „vergrössern", „heisst". Diese
+// Datei ist die Quelle, in die der Betreiber schreibt, und der schreibt so.
+//
+// Wer die App aus Deutschland oder Österreich öffnet, bekommt die vierzehn
+// Werte, die sich unterscheiden, aus src/i18n/de-DE.js überschrieben: dort
+// stehen „…" und ß. Alles andere fällt eine Stufe tiefer und kommt von hier
+// (siehe die Kette in i18n.js). Wer hier einen neuen Text mit Anführungszeichen
+// oder einem „ss" anlegt, prüft, ob er in de-DE.js eine Zeile braucht.
 //
 // Ein Wert ist entweder ein String oder ein Objekt mit Pluralformen nach den
 // CLDR-Kategorien. Die zählende Variable heisst immer `n`; andere Platzhalter
@@ -12,17 +18,18 @@
 // vorkommen, dürfen wegfallen — ein Platzhalter ohne Wert bleibt dagegen sichtbar
 // stehen, damit ein vergessenes Argument auffällt statt den Satz zu zerstören.
 //
-// Anführungszeichen sind „…" — U+201E unten, U+201C oben, beide typografisch.
-// Nicht das gerade " (U+0022), das hier lange als obere Hälfte stand: In einer
-// App über Bücher ist ein Schreibmaschinen-Zeichen zwischen gesetzten Zeichen
-// ein sichtbarer Fehler. Der Quelltext drumherum (Kommentare, ADRs) schreibt es
-// weiter wie gewachsen; angezeigt wird davon nichts.
+// Anführungszeichen sind «…» (U+00AB/U+00BB), ohne Leerzeichen innen — die
+// Schweizer Setzung. Das gerade " (U+0022) stand hier lange als obere Hälfte
+// eines „…"; in einer App über Bücher ist ein Schreibmaschinen-Zeichen zwischen
+// gesetzten Zeichen ein sichtbarer Fehler. Der Quelltext drumherum (Kommentare,
+// ADRs) schreibt weiter wie gewachsen; angezeigt wird davon nichts.
 //
 // Daraus folgt die einzige Regel, die dieses Wörterbuch braucht — und sie gilt
 // für jede Sprache, weil ein Teil dieser Texte in Vorlagen-Literale eingesetzt
 // wird (Knopfnamen, aria-labels) und ein anderer über textContent geht:
 //
-//   Nie " < > in einem Wert. Die typografischen „…" “…” ’ sind gemeint.
+//   Nie " < > in einem Wert. Gemeint sind «…» hier, „…" in de-DE.js, “…” ’ im
+//   Englischen — alles typografisch, keines davon ein gerades Zeichen.
 //
 // Zur Wortwahl beim gemeinsamen Lesen gilt ADR 15 in seiner Ergänzung vom
 // 2026-08-29: die Tätigkeit heisst „Gemeinsam lesen", der Code „Lese-Code (des
@@ -76,16 +83,16 @@ export const de = {
   // Ankündigung, dass das Regal gerade ein Buch aussucht.
   'library.book.open': '{title} öffnen',
   'library.book.readTogether': '{title} gemeinsam lesen',
-  'library.book.moods': 'Gefühle zu „{title}“ ansehen',
+  'library.book.moods': 'Gefühle zu «{title}» ansehen',
   'library.book.edit': 'Buch bearbeiten',
 
-  'library.disconnected': 'Ihr lest „{title}“ nicht mehr gemeinsam.',
+  'library.disconnected': 'Ihr lest «{title}» nicht mehr gemeinsam.',
   'library.titleSaveFailed': 'Der neue Titel konnte nicht gespeichert werden.',
   'library.deleteFailed': 'Das Buch konnte nicht gelöscht werden.',
 
   'library.delete.title': 'Buch löschen',
   'library.delete.confirm': 'Löschen',
-  'library.delete.question': '„{title}“ wirklich löschen?',
+  'library.delete.question': '«{title}» wirklich löschen?',
   // „gehen verloren" ist dasselbe Wort wie in der Kamera („Die Fotos gehen
   // verloren."), damit die App denselben Verlust einmal benennt (Regel 1).
   'library.delete.evenings': {
@@ -93,12 +100,12 @@ export const de = {
     other: '{n} gemeinsame Abende gehen damit verloren.',
   },
 
-  'library.import.unsupported': '„{name}“ ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.',
+  'library.import.unsupported': '«{name}» ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.',
   'library.import.reading': 'Importiere {name}…',
-  'library.import.imported': '„{title}“ importiert.',
+  'library.import.imported': '«{title}» importiert.',
   'library.import.failed': 'Import fehlgeschlagen: {error}',
   'library.import.processing': 'Verarbeite {index}/{total}: {name}…',
-  'library.import.unreadable': '„{name}“ konnte nicht gelesen werden.',
+  'library.import.unreadable': '«{name}» konnte nicht gelesen werden.',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Buch bearbeiten',
@@ -143,14 +150,14 @@ export const de = {
   'sync.error.noFreeCode': 'Es konnte kein Lese-Code erstellt werden. Bitte erneut versuchen.',
 
   'sync.otherBook.title': 'Anderes Buch',
-  'sync.otherBook.message': 'Dieser Lese-Code gehört zu „{title}“. Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?',
+  'sync.otherBook.message': 'Dieser Lese-Code gehört zu «{title}». Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?',
   'sync.otherBook.confirm': 'Buch öffnen',
   // Wenn der Code zwar ein Buch nennt, aber keinen Titel dazu hat.
   'sync.otherBook.untitled': 'einem anderen Buch',
 
   // ── Ein Buch kommt über die Leitung ──────────────────────────────────
   'transfer.title': 'Buch wird geladen',
-  'transfer.message': '„{title}“ wird von deinem Lesepartner gesendet…',
+  'transfer.message': '«{title}» wird von deinem Lesepartner gesendet…',
   'transfer.untitled': 'Buch',
   'transfer.saving': 'Buch wird gespeichert…',
   'transfer.corrupt.title': 'Übertragung fehlerhaft',

@@ -107,3 +107,75 @@ single static file that cannot vary per browser anyway.
 - The installed app's name on the home screen stays German for everyone.
 - A translation may lag without breaking anything, which is what makes it
   possible to ship the machinery now and the four languages one at a time.
+
+## Amendment (2026-08-29): German splits by region, and a variant carries only what differs
+
+The decision above says German is written in Swiss orthography *„for every `de-*`
+browser, Berlin included"*, and gives the reason: one household, in Switzerland.
+That reason turned out to be wrong about the app it describes. The app is read
+across the border — the grandmother is in Germany, the grandchildren are in
+Switzerland — so on any given evening one of the two readers is being shown a
+spelling that is not theirs. Not a defect a stranger would meet: a defect at the
+centre of who this is for.
+
+Two things differ between the two countries, and both are typography rather than
+wording:
+
+- **Quotation marks.** Switzerland sets «…», Germany and Austria „…". Eight
+  values put a book title or a file name in quotes, so this is visible on the
+  shelf, in the delete dialog, and in every import message.
+- **ß.** Seven values carry a word that is spelled with ß outside Switzerland:
+  schließen, vergrößern, heißt.
+
+## Amendment decision
+
+**The dictionary key may carry a region, and a regional dictionary is a
+variant** — it holds only the values that differ from its base language and
+leans on the base for everything else. `de-DE.js` is fourteen lines rather than
+two hundred.
+
+**Resolution walks each browser preference from its longest form down to its
+bare language** before moving to the next preference — the ordinary BCP-47
+lookup. `de-DE` finds the variant, `de-CH` falls past it to plain German,
+`de-DE-1901` finds the variant too.
+
+**The lookup chain gains the base language** directly behind the variant:
+`de-DE → de → en → de`. That link is what lets the variant be short.
+
+**Swiss German stays the source.** `de.js` is the file the maintainer writes
+into, and the maintainer writes „ss" and «…». Making the source standard German
+and Switzerland the override would tax every future string with a second entry,
+written in a spelling its author does not use. The override file is the one for
+the country you are not in.
+
+**`de-DE.js` answers to both `de-de` and `de-at`,** because Austria spells like
+Germany and a second file holding the same fourteen lines would only be a second
+file to forget. A browser reporting bare `de` gets Switzerland — that tag names
+no country, and the source is as good a guess as any.
+
+**`<html lang>` now carries the full browser tag** rather than the dictionary's
+name: a Swiss reader is reading Swiss German, so `de-CH` is the more precise
+thing to tell hyphenation and VoiceOver than the `de` this dictionary is filed
+under.
+
+**English needs no such split.** Not one of its two hundred values differs
+between British and American spelling; the only regional difference in English
+is the date format, and that already follows the full tag through `Intl`. There
+will be no `en-GB.js`.
+
+## Amendment consequences
+
+- The two readers see their own orthography on the same evening, in the same
+  book, without either of them being asked anything.
+- A regional dictionary is **deliberately incomplete**, so the key-parity check
+  that guards the full translations does not apply to it. What is checked
+  instead: every key it holds exists in the base, and every value it holds
+  actually differs from the base — a variant entry that matches its base is dead
+  weight and a sign someone edited the wrong file.
+- A new German string containing quotation marks or one of the ß words needs a
+  line in `de-DE.js` too. Forgetting it shows Germany the Swiss wording — 
+  visibly mis-set, but never blank. Both dictionaries say so at the top.
+- Not every „ss" becomes „ß": Kuss, lass, muss, passt and stattdessen keep it in
+  Germany as well. `de-DE.js` therefore lists the affected words one by one
+  rather than deriving them, because a rule about „ss" would take the others
+  with it.
