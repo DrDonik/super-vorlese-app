@@ -93,3 +93,64 @@ shelf that is silently half empty. It survives the library view being remounted
   filter also survives what a user would call closing the app. The selected chip
   stays visible above the grid throughout, so a short shelf always carries its
   own explanation and is one tap from coming back.
+
+## Amendment (2026-08-29): the chips combine with AND, and a dead chip greys out
+
+Single select was chosen so nobody would have to think in boolean logic. The
+question it cannot answer turns out to be the ordinary one: *„was kann ich
+diesem Kind heute Abend vorlesen, das wir noch nicht hatten?"* — „Noch nicht
+gelesen" **and** „Ab 7 Jahren". Neither chip alone gets there, and the shelf a
+household reaches for at bedtime is exactly the intersection.
+
+**Chips are multi-select and combine with AND.** Tapping a chip adds its
+condition; tapping a pressed chip drops it again. There is still no „Alle" chip
+and no operator to choose: the only boolean anyone meets is the one they
+already mean when they name two things at once.
+
+**A chip that would leave the shelf empty is greyed out and refuses taps.** This
+is what keeps the original guarantee — *no filter can ever produce an empty
+grid* — after the thing that used to provide it, one condition at a time, is
+gone. It is the interface preventing the error rather than reporting it
+(rule 5): no sequence of taps can reach an empty shelf, so nobody is asked to
+undo a move the interface let them make.
+
+Three things follow from doing it this way rather than allowing the empty
+result:
+
+- **„Schon gelesen" and „Noch nicht gelesen" exclude each other for free.** No
+  book is both, so pressing one kills the other by the same arithmetic that
+  kills „Märchen" when no fairy tale is unread. The pair needs no rule of its
+  own, and the row has one behaviour throughout (rule 1).
+- **Dead chips keep their place.** Removing them instead would slide the row out
+  from under the finger, and would throw away the answer to a question the user
+  just asked: that there is no unread book for a seven-year-old is worth seeing.
+- **A pressed chip is never dead.** Dropping a filter only ever widens the
+  result, so every choice can be taken back with one tap (rule 6).
+
+**The shelf can still empty out under a selection already made,** and there it
+says so. Take the last 7+ book the two of them had finished off „Ab 7 Jahren"
+with the pencil, and „Schon gelesen" plus „Ab 7 Jahren" is suddenly nobody. The
+grid then carries the same kind of note the empty library has always carried,
+and points at the lit chips above it. Repairing it by dropping a filter was
+rejected: the shelf would answer an edit to one book by producing a dozen
+others, which is a larger surprise than the empty shelf and a worse account of
+what was asked for (rule 7). The lit chips are the explanation, and either of
+them is one tap from undone — the way out is the way in.
+
+## Amendment consequences
+
+- `activeFilter` becomes a module-level `Set`; the lifetime argument above is
+  unchanged, and a chip that disappears under the user (its last book deleted or
+  retagged) now drops out of the set individually instead of clearing it.
+- The chip row is rendered after the grid's contents are known, because
+  liveness is a fact about the shelf that is about to be drawn.
+- Chips are still built from the whole shelf, so the row's contents and order
+  never depend on what is selected — only the greying does.
+- The dead state is a dimming of the whole chip rather than a colour of its own,
+  so it follows the tokens into the increased-contrast variant (ADR 32): 7.3:1
+  falls to 2.9:1 normally and 12.4:1 to 4.3:1 there. Below the text minimum on
+  purpose — it is a disabled control, and it has to be plainly weaker than the
+  live chip beside it.
+- Clearing several filters costs one tap each. Accepted: two conditions is the
+  case this amendment exists for, and a reset chip would either shift the row as
+  it appeared or contradict the „no Alle chip" decision above.
