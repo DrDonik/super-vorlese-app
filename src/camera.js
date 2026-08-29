@@ -1,6 +1,7 @@
 import { savePhotoBook, uid } from './storage.js';
 import { renderImageThumbnail } from './image.js';
 import { openDialog, showAlert, showConfirm, showPrompt } from './dialog.js';
+import { t } from './i18n.js';
 
 // What the preview's „Verwerfen" resolves to. A symbol so it can never collide
 // with anything the dialog might hand back on a normal way out.
@@ -9,7 +10,12 @@ const DISCARD = Symbol('discard');
 function defaultTitle() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
-  return `Foto-Buch ${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  // Ziffern statt eines lokalisierten Datums: der Titel sortiert sich damit
+  // von selbst, und ein Buch, das heute Abend entsteht, steht neben dem von
+  // gestern. Gespeichert wird er als Titel des Buches und danach nicht mehr
+  // übersetzt — ab dann gehört er dem Buch.
+  const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return t('camera.defaultTitle', { date: stamp });
 }
 
 export class CameraView {
@@ -33,23 +39,23 @@ export class CameraView {
         <div class="camera-stage">
           <video class="camera-video" autoplay playsinline muted></video>
           <div class="camera-message" hidden></div>
-          <button class="camera-cancel" type="button" aria-label="Abbrechen">✕</button>
-          <div class="camera-counter" aria-live="polite">0 Seiten</div>
+          <button class="camera-cancel" type="button" aria-label="${t('common.cancel')}">✕</button>
+          <div class="camera-counter" aria-live="polite">${t('common.pages', { n: 0 })}</div>
         </div>
-        <div class="camera-strip" aria-label="Aufgenommene Seiten"></div>
+        <div class="camera-strip" aria-label="${t('camera.strip')}"></div>
         <div class="camera-undo" hidden>
-          <span>Foto verworfen.</span>
-          <button class="camera-undo-btn" type="button">Rückgängig</button>
+          <span>${t('camera.discarded')}</span>
+          <button class="camera-undo-btn" type="button">${t('common.undo')}</button>
         </div>
         <div class="camera-controls">
           <label class="camera-fallback" hidden>
             <input type="file" accept="image/*" multiple hidden />
-            <span>Aus Galerie wählen</span>
+            <span>${t('camera.gallery')}</span>
           </label>
-          <button class="camera-shutter" type="button" aria-label="Foto aufnehmen" disabled>
+          <button class="camera-shutter" type="button" aria-label="${t('camera.shutter')}" disabled>
             <span class="camera-shutter-inner"></span>
           </button>
-          <button class="camera-done" type="button" disabled>Fertig</button>
+          <button class="camera-done" type="button" disabled>${t('common.done')}</button>
         </div>
       </div>
     `;
@@ -76,7 +82,7 @@ export class CameraView {
 
   async startCamera() {
     if (!navigator.mediaDevices?.getUserMedia) {
-      this.showError('Kamera wird auf diesem Gerät nicht unterstützt.');
+      this.showError(t('camera.unsupported'));
       return;
     }
     try {
@@ -90,7 +96,7 @@ export class CameraView {
       });
     } catch (err) {
       console.error('Kamera-Zugriff fehlgeschlagen', err);
-      this.showError('Kein Zugriff auf die Kamera. Du kannst stattdessen Fotos aus der Galerie wählen.');
+      this.showError(t('camera.noAccess'));
       return;
     }
     this.video.srcObject = this.stream;
@@ -162,7 +168,7 @@ export class CameraView {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'camera-thumb';
-    item.setAttribute('aria-label', 'Foto ansehen');
+    item.setAttribute('aria-label', t('camera.viewPhoto'));
     // Built rather than parsed from a string: one element does not need an HTML
     // round trip, and it leaves the strip with no HTML sink at all.
     const thumb = document.createElement('img');
@@ -196,11 +202,11 @@ export class CameraView {
     image.src = url;
     image.alt = '';
     const chosen = await openDialog({
-      title: `Seite ${this.pageNumberOf(index)}`,
+      title: t('camera.pageTitle', { n: this.pageNumberOf(index) }),
       content: image,
       cardClass: 'camera-preview-card',
-      dangerButton: { label: 'Verwerfen', value: DISCARD },
-      buttons: [{ label: 'Schliessen', value: undefined, primary: true }],
+      dangerButton: { label: t('common.discard'), value: DISCARD },
+      buttons: [{ label: t('common.close'), value: undefined, primary: true }],
       cancelValue: undefined,
     });
     if (chosen !== DISCARD) return;
@@ -277,7 +283,7 @@ export class CameraView {
 
   updateCount() {
     const n = this.livePages().length;
-    this.counter.textContent = `${n} ${n === 1 ? 'Seite' : 'Seiten'}`;
+    this.counter.textContent = t('common.pages', { n });
     this.doneBtn.disabled = n === 0 || this.saving;
   }
 
@@ -288,10 +294,10 @@ export class CameraView {
     this.saving = true;
     this.doneBtn.disabled = true;
     const titleInput = await showPrompt({
-      title: 'Buch speichern',
-      message: 'Titel des Buches:',
+      title: t('camera.save.title'),
+      message: t('camera.save.field'),
       value: defaultTitle(),
-      confirmLabel: 'Speichern',
+      confirmLabel: t('common.save'),
       allowEmpty: true,
     });
     if (titleInput === null) {
@@ -300,7 +306,7 @@ export class CameraView {
       return;
     }
     const title = titleInput.trim() || defaultTitle();
-    this.doneBtn.textContent = 'Speichere…';
+    this.doneBtn.textContent = t('camera.saving');
     try {
       const thumbBlob = await renderImageThumbnail(pages[0], 480, 0.8);
       const id = uid();
@@ -316,9 +322,9 @@ export class CameraView {
       this.onSaved(id);
     } catch (err) {
       console.error('Speichern fehlgeschlagen', err);
-      await showAlert({ message: 'Das Buch konnte nicht gespeichert werden.' });
+      await showAlert({ message: t('camera.saveFailed') });
       this.saving = false;
-      this.doneBtn.textContent = 'Fertig';
+      this.doneBtn.textContent = t('common.done');
       this.updateCount();
     }
   }
@@ -329,9 +335,9 @@ export class CameraView {
     try {
       if (this.livePages().length > 0) {
         const discard = await showConfirm({
-          title: 'Aufnahme verwerfen?',
-          message: 'Die Fotos gehen verloren.',
-          confirmLabel: 'Verwerfen',
+          title: t('camera.discardAll.title'),
+          message: t('camera.discardAll.message'),
+          confirmLabel: t('common.discard'),
           destructive: true,
         });
         if (!discard) return;

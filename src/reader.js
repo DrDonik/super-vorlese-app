@@ -5,7 +5,8 @@ import { SyncSession, getSessionForBook, closeSyncForBook, lookupRoom } from './
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { offerBook } from './offer.js';
 import { showAlert, showConfirm, makeModal } from './dialog.js';
-import { moodById, moodIconUrl, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
+import { t } from './i18n.js';
+import { moodById, moodIconUrl, moodLabel, moodRevealRowsHTML, moodWitnessRowsHTML, pickMoodBoard, MOOD_PICK_COUNT, MOOD_BOARD_COUNT } from './moods.js';
 import { keepAwake, letSleep } from './wake-lock.js';
 import { keepFullscreen, leaveFullscreen } from './fullscreen.js';
 import { nativeZoomActive } from './native-zoom.js';
@@ -167,7 +168,7 @@ class PhotoSource {
   }
   async renderPage(n, canvas, w, h, zoom) {
     const blob = await getPhotoPage(this.bookId, n);
-    if (!blob) throw new Error(`Seite ${n} fehlt`);
+    if (!blob) throw new Error(t('error.pageMissing', { n }));
     await renderImageToCanvas(blob, canvas, w, h, zoom);
   }
   destroy() {}
@@ -288,48 +289,48 @@ export class ReaderView {
     this.root.innerHTML = `
       <div class="reader">
         <div class="reader-chrome">
-          <button class="reader-back" type="button" aria-label="Zurück zur Bibliothek">←<span class="reader-back-label">Bibliothek</span></button>
-          <button class="reader-sync-btn" type="button" aria-label="Gemeinsam lesen">👥</button>
+          <button class="reader-back" type="button" aria-label="${t('reader.back')}">←<span class="reader-back-label">${t('reader.backLabel')}</span></button>
+          <button class="reader-sync-btn" type="button" aria-label="${t('sync.activity')}">👥</button>
           <div class="reader-title"></div>
-          <button class="reader-nav-toggle" type="button" aria-label="Seitennavigation" aria-pressed="true">◀▶</button>
+          <button class="reader-nav-toggle" type="button" aria-label="${t('reader.navToggle')}" aria-pressed="true">◀▶</button>
           <div class="reader-page-indicator"></div>
-          <button class="reader-help-btn" type="button" aria-label="Hilfe" aria-expanded="false">?</button>
+          <button class="reader-help-btn" type="button" aria-label="${t('reader.help')}" aria-expanded="false">?</button>
         </div>
         <div class="sync-panel" hidden>
           <div class="sync-panel-card">
-            <div class="sync-panel-title">Gemeinsam lesen</div>
-            <div class="sync-panel-desc">Damit ihr dieselbe Seite seht, braucht ihr beide den gleichen Synchronisations-Code des Buches.</div>
+            <div class="sync-panel-title">${t('sync.activity')}</div>
+            <div class="sync-panel-desc">${t('sync.panel.desc')}</div>
             <div class="sync-create-section">
-              <button class="sync-create-btn" type="button">Synchronisations-Code erstellen</button>
+              <button class="sync-create-btn" type="button">${t('sync.panel.create')}</button>
             </div>
-            <div class="sync-or">— oder —</div>
+            <div class="sync-or">${t('common.or')}</div>
             <div class="sync-join-section">
-              <div class="sync-join-label">Synchronisations-Code von deinem Lesepartner bekommen?</div>
-              <input class="sync-join-input" type="text" placeholder="Synchronisations-Code" aria-label="Synchronisations-Code" />
+              <div class="sync-join-label">${t('sync.joinLabel')}</div>
+              <input class="sync-join-input" type="text" placeholder="${t('sync.code')}" aria-label="${t('sync.code')}" />
             </div>
             <div class="sync-active-section" hidden>
-              <div class="sync-code-label">Synchronisations-Code des Buches</div>
+              <div class="sync-code-label">${t('sync.codeOfBook')}</div>
               <div class="sync-code-display"></div>
-              <div class="sync-code-hint">Sag ihn deinem Lesepartner am Telefon.</div>
+              <div class="sync-code-hint">${t('sync.codeHint')}</div>
             </div>
             <div class="sync-panel-actions">
-              <button class="sync-panel-close" type="button">Abbrechen</button>
-              <button class="sync-join-btn" type="button">Verbinden</button>
+              <button class="sync-panel-close" type="button">${t('common.cancel')}</button>
+              <button class="sync-join-btn" type="button">${t('sync.connect')}</button>
             </div>
           </div>
         </div>
         <div class="reader-stage">
           <canvas class="reader-canvas"></canvas>
-          <button class="reader-zone reader-zone-prev" type="button" aria-label="Zurück"></button>
-          <button class="reader-zone reader-zone-next" type="button" aria-label="Vor"></button>
+          <button class="reader-zone reader-zone-prev" type="button" aria-label="${t('reader.prev')}"></button>
+          <button class="reader-zone reader-zone-next" type="button" aria-label="${t('reader.next')}"></button>
           <div class="pointer-layer" aria-hidden="true"><div class="pointer-page"></div></div>
         </div>
-        <button class="reader-zoom" type="button" aria-label="Seite vergrössern"><span class="reader-zoom-glyph" aria-hidden="true">🔍</span><span class="reader-zoom-factor"></span></button>
+        <button class="reader-zoom" type="button" aria-label="${t('reader.zoom')}"><span class="reader-zoom-glyph" aria-hidden="true">🔍</span><span class="reader-zoom-factor"></span></button>
         <button class="reader-finish-cue" type="button" hidden>
           <span class="reader-finish-cue-icon" aria-hidden="true">📖</span>
-          Fertig? Buch schliessen
+          ${t('reader.finishCue')}
         </button>
-        <div class="reader-loading">Lade…</div>
+        <div class="reader-loading">${t('reader.loading')}</div>
       </div>
     `;
 
@@ -451,7 +452,7 @@ export class ReaderView {
 
     const meta = await getMeta(this.bookId);
     if (!meta) {
-      await showAlert({ message: 'Buch nicht gefunden.' });
+      await showAlert({ message: t('error.bookNotFound') });
       this.close();
       return;
     }
@@ -467,7 +468,7 @@ export class ReaderView {
 
     this.source = await createSource(meta);
     if (!this.source) {
-      await showAlert({ message: 'Buch nicht gefunden.' });
+      await showAlert({ message: t('error.bookNotFound') });
       this.close();
       return;
     }
@@ -490,7 +491,7 @@ export class ReaderView {
       existing.onRemotePageChange = (page) => this.onRemotePage(page);
       existing.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Die Synchronisation wurde beendet.' });
+        showAlert({ message: t('sync.ended') });
       };
       existing.listen();
       this.showSyncActive(existing.roomCode);
@@ -503,7 +504,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Die Synchronisation wurde beendet.' });
+        showAlert({ message: t('sync.ended') });
       };
       this.syncSession = session;
       const code = await session.reconnect().catch(() => null);
@@ -1855,7 +1856,7 @@ export class ReaderView {
     const ind = this.root.querySelector('.reader-page-indicator');
     const word = document.createElement('span');
     word.className = 'page-indicator-word';
-    word.textContent = 'Seite';
+    word.textContent = t('reader.page');
     ind.replaceChildren(word, document.createTextNode(`${page} / ${this.totalPages}`));
   }
 
@@ -1882,7 +1883,7 @@ export class ReaderView {
     input.min = 1;
     input.max = this.totalPages;
     input.value = this.currentPage;
-    input.setAttribute('aria-label', 'Gehe zu Seite');
+    input.setAttribute('aria-label', t('reader.goToPage'));
     ind.appendChild(input);
 
     const suffix = document.createElement('span');
@@ -2053,34 +2054,28 @@ export class ReaderView {
     this.helpOverlay = overlay;
     reader.appendChild(overlay);
 
-    this.addHelpHint('help-hint-zone help-hint-zone-prev', 'Zurück', { glyph: '◀' });
-    this.addHelpHint('help-hint-zone help-hint-zone-next', 'Weiter', { glyph: '▶' });
+    this.addHelpHint('help-hint-zone help-hint-zone-prev', t('help.prev'), { glyph: '◀' });
+    this.addHelpHint('help-hint-zone help-hint-zone-next', t('help.next'), { glyph: '▶' });
     // Both gestures exist on both kinds of device, so no callout appears or
     // disappears with the hardware — they name „Finger" or „Maus" after what
     // the reader last used, which for the help is whatever they just opened it
     // with (issue #121).
-    const holdLabel = this.lastInputWasMouse
-      ? 'Linke Maustaste gedrückt halten: auf die Seite zeigen'
-      : 'Finger gedrückt halten: auf die Seite zeigen';
+    const holdLabel = t(this.lastInputWasMouse ? 'help.hold.mouse' : 'help.hold.touch');
     // The second line is the only place the tap-toggle is spelled out: it
     // reveals nothing on the page, so without it the way to clear the bar again
     // is undiscoverable (issue #176).
     // „In die Mitte", weil die Ränder etwas anderes tun: links und rechts wird
     // geblättert, und ganz oben holt die Geste die Leiste nur hervor.
-    const tapLabel = this.lastInputWasMouse
-      ? 'Kurz in die Mitte klicken: Leiste ein- und ausblenden'
-      : 'Kurz in die Mitte tippen: Leiste ein- und ausblenden';
+    const tapLabel = t(this.lastInputWasMouse ? 'help.tap.mouse' : 'help.tap.touch');
     this.addHelpHint('help-hint-center', holdLabel, {
-      sub: ['beim gemeinsamen Lesen', tapLabel],
+      sub: [t('help.hold.sub'), tapLabel],
     });
     // Placed in CSS above the loupe rather than through addChromeHelpHints:
     // that one hangs its bubbles below their control, which for a button in the
     // bottom corner would put the label off the screen.
-    this.addHelpHint('help-hint-zoom', 'Seite vergrössern', {
+    this.addHelpHint('help-hint-zoom', t('help.zoom'), {
       controlGlyph: '🔍',
-      sub: this.lastInputWasMouse
-        ? 'vergrössert: mit der Maus verschieben'
-        : 'vergrössert: mit dem Finger verschieben',
+      sub: t(this.lastInputWasMouse ? 'help.zoom.mouse' : 'help.zoom.touch'),
     });
     this.addChromeHelpHints();
     this.applyHelpLayout();
@@ -2171,20 +2166,20 @@ export class ReaderView {
     const reader = this.readerEl;
     const base = reader.getBoundingClientRect();
     const targets = [
-      ['.reader-back', 'Zurück zur Bibliothek', 0],
-      ['.reader-sync-btn', 'Gemeinsam lesen', 1],
-      ['.reader-nav-toggle', 'Umblättern an / aus', 0],
-      ['.reader-page-indicator', 'Zu einer Seite springen', 1],
+      ['.reader-back', 'help.chrome.back', 0],
+      ['.reader-sync-btn', 'help.chrome.sync', 1],
+      ['.reader-nav-toggle', 'help.chrome.nav', 0],
+      ['.reader-page-indicator', 'help.chrome.jump', 1],
     ];
     const bubbles = [];
-    for (const [selector, text, preferredTier] of targets) {
+    for (const [selector, textKey, preferredTier] of targets) {
       const target = reader.querySelector(selector);
       if (!target) continue;
       // innerText, not textContent: it gives what is actually on screen — „←"
       // and „12 / 148" on a phone, „← Bibliothek" and „Seite 12 / 148" on a
       // tablet. That is exactly what the list needs to point back at the bar
       // once there is no arrow left doing it.
-      const hint = this.addHelpHint('help-hint-chrome', text, {
+      const hint = this.addHelpHint('help-hint-chrome', t(textKey), {
         controlGlyph: target.innerText.trim(),
       });
       const arrow = document.createElement('span');
@@ -2341,12 +2336,12 @@ export class ReaderView {
       : '<span class="mood-cover-fallback" aria-hidden="true">📖</span>';
     overlay.innerHTML = `
       <div class="mood-card">
-        <button class="mood-cancel" type="button" aria-label="Abbrechen">✕</button>
+        <button class="mood-cancel" type="button" aria-label="${t('common.cancel')}">✕</button>
         <div class="mood-cover-header">
           <div class="mood-cover">${cover}</div>
           <div class="mood-cover-title"></div>
         </div>
-        <h2 class="mood-board-title">Wie war das Buch?</h2>
+        <h2 class="mood-board-title">${t('mood.boardTitle')}</h2>
         <div class="mood-warning" hidden></div>
         <div class="mood-instructions"></div>
         <div class="mood-grid"></div>
@@ -2434,7 +2429,7 @@ export class ReaderView {
       // different things after different books, and a visible word would beat the
       // picture and turn the ritual into a sorting task. The label serves only as
       // the accessible name, so the button can be operated at all.
-      btn.setAttribute('aria-label', mood.label);
+      btn.setAttribute('aria-label', moodLabel(mood));
       btn.innerHTML = `
         <span class="mood-image-wrap">
           <img src="${moodIconUrl(mood.slug)}" alt="" draggable="false" />
@@ -2476,8 +2471,8 @@ export class ReaderView {
     if (instructions) {
       const remaining = MOOD_PICK_COUNT - this.mySelection.size;
       instructions.textContent = remaining > 0
-        ? `Wähle ${remaining} ${remaining === 1 ? 'Gefühl' : 'Gefühle'}.`
-        : 'Warte auf den anderen …';
+        ? t('mood.remaining', { n: remaining })
+        : t('mood.waiting');
     }
   }
 
@@ -2554,7 +2549,7 @@ export class ReaderView {
     const warning = overlay.querySelector('.mood-warning');
     if (!warning) return;
     if (this.moodPresentIds.length === 3) {
-      warning.textContent = 'Drei Personen anwesend. Nur die Kinder wählen Gefühle.';
+      warning.textContent = t('mood.warningThree');
       warning.hidden = false;
     } else {
       warning.hidden = true;
@@ -2578,8 +2573,8 @@ export class ReaderView {
     const end = document.createElement('div');
     end.className = 'mood-end-message';
     end.innerHTML = `
-      <div class="mood-result-title">Ende</div>
-      <button class="mood-result-done" type="button">Buch ins Regal stellen</button>
+      <div class="mood-result-title">${t('mood.end')}</div>
+      <button class="mood-result-done" type="button">${t('mood.shelf')}</button>
     `;
     card.appendChild(end);
     end.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
@@ -2641,9 +2636,9 @@ export class ReaderView {
     const card = overlay.querySelector('.mood-card');
     overlay.classList.add('mood-revealed');
     card.innerHTML = `
-      <div class="mood-result-title">Eure Gefühle</div>
+      <div class="mood-result-title">${t('mood.result')}</div>
       ${moodRevealRowsHTML(mine, theirs)}
-      <button class="mood-result-done" type="button">Buch ins Regal stellen</button>
+      <button class="mood-result-done" type="button">${t('mood.shelf')}</button>
     `;
     card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
   }
@@ -2671,9 +2666,9 @@ export class ReaderView {
     const card = overlay.querySelector('.mood-card');
     overlay.classList.add('mood-revealed');
     card.innerHTML = `
-      <div class="mood-result-title">Eure Gefühle</div>
+      <div class="mood-result-title">${t('mood.result')}</div>
       ${moodWitnessRowsHTML(a, b)}
-      <button class="mood-result-done" type="button">Buch ins Regal stellen</button>
+      <button class="mood-result-done" type="button">${t('mood.shelf')}</button>
     `;
     card.querySelector('.mood-result-done').addEventListener('click', () => this.concludeMood());
   }
@@ -2794,7 +2789,7 @@ export class ReaderView {
 
   async syncCreate() {
     if (!this.source) {
-      await showAlert({ message: 'Buch wird noch geladen. Bitte warten.' });
+      await showAlert({ message: t('sync.bookLoading') });
       return;
     }
     if (this.isSyncing) return;
@@ -2805,7 +2800,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Die Synchronisation wurde beendet.' });
+        showAlert({ message: t('sync.ended') });
       };
       this.syncSession = session;
       const code = await session.createRoom(this.currentPage, await this.buildBookDescriptor());
@@ -2817,7 +2812,7 @@ export class ReaderView {
       this.showSyncActive(code);
     } catch (err) {
       this.syncStop();
-      if (this.source) await showAlert({ message: err.message || 'Verbindung fehlgeschlagen. Bitte erneut versuchen.' });
+      if (this.source) await showAlert({ message: err.message || t('sync.connectFailedRetry') });
     } finally {
       this.isSyncing = false;
     }
@@ -2825,7 +2820,7 @@ export class ReaderView {
 
   async syncJoin() {
     if (!this.source) {
-      await showAlert({ message: 'Buch wird noch geladen. Bitte warten.' });
+      await showAlert({ message: t('sync.bookLoading') });
       return;
     }
     const input = this.root.querySelector('.sync-join-input');
@@ -2847,7 +2842,7 @@ export class ReaderView {
         room = await lookupRoom(code);
       } catch (err) {
         if (!this.source) return;
-        await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
+        await showAlert({ message: err?.message || t('sync.connectFailed') });
         return;
       }
       if (!this.source) return;
@@ -2860,9 +2855,11 @@ export class ReaderView {
       if (!this.source) return;
       if (room.book?.hash && room.book.hash !== ownHash) {
         const goThere = await showConfirm({
-          title: 'Anderes Buch',
-          message: `Dieser Synchronisations-Code gehört zu „${room.book.title || 'einem anderen Buch'}". Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?`,
-          confirmLabel: 'Buch öffnen',
+          title: t('sync.otherBook.title'),
+          message: t('sync.otherBook.message', {
+            title: room.book.title || t('sync.otherBook.untitled'),
+          }),
+          confirmLabel: t('sync.otherBook.confirm'),
         });
         if (!this.source) return;
         // The code is unusable for the book open here either way, so clear the
@@ -2891,7 +2888,7 @@ export class ReaderView {
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
         this.syncStop();
-        showAlert({ message: 'Die Synchronisation wurde beendet.' });
+        showAlert({ message: t('sync.ended') });
       };
       this.syncSession = session;
       const normalizedCode = await session.joinRoom(code);
@@ -2903,7 +2900,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
-      if (this.source) await showAlert({ message: err?.message || 'Verbindung fehlgeschlagen.' });
+      if (this.source) await showAlert({ message: err?.message || t('sync.connectFailed') });
     } finally {
       this.isSyncing = false;
     }
@@ -2914,7 +2911,7 @@ export class ReaderView {
     session.onRemotePageChange = (page) => this.onRemotePage(page);
     session.onRoomDeleted = () => {
       this.syncStop();
-      showAlert({ message: 'Die Synchronisation wurde beendet.' });
+      showAlert({ message: t('sync.ended') });
     };
     this.syncSession = session;
     try {
@@ -2926,7 +2923,7 @@ export class ReaderView {
       this.showSyncActive(normalizedCode);
     } catch (err) {
       if (this.syncSession === session) this.syncSession = null;
-      await showAlert({ message: err.message || 'Verbindung fehlgeschlagen.' });
+      await showAlert({ message: err.message || t('sync.connectFailed') });
     }
   }
 
@@ -2965,7 +2962,7 @@ export class ReaderView {
     // Connected: "Verbinden" has nothing left to do, and the dismiss button
     // closes the panel without ending the sync — so it reads "Schliessen".
     reader.querySelector('.sync-join-btn').hidden = true;
-    reader.querySelector('.sync-panel-close').textContent = 'Schliessen';
+    reader.querySelector('.sync-panel-close').textContent = t('common.close');
     const active = reader.querySelector('.sync-active-section');
     active.hidden = false;
     active.querySelector('.sync-code-display').textContent = code;
@@ -2992,7 +2989,7 @@ export class ReaderView {
     const joinBtn = reader.querySelector('.sync-join-btn');
     joinBtn.hidden = false;
     joinBtn.disabled = true;
-    reader.querySelector('.sync-panel-close').textContent = 'Abbrechen';
+    reader.querySelector('.sync-panel-close').textContent = t('common.cancel');
     reader.querySelector('.sync-panel-desc').hidden = false;
     const active = reader.querySelector('.sync-active-section');
     active.hidden = true;

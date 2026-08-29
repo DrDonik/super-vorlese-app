@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 // Single source of truth for the shared-reading-memory mood illustrations
 // (issue #65). The numeric `id` is what travels over the wire and is stored in
 // completion records, so it must stay stable; the `slug` maps to the shipped
@@ -20,59 +22,59 @@
 //   difficult-low  — low-arousal hard feelings: sad, sulk, bored, lost, unsure
 //   relational     — aimed at the other reader (togetherness, love, pride)
 export const MOODS = [
-  { id: 1, slug: 'crash-and-still-grinning', label: 'Trotzdem fröhlich', cluster: 'joy' },
-  { id: 2, slug: 'determined-chin-up', label: 'Jetzt erst recht', cluster: 'courage' },
-  { id: 3, slug: 'tummy-butterflies', label: 'Kribbeln im Bauch', cluster: 'anticipation' },
-  { id: 4, slug: 'mischief-brewing', label: 'Schabernack', cluster: 'joy' },
-  { id: 5, slug: 'wide-eyed-wonder', label: 'Staunen', cluster: 'joy' },
-  { id: 6, slug: 'righteous-stomp', label: 'Das ist unfair!', cluster: 'difficult-high' },
-  { id: 7, slug: 'slumped-low', label: 'Ganz traurig', cluster: 'difficult-low' },
-  { id: 8, slug: 'fist-in-the-air', label: 'Geschafft!', cluster: 'joy' },
-  { id: 9, slug: 'sneaky-and-alert', label: 'Leise und wachsam', cluster: 'anticipation' },
-  { id: 10, slug: 'cozy-pile', label: 'Kuschelig', cluster: 'relational' },
-  { id: 11, slug: 'gloriously-dizzy', label: 'Herrlich wirr', cluster: 'joy' },
-  { id: 12, slug: 'quiet-listening', label: 'Gespanntes Lauschen', cluster: 'calm' },
-  { id: 13, slug: 'fizzing-excitement', label: 'Aufgeregt', cluster: 'joy' },
-  { id: 14, slug: 'brave-but-wobbly', label: 'Mutig, aber zittrig', cluster: 'courage' },
-  { id: 15, slug: 'puffed-cheek-exhale', label: 'Erleichtert', cluster: 'calm' },
-  { id: 16, slug: 'lip-out-sulk', label: 'Beleidigt', cluster: 'difficult-low' },
-  { id: 17, slug: 'contained-glow', label: 'Heimliche Freude', cluster: 'calm' },
-  { id: 18, slug: 'silly-serious', label: 'Ernst trotz Quatsch', cluster: 'joy' },
-  { id: 19, slug: 'watery-smile', label: 'Lächeln mit Tränen', cluster: 'tender' },
-  { id: 20, slug: 'arms-wide-free', label: 'Frei und unbeschwert', cluster: 'joy' },
+  { id: 1, slug: 'crash-and-still-grinning', cluster: 'joy' },
+  { id: 2, slug: 'determined-chin-up', cluster: 'courage' },
+  { id: 3, slug: 'tummy-butterflies', cluster: 'anticipation' },
+  { id: 4, slug: 'mischief-brewing', cluster: 'joy' },
+  { id: 5, slug: 'wide-eyed-wonder', cluster: 'joy' },
+  { id: 6, slug: 'righteous-stomp', cluster: 'difficult-high' },
+  { id: 7, slug: 'slumped-low', cluster: 'difficult-low' },
+  { id: 8, slug: 'fist-in-the-air', cluster: 'joy' },
+  { id: 9, slug: 'sneaky-and-alert', cluster: 'anticipation' },
+  { id: 10, slug: 'cozy-pile', cluster: 'relational' },
+  { id: 11, slug: 'gloriously-dizzy', cluster: 'joy' },
+  { id: 12, slug: 'quiet-listening', cluster: 'calm' },
+  { id: 13, slug: 'fizzing-excitement', cluster: 'joy' },
+  { id: 14, slug: 'brave-but-wobbly', cluster: 'courage' },
+  { id: 15, slug: 'puffed-cheek-exhale', cluster: 'calm' },
+  { id: 16, slug: 'lip-out-sulk', cluster: 'difficult-low' },
+  { id: 17, slug: 'contained-glow', cluster: 'calm' },
+  { id: 18, slug: 'silly-serious', cluster: 'joy' },
+  { id: 19, slug: 'watery-smile', cluster: 'tender' },
+  { id: 20, slug: 'arms-wide-free', cluster: 'joy' },
   // Added later (the board shows a random MOOD_BOARD_COUNT of the full set);
   // ids continue from 20 so the earlier ones stay stable in stored records.
-  { id: 21, slug: 'lachkrampf', label: 'Lachkrampf', cluster: 'joy' },
-  { id: 22, slug: 'peeking-through-fingers', label: 'Durch die Finger geschaut', cluster: 'anticipation' },
-  { id: 23, slug: 'clutched-close-feeling', label: 'Ans Herz gedrückt', cluster: 'tender' },
-  { id: 24, slug: 'one-more-please', label: 'Bitte weiterlesen!', cluster: 'anticipation' },
-  { id: 25, slug: 'melting-sleepy', label: 'Müde und geborgen', cluster: 'calm' },
-  { id: 26, slug: 'hmmm-not-sure', label: 'Nicht ganz überzeugt', cluster: 'difficult-low' },
-  { id: 27, slug: 'thats-too-much', label: 'Zu viel auf einmal', cluster: 'difficult-high' },
-  { id: 28, slug: 'on-the-edge-lean', label: 'Mitgefiebert', cluster: 'anticipation' },
-  { id: 29, slug: 'slow-nod-of-getting-it', label: 'Aha, verstanden', cluster: 'calm' },
-  { id: 30, slug: 'warm-and-full', label: 'Wohlig zufrieden', cluster: 'calm' },
-  { id: 31, slug: 'secretly-moved', label: 'Heimlich gerührt', cluster: 'tender' },
+  { id: 21, slug: 'lachkrampf', cluster: 'joy' },
+  { id: 22, slug: 'peeking-through-fingers', cluster: 'anticipation' },
+  { id: 23, slug: 'clutched-close-feeling', cluster: 'tender' },
+  { id: 24, slug: 'one-more-please', cluster: 'anticipation' },
+  { id: 25, slug: 'melting-sleepy', cluster: 'calm' },
+  { id: 26, slug: 'hmmm-not-sure', cluster: 'difficult-low' },
+  { id: 27, slug: 'thats-too-much', cluster: 'difficult-high' },
+  { id: 28, slug: 'on-the-edge-lean', cluster: 'anticipation' },
+  { id: 29, slug: 'slow-nod-of-getting-it', cluster: 'calm' },
+  { id: 30, slug: 'warm-and-full', cluster: 'calm' },
+  { id: 31, slug: 'secretly-moved', cluster: 'tender' },
   // Added later still; ids continue from 31 so earlier stored records stay stable.
-  { id: 32, slug: 'again-from-the-start', label: 'Nochmal von vorne!', cluster: 'anticipation' },
-  { id: 33, slug: 'scary-shivers', label: 'Wohliges Gruseln', cluster: 'difficult-high' },
-  { id: 34, slug: 'gleeful-yuck', label: 'Herrlich eklig', cluster: 'difficult-high' },
-  { id: 35, slug: 'real-tears', label: 'Echte Tränen', cluster: 'difficult-low' },
-  { id: 36, slug: 'lost-the-thread', label: 'Den Faden verloren', cluster: 'difficult-low' },
-  { id: 37, slug: 'politely-elsewhere', label: 'Mit den Gedanken woanders', cluster: 'difficult-low' },
-  { id: 38, slug: 'jaw-drop-twist', label: 'Damit nicht gerechnet!', cluster: 'anticipation' },
-  { id: 39, slug: 'kiss-across-the-miles', label: 'Kuss in die Ferne', cluster: 'relational' },
-  { id: 40, slug: 'proud-of-you', label: 'Stolz auf dich', cluster: 'relational' },
+  { id: 32, slug: 'again-from-the-start', cluster: 'anticipation' },
+  { id: 33, slug: 'scary-shivers', cluster: 'difficult-high' },
+  { id: 34, slug: 'gleeful-yuck', cluster: 'difficult-high' },
+  { id: 35, slug: 'real-tears', cluster: 'difficult-low' },
+  { id: 36, slug: 'lost-the-thread', cluster: 'difficult-low' },
+  { id: 37, slug: 'politely-elsewhere', cluster: 'difficult-low' },
+  { id: 38, slug: 'jaw-drop-twist', cluster: 'anticipation' },
+  { id: 39, slug: 'kiss-across-the-miles', cluster: 'relational' },
+  { id: 40, slug: 'proud-of-you', cluster: 'relational' },
   // Added to thicken under-served clusters for the balanced board draw (issue #77);
   // ids continue from 40 so earlier stored records stay stable. Briefs live in
   // doc/mood-icon-descriptions.txt entries 41–47.
-  { id: 41, slug: 'peering-out-from-hiding', label: 'Lieber versteckt', cluster: 'difficult-high' },
-  { id: 42, slug: 'hands-over-the-ears', label: 'Ohren zu!', cluster: 'difficult-high' },
-  { id: 43, slug: 'the-hot-whole-body-no', label: 'Stinksauer', cluster: 'difficult-high' },
-  { id: 44, slug: 'holding-back-the-tears', label: 'Tränen verdrückt', cluster: 'difficult-low' },
-  { id: 45, slug: 'one-big-brave-breath', label: 'Tief durchgeatmet', cluster: 'courage' },
-  { id: 46, slug: 'hand-across-the-distance', label: 'Hand in die Ferne', cluster: 'relational' },
-  { id: 47, slug: 'thumbs-up-for-you', label: 'Daumen hoch für dich', cluster: 'relational' },
+  { id: 41, slug: 'peering-out-from-hiding', cluster: 'difficult-high' },
+  { id: 42, slug: 'hands-over-the-ears', cluster: 'difficult-high' },
+  { id: 43, slug: 'the-hot-whole-body-no', cluster: 'difficult-high' },
+  { id: 44, slug: 'holding-back-the-tears', cluster: 'difficult-low' },
+  { id: 45, slug: 'one-big-brave-breath', cluster: 'courage' },
+  { id: 46, slug: 'hand-across-the-distance', cluster: 'relational' },
+  { id: 47, slug: 'thumbs-up-for-you', cluster: 'relational' },
 ];
 
 const MOOD_BY_ID = new Map(MOODS.map((m) => [m.id, m]));
@@ -85,6 +87,18 @@ export function moodById(id) {
 // hosted under /super-vorlese-app/ in production but / in dev).
 export function moodIconUrl(slug) {
   return `${import.meta.env.BASE_URL}mood-icons/${slug}.webp`;
+}
+
+// The name of a feeling, in the language the app is running in. Keyed by slug
+// and not by id: the id is what travels over the wire and is stored in the
+// completion records, so it belongs to no language — two readers on different
+// devices pick the same drawings and each sees them named in their own words.
+//
+// Never printed on the board (ADR 12, 2026-08-13 amendment): this is the
+// accessible name of the button and the `alt` of the keepsake tile, so the
+// ritual can be operated and described where the drawing cannot be seen.
+export function moodLabel(mood) {
+  return t(`moodLabel.${mood.slug}`);
 }
 
 export const MOOD_PICK_COUNT = 3; // each reader selects exactly this many
@@ -199,10 +213,20 @@ export function splitMoods(mine, theirs) {
 // drops „Ich" and „Du". `mine`/`theirs` are this device's and the partner's
 // picks, so „Ich" is always the viewer's own.
 const REVEAL_ROWS = [
-  ['ours', 'Wir', 'ours'],
-  ['mine', 'Ich', 'mine'],
-  ['theirs', 'Du', 'theirs'],
+  ['ours', 'mood.row.ours', 'ours'],
+  ['mine', 'mood.row.mine', 'mine'],
+  ['theirs', 'mood.row.theirs', 'theirs'],
 ];
+
+// The keepsake is built as an HTML string rather than element by element, so
+// the two dictionary strings in it — the tile's `alt` and the row's heading —
+// are the only place translated text is put into markup by hand. It is authored
+// text, not user input, but it now varies per language, so it is escaped rather
+// than trusted to hold no quote or angle bracket across five languages' worth of
+// feeling words.
+function escapeHtml(text) {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+}
 
 // The keepsake shows the illustrations uncaptioned, like the board (ADR 12,
 // 2026-08-13 amendment): „you both picked this one — what was it for you?" is the
@@ -211,20 +235,20 @@ const REVEAL_ROWS = [
 function moodRevealTile(id) {
   const mood = moodById(id);
   if (!mood) return '';
-  return `<div class="mood-reveal-tile"><img src="${moodIconUrl(mood.slug)}" alt="${mood.label}" draggable="false" /></div>`;
+  return `<div class="mood-reveal-tile"><img src="${moodIconUrl(mood.slug)}" alt="${escapeHtml(moodLabel(mood))}" draggable="false" /></div>`;
 }
 
 // Renders the labelled rows shared by the picker reveal and the library history.
-// Each row is [groupKey, label, styleKey]: `groupKey` indexes `groups`, while
+// Each row is [groupKey, labelKey, styleKey]: `groupKey` indexes `groups`, while
 // `styleKey` picks the `.mood-reveal-*` styling — so the witness keepsake can
 // reuse the celebrated „ours" styling for „Ihr" and the „theirs" styling for both
 // its „Du" rows. A row is omitted entirely when its zone is empty.
 function moodRevealRows(rows, groups) {
-  const html = rows.map(([groupKey, label, styleKey]) => {
+  const html = rows.map(([groupKey, labelKey, styleKey]) => {
     const ids = groups[groupKey];
     if (!ids.length) return '';
     return `<div class="mood-reveal-row mood-reveal-${styleKey}">
-        <span class="mood-reveal-label">${label}</span>
+        <span class="mood-reveal-label">${escapeHtml(t(labelKey))}</span>
         <div class="mood-reveal-tiles">${ids.map(moodRevealTile).join('')}</div>
       </div>`;
   }).join('');
@@ -258,9 +282,9 @@ export function splitWitness(a, b) {
 // unnamed „Du" rows. Reuses the picker reveal's markup so the keepsake looks
 // identical wherever it appears.
 const WITNESS_ROWS = [
-  ['shared', 'Ihr', 'ours'],
-  ['aOnly', 'Du', 'theirs'],
-  ['bOnly', 'Du', 'theirs'],
+  ['shared', 'mood.row.yours', 'ours'],
+  ['aOnly', 'mood.row.theirs', 'theirs'],
+  ['bOnly', 'mood.row.theirs', 'theirs'],
 ];
 
 export function moodWitnessRowsHTML(a, b) {

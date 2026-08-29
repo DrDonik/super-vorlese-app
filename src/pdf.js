@@ -1,4 +1,5 @@
 import * as pdfjsLib from 'pdfjs-dist';
+import { t } from './i18n.js';
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.mjs?worker';
 import { deviceScaleFor } from './canvas-scale.js';
 
@@ -255,7 +256,7 @@ export async function readAgeTag(page) {
   if (ages.size !== 1) return null;
   const [age] = ages;
   if (!Number.isInteger(age) || age < MIN_AGE || age > MAX_AGE) return null;
-  return `Ab ${age} ${age === 1 ? 'Jahr' : 'Jahren'}`;
+  return t('pdf.ageTag', { n: age });
 }
 
 // Both facts from one visit to page 1, and each on its own: a book whose cover
