@@ -351,10 +351,24 @@ button {
 }
 
 @media (hover: hover) {
-  .filter-chip:hover {
+  .filter-chip:not(:disabled):hover {
     color: var(--fg);
     border-color: var(--fg-dim);
   }
+}
+
+/* Ein Chip, der zusammen mit der aktuellen Auswahl kein Buch übrig liesse, ist
+   tot: er bleibt stehen, wo er war — verschwände er, rutschte die Reihe unter
+   dem Finger weg und die Auskunft „ungelesene Drachenbücher gibt es keine"
+   ginge mit ihm — aber er tritt sichtbar zurück und nimmt keine Tipper mehr an
+   (Regel 5). Die Dämpfung liegt auf dem ganzen Chip statt auf einer eigenen
+   Farbe: so folgt sie den Tokens und wird in der Kontrast-Anfrage von selbst
+   mit heller. --fg-dim auf --bg fällt damit von 7,3:1 auf 2,9:1, im
+   Kontrastfall von 12,4:1 auf 4,3:1 — für ein totes Bedienelement lesbar
+   genug, und deutlich weniger als jeder lebende Nachbar. */
+.filter-chip:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* The active chip is the only thing on this screen hiding books, so it is the
@@ -369,7 +383,7 @@ button {
 }
 
 @media (hover: hover) {
-  .filter-chip[aria-pressed='true']:hover {
+  .filter-chip[aria-pressed='true']:not(:disabled):hover {
     background: var(--surface-line);
   }
 }
