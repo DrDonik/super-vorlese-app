@@ -16,12 +16,13 @@
 // else — plural forms, sorting, dates — follows from the resolved locale.
 
 import { de } from './i18n/de.js';
+import { en } from './i18n/en.js';
 
 // Every language the app actually ships. Deliberately derived from what is here
 // rather than from a wish list: a language listed without a dictionary would
 // resolve, then fall through key by key, and the app would claim to speak
 // something it does not.
-const DICTIONARIES = { de };
+const DICTIONARIES = { de, en };
 
 // The language the strings are written in. Every key exists here, so it is the
 // last stop for anything a translation has not caught up with yet — a partly
