@@ -6,8 +6,6 @@
 // „vergrössern", „heisst". Das gilt für alle `de-*`-Browser, auch für Berlin —
 // die App ist für einen Haushalt gebaut, und der ist in der Schweiz.
 //
-// Die Anführungszeichen sind „…" (unten/oben), wie überall sonst im Projekt.
-//
 // Ein Wert ist entweder ein String oder ein Objekt mit Pluralformen nach den
 // CLDR-Kategorien. Die zählende Variable heisst immer `n`; andere Platzhalter
 // stehen als `{name}` im Text. Platzhalter, die in einer Sprache nicht
