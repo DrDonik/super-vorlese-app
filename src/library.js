@@ -196,6 +196,17 @@ function matchesFilters(book, isDone, filters) {
   return [...filters].every((filter) => matchesFilter(book, isDone, filter));
 }
 
+// What the current selection leaves of a shelf, as indices into it, so a caller
+// can carry its parallel arrays — thumbnails, completions — along without
+// running the same comparison a second time.
+function filteredIndices(books, doneFlags) {
+  const kept = [];
+  for (let i = 0; i < books.length; i++) {
+    if (matchesFilters(books[i], doneFlags[i], activeFilters)) kept.push(i);
+  }
+  return kept;
+}
+
 // A chip is dead when adding it to the selection would leave the grid empty, so
 // the row can only ever be walked into a shelf that still holds something
 // (rule 5). Selected chips are never dead: removing a filter only ever widens
@@ -492,6 +503,10 @@ export class LibraryView {
     // of opening it to read alone.
     this.selectMode = false;
     this.hasBooks = false;
+    // The books, completions and chips the last render measured; see
+    // refreshFilterBar(). Null until the first render, and again whenever the
+    // shelf is empty.
+    this.shelf = null;
   }
 
   async render() {
@@ -683,6 +698,17 @@ export class LibraryView {
     }
   }
 
+  // Redraws the chip row from the shelf the last render measured, without going
+  // back to storage. Everything the greying needs — the books, their tags, their
+  // completions — was already in hand a moment ago, so which chips this tap just
+  // killed can be shown at once instead of after a read.
+  refreshFilterBar() {
+    if (!this.shelf) return;
+    const { books, doneFlags, chips } = this.shelf;
+    const kept = filteredIndices(books, doneFlags);
+    this.renderFilterBar(chips, kept.map((i) => books[i]), kept.map((i) => doneFlags[i]));
+  }
+
   // Chips toggle one by one and combine with AND. Tapping a pressed chip drops
   // that one filter: the control that hid the books brings them back, so there
   // is no separate „Alle" chip to look for (rule 6). Nothing here has to guard
@@ -693,12 +719,25 @@ export class LibraryView {
     // destroyed and focus would fall back to <body> — leaving a keyboard user
     // to tab in from the top of the page again. Put focus back on the chip's
     // replacement, but only if it had focus: on a tap it does not, and forcing
-    // it there would raise a focus ring nobody asked for.
+    // it there would raise a focus ring nobody asked for. The tapped chip is
+    // always there to receive it: pressed chips are never dead, and a chip that
+    // was just unpressed only widened the shelf.
     const hadFocus = this.root.querySelector('.library-filter .filter-chip:focus') !== null;
-    await this.renderGrid();
-    if (hadFocus) {
+    const keepFocus = () => {
+      if (!hadFocus) return;
       this.root.querySelector(`.library-filter [data-filter="${CSS.escape(id)}"]`)?.focus();
-    }
+    };
+
+    // Before the await, not only after it. renderGrid() goes to storage first,
+    // and until it comes back the row on screen still offers the neighbours this
+    // tap has just killed — two quick taps walked straight past the greying into
+    // the empty shelf it exists to prevent. The row now answers the first tap on
+    // the spot, so the second one lands on a chip that is already dead.
+    this.refreshFilterBar();
+    keepFocus();
+
+    await this.renderGrid();
+    keepFocus();
     this.scrollToTop();
   }
 
@@ -724,6 +763,7 @@ export class LibraryView {
 
     if (allBooks.length === 0) {
       activeFilters.clear();
+      this.shelf = null;
       this.renderFilterBar([], [], []);
       grid.innerHTML = '';
       grid.appendChild(this.buildConnectTile());
@@ -764,22 +804,19 @@ export class LibraryView {
       if (!chips.some((c) => c.id === filter)) activeFilters.delete(filter);
     }
     const allTags = collectTags(allBooks);
+    // What refreshFilterBar() answers the next tap from, so the greying does not
+    // have to wait for a second trip to storage. Everything it holds is measured
+    // right here, and every render replaces it.
+    this.shelf = { books: allBooks, doneFlags, chips };
 
-    const books = [];
-    const thumbs = [];
-    const completionsLists = [];
-    const shownDoneFlags = [];
-    for (let i = 0; i < allBooks.length; i++) {
-      if (!matchesFilters(allBooks[i], doneFlags[i], activeFilters)) continue;
-      books.push(allBooks[i]);
-      thumbs.push(allThumbs[i]);
-      completionsLists.push(allCompletions[i]);
-      shownDoneFlags.push(doneFlags[i]);
-    }
+    const kept = filteredIndices(allBooks, doneFlags);
+    const books = kept.map((i) => allBooks[i]);
+    const thumbs = kept.map((i) => allThumbs[i]);
+    const completionsLists = kept.map((i) => allCompletions[i]);
 
     // After the filtering, because a chip is dead or alive relative to the
     // shelf that is about to be drawn.
-    this.renderFilterBar(chips, books, shownDoneFlags);
+    this.renderFilterBar(chips, books, kept.map((i) => doneFlags[i]));
 
     const newUrls = [];
     const fragment = document.createDocumentFragment();

@@ -144,6 +144,11 @@ them is one tap from undone — the way out is the way in.
   retagged) now drops out of the set individually instead of clearing it.
 - The chip row is rendered after the grid's contents are known, because
   liveness is a fact about the shelf that is about to be drawn.
+- A tap redraws the row twice: once at once, from the shelf the last render
+  measured, and again when the render that follows returns. Only the first one
+  makes „no sequence of taps reaches an empty shelf" true — the render reads
+  storage, and until it came back the row still offered the neighbours the tap
+  had just killed, so two quick taps walked straight past the greying.
 - Chips are still built from the whole shelf, so the row's contents and order
   never depend on what is selected — only the greying does.
 - The dead state is a dimming of the whole chip rather than a colour of its own,
