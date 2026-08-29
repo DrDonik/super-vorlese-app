@@ -97,7 +97,9 @@ proposed next:
 repository ships.**
 
 Nothing in `src/` calls a model, no proxy is stood up, no key exists to hold.
-`scripts/retypeset-book.py` stays the deterministic extractor ADR 28 describes.
+The re-typesetting tool stays the deterministic extractor ADR 28 describes; it
+moved to [its own repository](https://github.com/DrDonik/retypeset-book) in
+August 2026 unchanged, and carries no model there either.
 A maintainer who uses a language model ad hoc to produce a `buch.json` for a
 book from another source is doing hand work outside the repository, the same as
 editing that file by hand; it is not a feature, it ships nothing, and this ADR

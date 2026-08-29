@@ -54,6 +54,11 @@ shelf, in two steps with an editable recipe between them.**
 *The 2026-08-28 amendment below merged the two invocations into one command
 that dispatches on the path; the two steps and the recipe between them stand.*
 
+*The 2026-08-29 amendment below moved the script out of this repository. It is
+now `retypeset-book.py` at [DrDonik/retypeset-book](https://github.com/DrDonik/retypeset-book);
+the decision it serves — that the shelf holds re-set books — is this app's and
+stays here, as does every path named below, historically.*
+
 - **The intermediate file is the point.** `extract` writes `buch.json`, a plain
   list of paragraphs, headings and images. A wrong chapter split or an
   awkwardly placed illustration is corrected there, and `build` can then be run
@@ -232,3 +237,47 @@ the script knew.
   is immediate and names the offending word.
 - `--out` only makes sense on the PDF way in and is ignored on the other. Both
   flags being global is the price of dropping the subcommands.
+
+## Amendment (2026-08-29): the tool moves out, the decision stays
+
+The script never touched the app. Nothing in `src/` imported it, nothing called
+it, it appeared in neither `package.json` nor CI; its only ties to this
+repository were a font directory that only it used and four book folders that
+were never tracked. It lived here because it was written here, and paid for that
+with paths that climbed two levels before they said anything (`doc/books/work/…`)
+and with half a gigabyte of unversioned books sitting in the app's checkout.
+
+It now lives at [DrDonik/retypeset-book](https://github.com/DrDonik/retypeset-book),
+public and under the same Unlicense, with the vendored fonts and with
+`downloads/`, `work/`, `processed/` and `retypeset/` beside it rather than two
+folders down. `LIBRARY` disappears as a needless middle step and the invocation
+loses its prefix:
+
+    ./retypeset-book.py downloads/moppi-*-teil-*.pdf
+    ./retypeset-book.py work/moppi-und-moehre
+
+- **This ADR stays, and keeps its number.** What it records is a decision of
+  *this* app — that a book reaches the shelf re-set, at 18 × 24 cm, without the
+  page chrome — and [ADR 29](0029-the-cover-and-the-age-come-off-the-title-page.md),
+  [ADR 37](0037-no-ai-joins-the-reading.md) and `src/pdf.js` all point at it. The
+  *how* — the font-size signature, the leading, the illustration thresholds —
+  now also stands in the new repository's README, where somebody running the
+  tool will actually meet it.
+
+- **One coupling survives the split, and is now written down twice.** The app
+  reads the cover picture and the age recommendation out of page 1 of a re-set
+  PDF (ADR 29). That worked because both sides moved in one diff; from now on a
+  change to the tool's title page can take the shelf's covers away silently. The
+  contract — page 1 carries exactly one raster image, and prints the age as text
+  — is stated in the tool's `render_typst` and in ADR 29's own amendment. With no
+  test suite ([ADR 8](0008-no-tests-or-linter.md)), those two comments are the
+  whole guard, which is the honest price of the split.
+
+- **What is gone from here:** `scripts/retypeset-book.py`, `scripts/fonts/`, the
+  `doc/books/` and `__pycache__` lines in `.gitignore`, and `doc/books/` itself.
+  `scripts/` holds only Node tooling again, and the repository is JavaScript
+  throughout.
+
+- **What it costs:** a change spanning both sides — ADR 29 was one, once, in 50
+  books — is now two commits in two repositories and cannot be reviewed as a
+  single diff.

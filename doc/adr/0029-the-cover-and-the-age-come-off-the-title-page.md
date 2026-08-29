@@ -138,3 +138,25 @@ picture instead of page 1.
 - The app now assumes something about einfachvorlesen's title page. Until now
   only `scripts/retypeset-book.py` did. The thresholds above are the whole of
   that assumption, and a book that falls outside them loses nothing.
+
+## Amendment (2026-08-29): the title page is a contract across repositories
+
+The last consequence above — that the app now assumes something about
+einfachvorlesen's title page, where until then only the re-typesetting script
+did — became load-bearing when that script moved to
+[its own repository](https://github.com/DrDonik/retypeset-book)
+([ADR 28](0028-books-are-retypeset-before-they-reach-the-shelf.md)). Both
+assumptions used to be held by one diff. They are not any more, so the part the
+tool must keep is stated plainly:
+
+**Page 1 of a re-typeset book carries exactly one raster image — the cover — and
+prints the age recommendation as text.**
+
+A second image on that page, or an age recommendation set into a graphic, costs
+the shelf its covers. It does so silently: nothing throws, because a title page
+that fails either test is designed to fall back to the full-page thumbnail, and
+the failure would surface as books that quietly look the way they did before.
+
+The same note sits in the tool's `render_typst`, at the code that would break
+it. No test guards this ([ADR 8](0008-no-tests-or-linter.md)); the two comments
+are the guard.
