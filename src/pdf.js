@@ -62,8 +62,9 @@ export async function renderThumbnail(pdf, pageNumber = 1, maxDimension = 320) {
 // ── Die Titelseite auslesen (ADR 29) ─────────────────────────────────────────
 // Books from einfachvorlesen.de print two things on their title page that the
 // shelf can use as they stand: the publisher's cover picture and the age the
-// book is recommended from. Both survive scripts/retypeset-book.py (ADR 28), so
-// one reader serves the downloaded PDF and the re-set one alike. Every threshold
+// book is recommended from. Both survive re-typesetting (ADR 28; the tool now
+// lives at github.com/DrDonik/retypeset-book), so one reader serves the
+// downloaded PDF and the re-set one alike. Every threshold
 // below comes from measuring all 50 PDFs currently held — see ADR 29.
 //
 // Nothing in here throws: a book whose title page is not the one we expect keeps

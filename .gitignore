@@ -9,15 +9,8 @@ dist-ssr
 .claude/settings.local.json
 CLAUDE.local.md
 
-# Bytecode from the Python tooling in scripts/
-__pycache__/
-
 # Heavy source illustrations for the mood ritual (~49 MB). Only the small
 # generated WebP tiles in public/mood-icons/ are committed and shipped; this
 # folder is the local working source for scripts/generate-mood-icons.js, which
 # no-ops when it is absent. The briefs live in doc/mood-icon-descriptions.txt.
 doc/mood-icons/
-
-# Books downloaded from various sources. No license to publish them, only
-# storing them locally.
-doc/books/
