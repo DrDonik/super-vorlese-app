@@ -103,9 +103,22 @@ function selectForm(value, vars) {
   return value[pluralRules.select(n)] ?? value.other;
 }
 
-// Falls through the active dictionary, then English, then German. Every key
-// exists in German, so the chain always ends in a real sentence — a bare key on
-// screen means the key itself is wrong, which is exactly when it should show.
+// Falls through the active dictionary, then English, then German.
+//
+// English sits in the middle on purpose, and it is the whole reason the chain
+// has three links rather than two. A half-finished French dictionary should
+// show its gaps in English, not in German: the same reasoning that makes
+// English the fallback for a language the app does not speak at all applies key
+// by key inside a language it speaks badly. German is last because it is the
+// source and therefore the only dictionary guaranteed complete — so the chain
+// always ends in a real sentence rather than a blank.
+//
+// For a German reader the middle link is unreachable in practice: it can only
+// be taken if de.js is missing a key, which is a defect in de.js, and English
+// is then still a better thing to show than the bare key.
+//
+// A bare key on screen means the key itself is wrong — which is exactly when it
+// should show.
 function lookup(key) {
   return DICTIONARIES[lang]?.[key]
     ?? DICTIONARIES[FALLBACK_LANG]?.[key]
