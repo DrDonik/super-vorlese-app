@@ -2,11 +2,15 @@
 // vollständig: Übersetzungen dürfen Lücken haben, diese Datei nicht (siehe
 // i18n.js). Wer einen neuen Text in die App schreibt, schreibt ihn zuerst hier.
 //
-// Rechtschreibung ist schweizerisch: „ss" statt „ß", also „schliessen",
-// „vergrössern", „heisst". Das gilt für alle `de-*`-Browser, auch für Berlin —
-// die App ist für einen Haushalt gebaut, und der ist in der Schweiz.
+// Rechtschreibung und Typografie sind schweizerisch: «…» statt „…", und „ss"
+// statt „ß" — also «Der Grüffelo», „schliessen", „vergrössern", „heisst". Diese
+// Datei ist die Quelle, in die der Betreiber schreibt, und der schreibt so.
 //
-// Die Anführungszeichen sind „…" (unten/oben), wie überall sonst im Projekt.
+// Wer die App aus Deutschland oder Österreich öffnet, bekommt die vierzehn
+// Werte, die sich unterscheiden, aus src/i18n/de-DE.js überschrieben: dort
+// stehen „…" und ß. Alles andere fällt eine Stufe tiefer und kommt von hier
+// (siehe die Kette in i18n.js). Wer hier einen neuen Text mit Anführungszeichen
+// oder einem „ss" anlegt, prüft, ob er in de-DE.js eine Zeile braucht.
 //
 // Ein Wert ist entweder ein String oder ein Objekt mit Pluralformen nach den
 // CLDR-Kategorien. Die zählende Variable heisst immer `n`; andere Platzhalter
@@ -14,13 +18,23 @@
 // vorkommen, dürfen wegfallen — ein Platzhalter ohne Wert bleibt dagegen sichtbar
 // stehen, damit ein vergessenes Argument auffällt statt den Satz zu zerstören.
 //
-// Manche dieser Texte werden in Markup eingesetzt (Knopfnamen, aria-labels).
-// Deshalb: keine geraden Anführungszeichen (") und keine spitzen Klammern (<, >)
-// in den Werten. Die typografischen „…" sind gemeint und unbedenklich.
+// Anführungszeichen sind «…» (U+00AB/U+00BB), ohne Leerzeichen innen — die
+// Schweizer Setzung. Das gerade " (U+0022) stand hier lange als obere Hälfte
+// eines „…"; in einer App über Bücher ist ein Schreibmaschinen-Zeichen zwischen
+// gesetzten Zeichen ein sichtbarer Fehler. Der Quelltext drumherum (Kommentare,
+// ADRs) schreibt weiter wie gewachsen; angezeigt wird davon nichts.
 //
-// Zur Wortwahl beim gemeinsamen Lesen gilt ADR 15 unverändert: die Tätigkeit
-// heisst „Gemeinsam lesen", der Code „Synchronisations-Code (des Buches)", die
-// andere Person „Lesepartner", und „Raum" kommt nirgends vor.
+// Daraus folgt die einzige Regel, die dieses Wörterbuch braucht — und sie gilt
+// für jede Sprache, weil ein Teil dieser Texte in Vorlagen-Literale eingesetzt
+// wird (Knopfnamen, aria-labels) und ein anderer über textContent geht:
+//
+//   Nie " < > in einem Wert. Gemeint sind «…» hier, „…" in de-DE.js, “…” ’ im
+//   Englischen — alles typografisch, keines davon ein gerades Zeichen.
+//
+// Zur Wortwahl beim gemeinsamen Lesen gilt ADR 15 in seiner Ergänzung vom
+// 2026-08-29: die Tätigkeit heisst „Gemeinsam lesen", der Code „Lese-Code (des
+// Buches)", die andere Person „Lesepartner", das Gegenstück zu „Verbinden"
+// heisst „Trennen", und „Raum" kommt nirgends vor.
 
 export const de = {
   // ── Wiederkehrende Wörter ────────────────────────────────────────────
@@ -69,16 +83,16 @@ export const de = {
   // Ankündigung, dass das Regal gerade ein Buch aussucht.
   'library.book.open': '{title} öffnen',
   'library.book.readTogether': '{title} gemeinsam lesen',
-  'library.book.moods': 'Gefühle zu „{title}" ansehen',
+  'library.book.moods': 'Gefühle zu «{title}» ansehen',
   'library.book.edit': 'Buch bearbeiten',
 
-  'library.disconnected': '„{title}" ist nicht mehr synchronisiert.',
+  'library.disconnected': 'Ihr lest «{title}» nicht mehr gemeinsam.',
   'library.titleSaveFailed': 'Der neue Titel konnte nicht gespeichert werden.',
   'library.deleteFailed': 'Das Buch konnte nicht gelöscht werden.',
 
   'library.delete.title': 'Buch löschen',
   'library.delete.confirm': 'Löschen',
-  'library.delete.question': '„{title}" wirklich löschen?',
+  'library.delete.question': '«{title}» wirklich löschen?',
   // „gehen verloren" ist dasselbe Wort wie in der Kamera („Die Fotos gehen
   // verloren."), damit die App denselben Verlust einmal benennt (Regel 1).
   'library.delete.evenings': {
@@ -86,12 +100,12 @@ export const de = {
     other: '{n} gemeinsame Abende gehen damit verloren.',
   },
 
-  'library.import.unsupported': '„{name}" ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.',
+  'library.import.unsupported': '«{name}» ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.',
   'library.import.reading': 'Importiere {name}…',
-  'library.import.imported': '„{title}" importiert.',
+  'library.import.imported': '«{title}» importiert.',
   'library.import.failed': 'Import fehlgeschlagen: {error}',
   'library.import.processing': 'Verarbeite {index}/{total}: {name}…',
-  'library.import.unreadable': '„{name}" konnte nicht gelesen werden.',
+  'library.import.unreadable': '«{name}» konnte nicht gelesen werden.',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Buch bearbeiten',
@@ -102,53 +116,55 @@ export const de = {
   'bookEdit.tagsSaveFailed': 'Die Tags konnten nicht gespeichert werden.',
   // „des Buches" fällt weg: das ist der Dialog des Buches, und die Zeile steht
   // in einer Spalte von Rubriken, die alle sagen, was darunter steht.
-  'bookEdit.syncCode': 'Synchronisations-Code',
-  'bookEdit.disconnect': 'Synchronisation trennen',
+  'bookEdit.syncCode': 'Lese-Code',
+  // Das Gegenstück zu „Verbinden" im Sync-Panel, und mehr braucht der Knopf
+  // nicht: die Rubrik direkt darüber nennt den Code und zeigt ihn.
+  'bookEdit.disconnect': 'Trennen',
   'bookEdit.delete': 'Buch löschen',
 
   // ── Gemeinsam lesen ──────────────────────────────────────────────────
   'sync.activity': 'Gemeinsam lesen',
-  'sync.code': 'Synchronisations-Code',
-  'sync.codeOfBook': 'Synchronisations-Code des Buches',
-  'sync.tileHint': 'Synchronisations-Code eingeben und mitlesen',
+  'sync.code': 'Lese-Code',
+  'sync.codeOfBook': 'Lese-Code des Buches',
+  'sync.tileHint': 'Lese-Code eingeben und mitlesen',
   'sync.selectPrompt': 'Wähle das Buch, das ihr lesen wollt',
 
   'sync.start.message': 'Einer von euch beiden erstellt den Code und sagt ihn dem anderen am Telefon.',
   'sync.start.selectBook': 'Buch auswählen und Code erstellen',
-  'sync.joinLabel': 'Synchronisations-Code von deinem Lesepartner bekommen?',
+  'sync.joinLabel': 'Lese-Code von deinem Lesepartner bekommen?',
   'sync.connect': 'Verbinden',
 
-  'sync.panel.desc': 'Damit ihr dieselbe Seite seht, braucht ihr beide den gleichen Synchronisations-Code des Buches.',
-  'sync.panel.create': 'Synchronisations-Code erstellen',
+  'sync.panel.desc': 'Damit ihr dieselbe Seite seht, braucht ihr beide den gleichen Lese-Code des Buches.',
+  'sync.panel.create': 'Lese-Code erstellen',
   'sync.codeHint': 'Sag ihn deinem Lesepartner am Telefon.',
 
-  'sync.ended': 'Die Synchronisation wurde beendet.',
+  'sync.ended': 'Ihr lest nicht mehr gemeinsam.',
   'sync.connectFailed': 'Verbindung fehlgeschlagen.',
   'sync.connectFailedRetry': 'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
   'sync.bookLoading': 'Buch wird noch geladen. Bitte warten.',
 
   // {n} ist die Codelänge aus sync.js, damit der Satz mitwandert, falls sie
   // sich je ändert.
-  'sync.error.length': 'Der Synchronisations-Code besteht aus {n} Zeichen.',
-  'sync.error.unknown': 'Diesen Synchronisations-Code gibt es nicht.',
-  'sync.error.noFreeCode': 'Es konnte kein Synchronisations-Code erstellt werden. Bitte erneut versuchen.',
+  'sync.error.length': 'Der Lese-Code besteht aus {n} Zeichen.',
+  'sync.error.unknown': 'Diesen Lese-Code gibt es nicht.',
+  'sync.error.noFreeCode': 'Es konnte kein Lese-Code erstellt werden. Bitte erneut versuchen.',
 
   'sync.otherBook.title': 'Anderes Buch',
-  'sync.otherBook.message': 'Dieser Synchronisations-Code gehört zu „{title}". Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?',
+  'sync.otherBook.message': 'Dieser Lese-Code gehört zu «{title}». Gemeinsam lesen heisst, zu diesem Buch zu wechseln. Jetzt öffnen?',
   'sync.otherBook.confirm': 'Buch öffnen',
   // Wenn der Code zwar ein Buch nennt, aber keinen Titel dazu hat.
   'sync.otherBook.untitled': 'einem anderen Buch',
 
   // ── Ein Buch kommt über die Leitung ──────────────────────────────────
   'transfer.title': 'Buch wird geladen',
-  'transfer.message': '„{title}" wird von deinem Lesepartner gesendet…',
+  'transfer.message': '«{title}» wird von deinem Lesepartner gesendet…',
   'transfer.untitled': 'Buch',
   'transfer.saving': 'Buch wird gespeichert…',
   'transfer.corrupt.title': 'Übertragung fehlerhaft',
   'transfer.corrupt.message': 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.',
   'transfer.failed.title': 'Verbindung nicht möglich',
   'transfer.failed.message': 'Dein Lesepartner muss die App offen haben und das Buch aufmachen. Bitte versuche es dann erneut.',
-  'transfer.unsupported': 'Dieser Synchronisations-Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Synchronisations-Code neu erstellen.',
+  'transfer.unsupported': 'Dieser Lese-Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Lese-Code neu erstellen.',
 
   // ── Leser ────────────────────────────────────────────────────────────
   'reader.back': 'Zurück zur Bibliothek',

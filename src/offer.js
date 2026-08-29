@@ -1,6 +1,6 @@
 // Putting a book on offer: the policy side of the WebRTC transfer (ADR 33).
 //
-// Showing a Synchronisations-Code *is* the act of giving it to somebody — it is
+// Showing a Lese-Code *is* the act of giving it to somebody — it is
 // read out over the video call, and the partner types it a moment later. So the
 // two screens that show a code, the reader's sync panel and „Buch bearbeiten",
 // are exactly the two places that put the book on offer, and they are the only
@@ -10,8 +10,7 @@
 // end when the screen that made it goes away: reading the code out and walking
 // back to the shelf while the partner is still hunting for the app is the normal
 // course of a bedtime story, and it must not cut the transfer off. Taking the
-// offer back is „Synchronisation trennen" (via closeSyncForBook), and otherwise
-// closing the app.
+// offer back is „Trennen" (via closeSyncForBook), and otherwise closing the app.
 
 import { getFirebase, getSavedRoomCode } from './sync.js';
 import { exportBook } from './bundle.js';
@@ -30,9 +29,9 @@ export function offerBook(bookId, roomCode) {
   getFirebase()
     .then((fb) => {
       // Checked again on the far side of the wait, and this is not a rare race:
-      // „Synchronisation trennen" and „Buch löschen" both sit in the very dialog
-      // whose opening started this offer, and loading Firebase the first time in
-      // a run takes long enough to tap one. stopServing() cannot help there —
+      // „Trennen" and „Buch löschen" both sit in the very dialog whose opening
+      // started this offer, and loading Firebase the first time in a run takes
+      // long enough to tap one. stopServing() cannot help there —
       // at that moment there is nothing in its map yet — so without this check
       // the offer would come up *after* the withdrawal and quietly go on sharing
       // a book the user just stopped sharing.

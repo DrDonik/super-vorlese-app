@@ -232,7 +232,7 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       if (input.placeholder) inputEl.placeholder = input.placeholder;
       inputEl.autocomplete = 'off';
       // Lets a caller shape the field for what it asks for (the
-      // Synchronisations-Code brings its own attributes and typing behaviour)
+      // Lese-Code brings its own attributes and typing behaviour)
       // without dialog.js having to know any of those specifics.
       input.setup?.(inputEl);
       if (input.labelText) {

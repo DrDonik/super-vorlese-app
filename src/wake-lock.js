@@ -23,7 +23,7 @@
 //   gesture, so the re-request may be refused. It is retried on the next touch
 //   anywhere in the reader, which during a read-aloud arrives at the latest
 //   with the next page turn. The same retry covers the book that was opened
-//   from a Synchronisations-Code, where a transfer of several megabytes runs
+//   from a Lese-Code, where a transfer of several megabytes runs
 //   between the tap and the reader.
 //
 // Every failure is silent. A screen that sleeps is what every other app on the

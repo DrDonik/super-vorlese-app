@@ -1,4 +1,4 @@
-// The Synchronisations-Code is typed in two places — the library's „Gemeinsam
+// The Lese-Code is typed in two places — the library's „Gemeinsam
 // lesen" dialog, where it is entered for the very first time, and the reader's
 // sync panel. This turns a plain text input into that one field, so both places
 // look and behave identically (rule 1) and neither can produce an unusable code

@@ -344,7 +344,7 @@ export function serveBook(fb, roomCode, getBundle) {
 // --- One offer per room, for as long as the app runs ----------------------
 // serveBook() above is the mechanism; this is the bookkeeping around it, and
 // the policy it serves is ADR 33: a book goes on offer when this device shows
-// its Synchronisations-Code, and stays on offer until the app closes.
+// its Lese-Code, and stays on offer until the app closes.
 //
 // Keyed by room code rather than by book, because the same code can be
 // announced from two places — the reader's sync panel and „Buch bearbeiten" —

@@ -271,7 +271,7 @@ const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
 // the same move ADR 17 made for deleting: a control used a few times a year has
 // no business on a surface used every evening — and since that screen now opens
 // by itself after „Gemeinsam lesen", a red one-tap disconnect sat directly under
-// the code somebody was in the middle of reading out. A Synchronisations-Code
+// the code somebody was in the middle of reading out. A Lese-Code
 // belongs to the *book*, so the book's own dialog is where it is given up.
 //
 // Nothing in here is a draft (ADR 21). A tag is stored the moment its chip is
@@ -1231,7 +1231,7 @@ export class LibraryView {
     return tile;
   }
 
-  // „Gemeinsam lesen" used to ask for a Synchronisations-Code and nothing else,
+  // „Gemeinsam lesen" used to ask for a Lese-Code and nothing else,
   // which only ever served the person who had been given one. Whoever holds the
   // book — often the grandparent — was sent away empty-handed, because a code
   // can only be created inside a book, behind a control in the reader nothing
