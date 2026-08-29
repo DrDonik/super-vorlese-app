@@ -30,6 +30,22 @@ registerSW({
 // Ansicht, damit keine Bildschirmseite eine Lücke hat.
 suppressNativeZoomGestures();
 
+// Eine Datei, die neben ihr Ziel fällt, öffnet der Browser sonst im Tab — und
+// dann ist die App weg. Mitten in einer Vorlese-Sitzung nimmt das nicht nur die
+// Ansicht mit, sondern die Sitzung. Also ist der Standardfall überall verboten;
+// wer einen Drop annimmt, meldet sich mit einem eigenen Listener (die
+// Bibliothek tut das, siehe library.js). `dragover` muss mit: ohne
+// preventDefault dort kommt gar kein `drop`, und der Browser navigiert wieder.
+for (const type of ['dragover', 'drop']) {
+  window.addEventListener(type, (e) => {
+    e.preventDefault();
+    // Ohne Empfänger ist die Antwort auf eine gezogene Datei „hier nicht": die
+    // Bibliothek hängt ihr eigenes 'copy' danach dran, jede andere Ansicht
+    // bleibt beim Verbotszeichen.
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+  });
+}
+
 const app = document.getElementById('app');
 let currentView = null;
 

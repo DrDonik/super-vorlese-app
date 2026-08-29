@@ -503,6 +503,9 @@ export class LibraryView {
     // of opening it to read alone.
     this.selectMode = false;
     this.hasBooks = false;
+    // Am window statt am Regal, deshalb aufzuräumen; siehe attachDropTarget().
+    this.dropHandlers = null;
+    this.dragDepth = 0;
     // The books, completions and chips the last render measured; see
     // refreshFilterBar(). Null until the first render, and again whenever the
     // shelf is empty.
@@ -529,6 +532,9 @@ export class LibraryView {
         <div class="library-sort" role="group" aria-label="Bücher sortieren" hidden></div>
         <div class="library-filter" role="group" aria-label="Bücher filtern" hidden></div>
         <div class="library-grid"></div>
+        <div class="library-drop" hidden>
+          <div class="library-drop-card">📥 PDF hier ablegen</div>
+        </div>
       </div>
     `;
 
@@ -539,6 +545,8 @@ export class LibraryView {
 
     const importInput = this.root.querySelector('.import-input');
     importInput.addEventListener('change', (e) => this.handleImport(e.target.files));
+
+    this.attachDropTarget();
 
     const photoBtn = this.root.querySelector('.add-photos');
     photoBtn.addEventListener('click', () => this.onAddPhotos?.());
@@ -772,9 +780,14 @@ export class LibraryView {
       // No „importiere ein geteiltes Buch": since ADR 17 the app hands out no
       // book files any more, so the third way to a book is the one the tile
       // above offers — a Lesepartner sends it over when you join their session.
+      //
+      // Der dritte Satz steht nur dort, wo die Geste existiert (siehe
+      // .empty-drop-hint in style.css): auf dem iPad wäre er ein Hinweis auf
+      // etwas, das die Finger im Regal nicht können.
       empty.innerHTML = `
         <p>Noch keine Bücher.</p>
         <p>Fotografiere Seiten oder lade ein PDF. Beim gemeinsamen Lesen bekommst du das Buch von deinem Lesepartner.</p>
+        <p class="empty-drop-hint">Eine PDF kannst du auch einfach hierher ziehen.</p>
       `;
       grid.appendChild(empty);
       this.cleanupThumbUrls();
@@ -1316,6 +1329,75 @@ export class LibraryView {
     });
   }
 
+  // ── Eine PDF ins Regal ziehen ───────────────────────────────────────
+  // Ziel ist das ganze Fenster, kein abgegrenztes Feld: wer eine Datei zieht,
+  // zielt nicht, sondern lässt los, wo die Hand gerade ist — ein kleines Ziel
+  // wäre vor allem eine Gelegenheit, danebenzutreffen (Regel 5). Sichtbar wird
+  // es erst, wenn wirklich eine Datei über dem Fenster hängt: davor hätte das
+  // Regal ein dauerhaftes Drop-Feld für eine Geste zu tragen, die es auf dem
+  // Tablet nicht gibt, und im Moment des Ziehens ist es zugleich die einzige
+  // Gelegenheit, bei der die Funktion überhaupt auffallen kann (Regel 3).
+  //
+  // Angenommen wird der Drop von handleImport(), also auf demselben Weg wie der
+  // Dateidialog. Mehrfachauswahl, Dublettenerkennung über den contentHash,
+  // Titelseite (ADR 29), die Meldung bei einem falschen Format und der
+  // Fortschritt in .library-status gelten damit unverändert — ein zweiter
+  // Importpfad, der davon abdriften könnte, entsteht hier nicht. Ein Ordner
+  // fällt dabei durch dieselbe Prüfung wie am Dateidialog: er ist kein PDF und
+  // wird mit derselben Meldung abgewiesen.
+  attachDropTarget() {
+    // Am window und nicht am Regal: die Bibliothek füllt zwar den Bildschirm,
+    // ihre Ränder sind aber nicht die des Fensters, und ein Drop im Rand soll
+    // nicht am Verbotszeichen aus main.js hängenbleiben.
+    const hasFiles = (e) => Array.from(e.dataTransfer?.types || []).includes('Files');
+    // Über einem offenen Dialog läge die Rückmeldung hinter dem Modal, und im
+    // Auswahlmodus lautet die Frage auf dem Bildschirm gerade „welches Buch
+    // lesen wir", nicht „welches kommt dazu".
+    const allowed = () => !this.selectMode && !document.querySelector('.dialog-overlay');
+
+    // dragenter/dragleave feuern auch für jedes Kind unter dem Zeiger, deshalb
+    // gezählt und nicht geschaltet: erst wenn die letzte Ebene verlassen ist,
+    // ist die Datei wirklich aus dem Fenster heraus.
+    this.dragDepth = 0;
+
+    this.dropHandlers = {
+      dragenter: (e) => {
+        if (!hasFiles(e)) return;
+        this.dragDepth++;
+        this.setDropActive(allowed());
+      },
+      // Bewusst ohne hasFiles(): manche Browser reichen beim dragleave keine
+      // types mehr mit, und ein verschluckter Abzug liesse das Overlay stehen,
+      // bis die Ansicht wechselt. Ohne die Abfrage kann höchstens ein dragleave
+      // zu viel kommen — von einem Zug ohne Datei, der nie hochgezählt hat —,
+      // und den fängt die Null unten ab. Zwei Züge gleichzeitig gibt es nicht.
+      dragleave: () => {
+        this.dragDepth = Math.max(0, this.dragDepth - 1);
+        if (this.dragDepth === 0) this.setDropActive(false);
+      },
+      dragover: (e) => {
+        if (!hasFiles(e) || !e.dataTransfer) return;
+        // preventDefault() hat main.js bereits erledigt; hier steht nur, was ein
+        // Loslassen über dem Regal bedeuten würde.
+        e.dataTransfer.dropEffect = allowed() ? 'copy' : 'none';
+      },
+      drop: (e) => {
+        this.dragDepth = 0;
+        this.setDropActive(false);
+        if (!hasFiles(e) || !allowed()) return;
+        this.handleImport(e.dataTransfer.files);
+      },
+    };
+    for (const [type, handler] of Object.entries(this.dropHandlers)) {
+      window.addEventListener(type, handler);
+    }
+  }
+
+  setDropActive(on) {
+    const overlay = this.root.querySelector('.library-drop');
+    if (overlay) overlay.hidden = !on;
+  }
+
   async handleImport(fileList) {
     const files = Array.from(fileList || []);
     const importInput = this.root.querySelector('.import-input');
@@ -1420,5 +1502,13 @@ export class LibraryView {
     // creating URLs into a torn-down view after we have cleaned up.
     this.renderId++;
     this.cleanupThumbUrls();
+    // Die Drop-Listener hängen am window und überleben den innerHTML-Tausch
+    // sonst — samt einer setDropActive(), die ins Leere greift.
+    if (this.dropHandlers) {
+      for (const [type, handler] of Object.entries(this.dropHandlers)) {
+        window.removeEventListener(type, handler);
+      }
+      this.dropHandlers = null;
+    }
   }
 }
