@@ -417,6 +417,51 @@ button {
   line-height: 1.7;
 }
 
+/* Der Hinweis aufs Ziehen steht nur dort, wo sich ziehen lässt: an einem
+   Zeigegerät, das eine Datei aufnehmen und wieder loslassen kann. Auf dem iPad
+   verspräche er den Fingern etwas, das sie im Regal nicht können — und wenn ein
+   Trackpad am Tablet hängt, greift die Abfrage und der Satz stimmt wieder. */
+.empty-drop-hint {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .empty-drop-hint {
+    display: block;
+  }
+}
+
+/* Das Ziel für eine gezogene PDF (siehe attachDropTarget() in library.js). Es
+   liegt über dem ganzen Fenster, weil das Fenster das Ziel ist, und unter den
+   Dialogen (z-index 1000), auch wenn es neben einem offenen Dialog gar nicht
+   erst erscheint. Gedeckt gehalten: das hier ist eine Rückmeldung auf eine
+   laufende Geste, kein Knopf — deshalb kein --accent (ADR 4). */
+.library-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  /* Die Ereignisse hängen am window. Das Overlay darf weder dem Drop im Weg
+     stehen noch, indem es unter dem Zeiger auftaucht, selbst zum verlassenen
+     und betretenen Element werden — das liesse die Zählung flackern. */
+  pointer-events: none;
+}
+
+.library-drop-card {
+  border: 2px dashed var(--fg-dim);
+  border-radius: 16px;
+  padding: 32px 40px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  font-size: 1.25rem;
+}
+
 .book-card {
   background: var(--bg-elev);
   border: none;
