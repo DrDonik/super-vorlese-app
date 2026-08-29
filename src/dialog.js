@@ -1,3 +1,5 @@
+import { t } from './i18n.js';
+
 // In-app replacements for the browser's native alert / confirm / prompt.
 //
 // Why these exist: native dialogs are unstyled, clash with the app's custom
@@ -255,7 +257,7 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
         field.appendChild(inputEl);
         card.appendChild(field);
       } else {
-        inputEl.setAttribute('aria-label', input.label || title || 'Eingabe');
+        inputEl.setAttribute('aria-label', input.label || title || t('common.input'));
         card.appendChild(inputEl);
       }
     }
@@ -473,7 +475,7 @@ export function showProgress({ title, message } = {}) {
   };
 }
 
-export function showAlert({ title, message, confirmLabel = 'OK' } = {}) {
+export function showAlert({ title, message, confirmLabel = t('common.ok') } = {}) {
   return openDialog({
     title,
     message,
@@ -482,7 +484,13 @@ export function showAlert({ title, message, confirmLabel = 'OK' } = {}) {
   });
 }
 
-export function showConfirm({ title, message, confirmLabel = 'OK', cancelLabel = 'Abbrechen', destructive = false } = {}) {
+export function showConfirm({
+  title,
+  message,
+  confirmLabel = t('common.ok'),
+  cancelLabel = t('common.cancel'),
+  destructive = false,
+} = {}) {
   return openDialog({
     title,
     message,
@@ -502,8 +510,8 @@ export function showPrompt({
   message,
   value = '',
   placeholder = '',
-  confirmLabel = 'OK',
-  cancelLabel = 'Abbrechen',
+  confirmLabel = t('common.ok'),
+  cancelLabel = t('common.cancel'),
   allowEmpty = false,
   setup,
   validate,

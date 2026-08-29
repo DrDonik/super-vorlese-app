@@ -9,6 +9,7 @@ import { getFirebase, pruneDeadRooms } from './sync.js';
 import { receiveBook } from './transfer.js';
 import { showAlert, showProgress } from './dialog.js';
 import { restoreDebugViewport } from './debug-viewport.js';
+import { t } from './i18n.js';
 import { suppressNativeZoomGestures } from './native-zoom.js';
 
 // An installed PWA on iOS is frozen (not reloaded) when reopened, so it never
@@ -106,8 +107,8 @@ function showReader(bookId, { joinCode = null, startShared = false } = {}) {
 async function openRoom(room) {
   if (!room.book || !room.book.hash) {
     await showAlert({
-      title: 'Gemeinsam lesen',
-      message: 'Dieser Synchronisations-Code unterstützt das Senden von Büchern noch nicht. Bitte lass deinen Lesepartner den Synchronisations-Code neu erstellen.',
+      title: t('sync.activity'),
+      message: t('transfer.unsupported'),
     });
     return;
   }
@@ -124,8 +125,8 @@ async function openRoom(room) {
 
   // Otherwise fetch it from the partner over WebRTC.
   const progress = showProgress({
-    title: 'Buch wird geladen',
-    message: `„${room.book.title || 'Buch'}" wird von deinem Lesepartner gesendet…`,
+    title: t('transfer.title'),
+    message: t('transfer.message', { title: room.book.title || t('transfer.untitled') }),
   });
   let newBookId = null;
   try {
@@ -133,7 +134,7 @@ async function openRoom(room) {
     const bundleBlob = await receiveBook(fb, room.code, {
       onProgress: (fraction) => progress.update(fraction),
     });
-    progress.update(1, 'Buch wird gespeichert…');
+    progress.update(1, t('transfer.saving'));
     const { id } = await importBundle(bundleBlob);
     newBookId = id;
     const gotHash = await ensureContentHash(id);
@@ -148,10 +149,8 @@ async function openRoom(room) {
     console.error('Buch-Übertragung fehlgeschlagen', err?.message || err);
     const corrupt = err?.message === 'integrity';
     await showAlert({
-      title: corrupt ? 'Übertragung fehlerhaft' : 'Verbindung nicht möglich',
-      message: corrupt
-        ? 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.'
-        : 'Dein Lesepartner muss die App offen haben und das Buch aufmachen. Bitte versuche es dann erneut.',
+      title: t(corrupt ? 'transfer.corrupt.title' : 'transfer.failed.title'),
+      message: t(corrupt ? 'transfer.corrupt.message' : 'transfer.failed.message'),
     });
   }
 }

@@ -4,6 +4,7 @@ import {
   savePhotoBook, saveBook, uid, hashBook, findAndBumpExistingBook,
 } from './storage.js';
 import { loadPdf, readTitlePage } from './pdf.js';
+import { t } from './i18n.js';
 
 const APP_TAG = 'super-vorlese';
 const BUNDLE_VERSION = 1;
@@ -37,12 +38,12 @@ function unzipAsync(data) {
 
 function safeFilename(title) {
   const cleaned = title.replace(/[\\/:*?"<>|]+/g, '').replace(/\s+/g, ' ').trim();
-  return cleaned || 'buch';
+  return cleaned || t('title.exportFilename');
 }
 
 export async function exportBook(id) {
   const meta = await getMeta(id);
-  if (!meta) throw new Error('Buch nicht gefunden.');
+  if (!meta) throw new Error(t('error.bookNotFound'));
   const type = meta.type || 'pdf';
   const manifest = {
     app: APP_TAG,
@@ -61,12 +62,12 @@ export async function exportBook(id) {
     const pages = await getPhotoPages(id, meta.pageCount);
     for (let i = 0; i < pages.length; i++) {
       const page = pages[i];
-      if (!page) throw new Error(`Seite ${i + 1} fehlt.`);
+      if (!page) throw new Error(t('error.pageMissing', { n: i + 1 }));
       entries[pagePath(i + 1)] = await blobToBytes(page);
     }
   } else {
     const pdfBlob = await getBookFile(id);
-    if (!pdfBlob) throw new Error('PDF-Datei fehlt.');
+    if (!pdfBlob) throw new Error(t('error.pdfMissing'));
     entries['book.pdf'] = await blobToBytes(pdfBlob);
   }
 
@@ -89,26 +90,26 @@ export async function importBundle(file, { dedupe = false } = {}) {
   try {
     entries = await unzipAsync(data);
   } catch {
-    throw new Error('Datei kann nicht gelesen werden.');
+    throw new Error(t('error.unreadable'));
   }
   const manifestRaw = entries['manifest.json'];
-  if (!manifestRaw) throw new Error('Ungültige Datei: Manifest fehlt.');
+  if (!manifestRaw) throw new Error(t('error.manifestMissing'));
   let manifest;
   try {
     manifest = JSON.parse(new TextDecoder().decode(manifestRaw));
   } catch {
-    throw new Error('Ungültige Datei: Manifest beschädigt.');
+    throw new Error(t('error.manifestCorrupt'));
   }
-  if (manifest.app !== APP_TAG) throw new Error('Diese Datei stammt nicht aus der Vorlese-App.');
+  if (manifest.app !== APP_TAG) throw new Error(t('error.foreignFile'));
 
   const version = Number(manifest.version);
   if (!Number.isInteger(version) || version < 1 || version > BUNDLE_VERSION) {
-    throw new Error('Die Datei hat ein unbekanntes oder zu neues Format.');
+    throw new Error(t('error.unknownFormat'));
   }
-  const title = String(manifest.title ?? '').trim() || 'Importiertes Buch';
+  const title = String(manifest.title ?? '').trim() || t('title.imported');
   const pageCount = Number(manifest.pageCount);
   if (!Number.isInteger(pageCount) || pageCount < 1 || pageCount > MAX_PAGE_COUNT) {
-    throw new Error('Die Datei enthält eine ungültige Seitenanzahl.');
+    throw new Error(t('error.badPageCount'));
   }
 
   const id = uid();
@@ -119,7 +120,7 @@ export async function importBundle(file, { dedupe = false } = {}) {
     const pages = [];
     for (let i = 1; i <= pageCount; i++) {
       const pageBytes = entries[pagePath(i)];
-      if (!pageBytes) throw new Error(`Seite ${i} fehlt im Bundle.`);
+      if (!pageBytes) throw new Error(t('error.pageMissingInBundle', { n: i }));
       pages.push(new Blob([pageBytes], { type: 'image/jpeg' }));
     }
     const contentHash = await hashBook({ type: 'photos', pages });
@@ -130,13 +131,13 @@ export async function importBundle(file, { dedupe = false } = {}) {
     await savePhotoBook({ id, title, pages, thumbBlob, contentHash });
   } else if (manifest.type === 'pdf') {
     const pdfBytes = entries['book.pdf'];
-    if (!pdfBytes) throw new Error('PDF fehlt im Bundle.');
+    if (!pdfBytes) throw new Error(t('error.pdfMissingInBundle'));
     const fileBlob = new Blob([pdfBytes], { type: 'application/pdf' });
     let pdf;
     try {
       pdf = await loadPdf(fileBlob);
     } catch {
-      throw new Error('PDF im Bundle ist beschädigt.');
+      throw new Error(t('error.pdfCorruptInBundle'));
     }
     let actualPageCount;
     let cover = null;
@@ -173,7 +174,7 @@ export async function importBundle(file, { dedupe = false } = {}) {
       tags: ageTag ? [ageTag] : undefined,
     });
   } else {
-    throw new Error(`Unbekannter Buch-Typ: ${manifest.type}`);
+    throw new Error(t('error.unknownBookType', { type: manifest.type }));
   }
   return { id, title };
 }

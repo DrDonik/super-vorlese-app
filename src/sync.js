@@ -1,4 +1,5 @@
 import { ROOM_TTL_MS, ROOM_REFRESH_MS, DATABASE_URL } from './sync-constants.js';
+import { t } from './i18n.js';
 // The bookkeeping half of the transfer layer only; transfer.js imports nothing
 // itself, so giving up a code here can never loop back into this module.
 import { stopServing } from './transfer.js';
@@ -120,17 +121,17 @@ export async function lookupRoom(code) {
   const fb = await loadFirebase();
   const normalizedCode = normalizeRoomCode(code);
   if (normalizedCode.length !== CODE_LENGTH) {
-    throw new Error('Der Synchronisations-Code besteht aus 6 Zeichen.');
+    throw new Error(t('sync.error.length', { n: CODE_LENGTH }));
   }
   const r = fb.ref(fb.db, `rooms/${normalizedCode}`);
   const snapshot = await fb.get(r);
   if (!snapshot.exists()) {
-    throw new Error('Diesen Synchronisations-Code gibt es nicht.');
+    throw new Error(t('sync.error.unknown'));
   }
   const data = snapshot.val();
   if (roomIsGone(data)) {
     fb.remove(r).catch(() => {});
-    throw new Error('Diesen Synchronisations-Code gibt es nicht.');
+    throw new Error(t('sync.error.unknown'));
   }
   return { code: normalizedCode, book: data.book || null, page: data.page };
 }
@@ -246,7 +247,7 @@ export class SyncSession {
       r = this.fb.ref(this.fb.db, `rooms/${code}`);
       const snapshot = await this.fb.get(r);
       if (!snapshot.exists()) break;
-      if (i === 4) throw new Error('Es konnte kein Synchronisations-Code erstellt werden. Bitte erneut versuchen.');
+      if (i === 4) throw new Error(t('sync.error.noFreeCode'));
     }
     const payload = {
       page: initialPage,
@@ -270,17 +271,17 @@ export class SyncSession {
     this.fb = await loadFirebase();
     const normalizedCode = normalizeRoomCode(code);
     if (normalizedCode.length !== CODE_LENGTH) {
-      throw new Error('Der Synchronisations-Code besteht aus 6 Zeichen.');
+      throw new Error(t('sync.error.length', { n: CODE_LENGTH }));
     }
     const r = this.fb.ref(this.fb.db, `rooms/${normalizedCode}`);
     const snapshot = await this.fb.get(r);
     if (!snapshot.exists()) {
-      throw new Error('Diesen Synchronisations-Code gibt es nicht.');
+      throw new Error(t('sync.error.unknown'));
     }
     const data = snapshot.val();
     if (roomIsGone(data)) {
       this.fb.remove(r).catch(() => {});
-      throw new Error('Diesen Synchronisations-Code gibt es nicht.');
+      throw new Error(t('sync.error.unknown'));
     }
     // Rejoining the room this device already had saved for this book: keep the
     // id it is known by there, so a pointer or a mood pick that is still in

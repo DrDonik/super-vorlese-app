@@ -11,11 +11,12 @@ import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
 import { offerBook } from './offer.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
 import { showAlert, showConfirm, openDialog } from './dialog.js';
+import { t, collator, formatDate, foldCase } from './i18n.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
 function deriveTitle(filename) {
-  return filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() || 'Unbenannt';
+  return filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() || t('title.untitled');
 }
 
 // --- Sorting ----------------------------------------------------------------
@@ -25,9 +26,9 @@ function deriveTitle(filename) {
 // this app's users should never have to explain to themselves.
 
 const SORT_MODES = [
-  { id: 'opened', label: 'Zuletzt gelesen' },
-  { id: 'title', label: 'A–Z' },
-  { id: 'added', label: 'Hinzugefügt' },
+  { id: 'opened', labelKey: 'library.sort.opened' },
+  { id: 'title', labelKey: 'library.sort.title' },
+  { id: 'added', labelKey: 'library.sort.added' },
 ];
 
 // Bedtime reading returns to the same book night after night, so the book you
@@ -55,8 +56,10 @@ function storeSortMode(mode) {
 }
 
 // numeric so „Band 2" precedes „Band 10"; base sensitivity so „Ätna" sorts with
-// the A's and capitalisation never splits otherwise identical titles.
-const titleCollator = new Intl.Collator('de-CH', { numeric: true, sensitivity: 'base' });
+// the A's and capitalisation never splits otherwise identical titles. Built from
+// the language the app is running in, so a shelf reads in the order that
+// language sorts in — Danish puts Å after Z, and a de-CH collator would not.
+const titleCollator = collator({ numeric: true, sensitivity: 'base' });
 
 // listBooks() delivers newest-added first and Array.prototype.sort is stable, so
 // every mode falls back to that order for ties without comparing explicitly.
@@ -122,7 +125,7 @@ function bookTags(book) {
 // „Marchen" stay distinct, because they are different words and folding them
 // together would silently rewrite what the user typed.
 function tagKey(tag) {
-  return tag.toLocaleLowerCase('de-CH');
+  return foldCase(tag);
 }
 
 function sameTag(a, b) {
@@ -174,8 +177,8 @@ function buildFilterChips(books, doneFlags) {
   const chips = [];
   const doneCount = doneFlags.filter(Boolean).length;
   if (doneCount > 0 && doneCount < books.length) {
-    chips.push({ id: FILTER_DONE, label: 'Schon gelesen' });
-    chips.push({ id: FILTER_OPEN, label: 'Noch nicht gelesen' });
+    chips.push({ id: FILTER_DONE, label: t('library.filter.done') });
+    chips.push({ id: FILTER_OPEN, label: t('library.filter.open') });
   }
   for (const tag of collectTags(books)) {
     chips.push({ id: `${TAG_FILTER_PREFIX}${tag}`, label: tag });
@@ -289,7 +292,7 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
   const label = document.createElement('div');
   label.className = 'dialog-field-label';
   label.id = `tag-picker-label-${++tagLabelSeq}`;
-  label.textContent = 'Tags';
+  label.textContent = t('bookEdit.tags');
   tagSection.appendChild(label);
 
   const picker = document.createElement('div');
@@ -352,7 +355,7 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
       selected = new Set(committed);
       paintChips();
     }
-    setError(ok ? '' : 'Die Tags konnten nicht gespeichert werden.');
+    setError(ok ? '' : t('bookEdit.tagsSaveFailed'));
   };
 
   const setSelected = (tag, on) => {
@@ -385,15 +388,15 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
   const newInput = document.createElement('input');
   newInput.type = 'text';
   newInput.className = 'dialog-input tag-new-input';
-  newInput.placeholder = 'Neuer Tag';
+  newInput.placeholder = t('bookEdit.newTag');
   newInput.maxLength = MAX_TAG_LENGTH;
   newInput.autocomplete = 'off';
-  newInput.setAttribute('aria-label', 'Neuen Tag hinzufügen');
+  newInput.setAttribute('aria-label', t('bookEdit.newTagLabel'));
 
   const addBtn = document.createElement('button');
   addBtn.type = 'button';
   addBtn.className = 'tag-add';
-  addBtn.textContent = 'Hinzufügen';
+  addBtn.textContent = t('common.add');
 
   const syncAddBtn = () => { addBtn.disabled = normalizeTag(newInput.value) === ''; };
 
@@ -440,7 +443,7 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
     syncLabel.className = 'dialog-field-label';
     // „des Buches" is dropped: this is the book's own dialog, and the rubric
     // sits in a column of rubrics that all say what the line under them is.
-    syncLabel.textContent = 'Synchronisations-Code';
+    syncLabel.textContent = t('bookEdit.syncCode');
     syncSection.appendChild(syncLabel);
 
     const code = document.createElement('div');
@@ -457,7 +460,7 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
     // it used to be an exact twin of one line above (issue #155). Standing on
     // its own it is outlined rather than bare; see .book-edit-actions.
     stopBtn.className = 'dialog-btn';
-    stopBtn.textContent = 'Synchronisation trennen';
+    stopBtn.textContent = t('bookEdit.disconnect');
 
     stopRow.appendChild(stopBtn);
     syncSection.appendChild(stopRow);
@@ -465,13 +468,13 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
   }
 
   return openDialog({
-    title: 'Buch bearbeiten',
+    title: t('bookEdit.title'),
     // Not focused on opening, and so not selected either: see dialog.js. What
     // is typed here is saved by every way out of this dialog, „Synchronisation
     // trennen" included — a way out that quietly dropped it would be the one
     // surprise this dialog can no longer afford now that „Abbrechen" is gone.
     // Deleting is the exception, and only because the book goes with it.
-    input: { value: title, labelText: 'Titel', autoFocus: false, allowEmpty: true },
+    input: { value: title, labelText: t('bookEdit.titleField'), autoFocus: false, allowEmpty: true },
     content: (close, inputEl) => {
       stopBtn?.addEventListener('click', () => close({
         title: inputEl.value,
@@ -479,9 +482,9 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
       }));
       return content;
     },
-    dangerButton: { label: 'Buch löschen', value: { action: DELETE_REQUESTED } },
+    dangerButton: { label: t('bookEdit.delete'), value: { action: DELETE_REQUESTED } },
     buttons: [
-      { label: 'Fertig', primary: true, getValue: (titleValue) => ({ title: titleValue }) },
+      { label: t('common.done'), primary: true, getValue: (titleValue) => ({ title: titleValue }) },
     ],
     cancelValue: (titleValue) => ({ title: titleValue }),
   });
@@ -516,24 +519,24 @@ export class LibraryView {
     this.root.innerHTML = `
       <div class="library">
         <header class="library-header">
-          <h1>Bibliothek</h1>
+          <h1>${t('library.title')}</h1>
           <div class="library-actions">
             <button class="add-book add-photos" type="button">
-              <span>📷 Fotografieren</span>
+              <span>📷 ${t('library.photograph')}</span>
             </button>
             <label class="add-book add-import">
               <input class="import-input" type="file" accept="application/pdf,.pdf,.vorlese,.zip,application/zip,application/octet-stream" multiple hidden />
-              <span>📥 Importieren</span>
+              <span>📥 ${t('library.import')}</span>
             </label>
-            <button class="add-book select-cancel" type="button" hidden>Abbrechen</button>
+            <button class="add-book select-cancel" type="button" hidden>${t('common.cancel')}</button>
           </div>
         </header>
         <div class="library-status" hidden></div>
-        <div class="library-sort" role="group" aria-label="Bücher sortieren" hidden></div>
-        <div class="library-filter" role="group" aria-label="Bücher filtern" hidden></div>
+        <div class="library-sort" role="group" aria-label="${t('library.sortGroup')}" hidden></div>
+        <div class="library-filter" role="group" aria-label="${t('library.filterGroup')}" hidden></div>
         <div class="library-grid"></div>
         <div class="library-drop" hidden>
-          <div class="library-drop-card">📥 PDF hier ablegen</div>
+          <div class="library-drop-card">📥 ${t('library.dropTarget')}</div>
         </div>
       </div>
     `;
@@ -617,7 +620,7 @@ export class LibraryView {
       pill.type = 'button';
       pill.className = 'sort-pill';
       pill.dataset.mode = mode.id;
-      pill.textContent = mode.label;
+      pill.textContent = t(mode.labelKey);
       pill.setAttribute('aria-pressed', String(mode.id === this.sortMode));
       pill.addEventListener('click', () => this.setSortMode(mode.id));
       bar.appendChild(pill);
@@ -785,9 +788,9 @@ export class LibraryView {
       // .empty-drop-hint in style.css): auf dem iPad wäre er ein Hinweis auf
       // etwas, das die Finger im Regal nicht können.
       empty.innerHTML = `
-        <p>Noch keine Bücher.</p>
-        <p>Fotografiere Seiten oder lade ein PDF. Beim gemeinsamen Lesen bekommst du das Buch von deinem Lesepartner.</p>
-        <p class="empty-drop-hint">Eine PDF kannst du auch einfach hierher ziehen.</p>
+        <p>${t('library.empty.title')}</p>
+        <p>${t('library.empty.body')}</p>
+        <p class="empty-drop-hint">${t('library.empty.dropHint')}</p>
       `;
       grid.appendChild(empty);
       this.cleanupThumbUrls();
@@ -849,8 +852,8 @@ export class LibraryView {
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.innerHTML = `
-        <p>Kein Buch passt zu allen Filtern.</p>
-        <p>Tippe oben auf einen der eingeschalteten Filter, um ihn wieder auszuschalten.</p>
+        <p>${t('library.noMatch.title')}</p>
+        <p>${t('library.noMatch.body')}</p>
       `;
       fragment.appendChild(empty);
     }
@@ -871,7 +874,7 @@ export class LibraryView {
         <div class="book-cover"></div>
         <div class="book-title"></div>
         <div class="book-meta"></div>
-        <button class="book-action book-edit" type="button" aria-label="Buch bearbeiten">${ICON_PENCIL}</button>
+        <button class="book-action book-edit" type="button" aria-label="${t('library.book.edit')}">${ICON_PENCIL}</button>
       `;
       const openBtn = card.querySelector('.book-open');
       // The one signal a screen-reader user gets that the shelf is picking a
@@ -879,11 +882,13 @@ export class LibraryView {
       // live region announcing it would fire unreliably across ATs.
       openBtn.setAttribute(
         'aria-label',
-        this.selectMode ? `${book.title} gemeinsam lesen` : `${book.title} öffnen`,
+        this.selectMode
+          ? t('library.book.readTogether', { title: book.title })
+          : t('library.book.open', { title: book.title }),
       );
       const titleEl = card.querySelector('.book-title');
       titleEl.textContent = book.title;
-      card.querySelector('.book-meta').textContent = `${book.pageCount} Seiten`;
+      card.querySelector('.book-meta').textContent = t('common.pages', { n: book.pageCount });
 
       const cover = card.querySelector('.book-cover');
       const thumb = thumbs[i];
@@ -914,7 +919,7 @@ export class LibraryView {
         const strip = document.createElement('button');
         strip.type = 'button';
         strip.className = 'book-mood-strip';
-        strip.setAttribute('aria-label', `Gefühle zu „${book.title}" ansehen`);
+        strip.setAttribute('aria-label', t('library.book.moods', { title: book.title }));
         // A row of every distinct mood from the latest read: the shared ones,
         // then each reader's own — the cover's at-a-glance memory of the book. A
         // witnessed read (issue #82) shows both children's distinct moods, shared
@@ -1039,7 +1044,7 @@ export class LibraryView {
           if (!titleFailed) {
             book.title = newTitle;
             titleEl.textContent = newTitle;
-            openBtn.setAttribute('aria-label', `${newTitle} öffnen`);
+            openBtn.setAttribute('aria-label', t('library.book.open', { title: newTitle }));
           }
         }
 
@@ -1050,7 +1055,7 @@ export class LibraryView {
           closeSyncForBook(book.id);
           // Nothing on the shelf shows a book's sync state, so without a word
           // here the tap would have no visible result at all (rule 3).
-          this.showStatus(`„${book.title}" ist nicht mehr synchronisiert.`);
+          this.showStatus(t('library.disconnected', { title: book.title }));
         }
 
         // Changed tags can add or drop a filter chip, and can push this very
@@ -1070,7 +1075,7 @@ export class LibraryView {
 
         // Last, so the shelf behind the message already shows what did survive.
         if (titleFailed) {
-          await showAlert({ message: 'Der neue Titel konnte nicht gespeichert werden.' });
+          await showAlert({ message: t('library.titleSaveFailed') });
         }
       });
 
@@ -1136,16 +1141,15 @@ export class LibraryView {
     // the card that was just tapped, so getting here means the store broke in
     // between, and then the plain question is the honest one.
     const evenings = (await getCompletions(book.id).catch(() => [])).length;
-    let message = `„${book.title}" wirklich löschen?`;
+    let message = t('library.delete.question', { title: book.title });
     // „gehen verloren" is the camera's word for the same kind of loss in the
     // same kind of dialog („Die Fotos gehen verloren."), so the app says it the
     // one way (rule 1).
-    if (evenings === 1) message += ' Ein gemeinsamer Abend geht damit verloren.';
-    else if (evenings > 1) message += ` ${evenings} gemeinsame Abende gehen damit verloren.`;
+    if (evenings > 0) message += ` ${t('library.delete.evenings', { n: evenings })}`;
     const confirmed = await showConfirm({
-      title: 'Buch löschen',
+      title: t('library.delete.title'),
       message,
-      confirmLabel: 'Löschen',
+      confirmLabel: t('library.delete.confirm'),
       destructive: true,
     });
     if (!confirmed) return;
@@ -1158,7 +1162,7 @@ export class LibraryView {
       // every reason to believe it is gone. Saying so is the only honest
       // outcome — there is nothing here to retry on their behalf.
       console.error('Löschen fehlgeschlagen', err);
-      await showAlert({ message: 'Das Buch konnte nicht gelöscht werden.' });
+      await showAlert({ message: t('library.deleteFailed') });
       return;
     }
     await this.renderGrid();
@@ -1173,7 +1177,7 @@ export class LibraryView {
   // own is a wider card whose list scrolls, which is what `cardClass` carries.
   openMoodHistory(book, completions) {
     const fmtDate = (ts) =>
-      new Date(ts).toLocaleDateString('de-CH', { day: 'numeric', month: 'long', year: 'numeric' });
+      formatDate(ts, { day: 'numeric', month: 'long', year: 'numeric' });
 
     const list = document.createElement('ul');
     list.className = 'mood-history-list';
@@ -1187,7 +1191,7 @@ export class LibraryView {
       title: book.title,
       cardClass: 'mood-history-card',
       content: list,
-      buttons: [{ label: 'Schliessen', value: undefined, primary: true }],
+      buttons: [{ label: t('common.close'), value: undefined, primary: true }],
       cancelValue: undefined,
     });
   }
@@ -1210,18 +1214,18 @@ export class LibraryView {
       prompt.className = 'book-card connect-card connect-prompt';
       prompt.innerHTML = `
         <span class="book-cover connect-cover" aria-hidden="true">👥</span>
-        <span class="book-title">Wähle das Buch, das ihr lesen wollt</span>
+        <span class="book-title">${t('sync.selectPrompt')}</span>
       `;
       return prompt;
     }
     const tile = document.createElement('button');
     tile.type = 'button';
     tile.className = 'book-card connect-card';
-    tile.setAttribute('aria-label', 'Gemeinsam lesen');
+    tile.setAttribute('aria-label', t('sync.activity'));
     tile.innerHTML = `
       <span class="book-cover connect-cover" aria-hidden="true">👥</span>
-      <span class="book-title">Gemeinsam lesen</span>
-      <span class="book-meta">Synchronisations-Code eingeben und mitlesen</span>
+      <span class="book-title">${t('sync.activity')}</span>
+      <span class="book-meta">${t('sync.tileHint')}</span>
     `;
     tile.addEventListener('click', () => this.startShared());
     return tile;
@@ -1251,7 +1255,7 @@ export class LibraryView {
       try {
         room = await lookupRoom(code);
       } catch (err) {
-        await showAlert({ title: 'Gemeinsam lesen', message: err.message || 'Verbindung fehlgeschlagen.' });
+        await showAlert({ title: t('sync.activity'), message: err.message || t('sync.connectFailed') });
         continue;
       }
       // Fetching the book (or reusing a local copy) and opening the reader
@@ -1278,15 +1282,15 @@ export class LibraryView {
     const selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'sync-create-btn';
-    selectBtn.textContent = 'Buch auswählen und Code erstellen';
+    selectBtn.textContent = t('sync.start.selectBook');
 
     const or = document.createElement('div');
     or.className = 'sync-or';
-    or.textContent = '— oder —';
+    or.textContent = t('common.or');
 
     const label = document.createElement('div');
     label.className = 'sync-join-label';
-    label.textContent = 'Synchronisations-Code von deinem Lesepartner bekommen?';
+    label.textContent = t('sync.joinLabel');
 
     const row = document.createElement('div');
     row.className = 'shared-start-row';
@@ -1295,14 +1299,14 @@ export class LibraryView {
     input.type = 'text';
     input.className = 'dialog-input';
     input.value = prefill;
-    input.placeholder = 'Synchronisations-Code';
-    input.setAttribute('aria-label', 'Synchronisations-Code');
+    input.placeholder = t('sync.code');
+    input.setAttribute('aria-label', t('sync.code'));
     applyCodeField(input);
 
     const connectBtn = document.createElement('button');
     connectBtn.type = 'button';
     connectBtn.className = 'sync-join-btn';
-    connectBtn.textContent = 'Verbinden';
+    connectBtn.textContent = t('sync.connect');
 
     row.appendChild(input);
     row.appendChild(connectBtn);
@@ -1317,14 +1321,14 @@ export class LibraryView {
     content.appendChild(row);
 
     return openDialog({
-      title: 'Gemeinsam lesen',
-      message: 'Einer von euch beiden erstellt den Code und sagt ihn dem anderen am Telefon.',
+      title: t('sync.activity'),
+      message: t('sync.start.message'),
       content: (close) => {
         selectBtn.addEventListener('click', () => close({ select: true }));
         bindCodeSubmit(input, connectBtn, () => close({ code: input.value }));
         return content;
       },
-      buttons: [{ label: 'Abbrechen', value: null }],
+      buttons: [{ label: t('common.cancel'), value: null }],
       cancelValue: null,
     });
   }
@@ -1412,7 +1416,7 @@ export class LibraryView {
       } else if (ext === 'vorlese' || ext === 'zip' || f.type === 'application/zip') {
         bundles.push(f);
       } else {
-        await showAlert({ message: `„${f.name}" ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.` });
+        await showAlert({ message: t('library.import.unsupported', { name: f.name }) });
       }
     }
     if (pdfs.length > 0) await this.handleFiles(pdfs);
@@ -1424,13 +1428,13 @@ export class LibraryView {
     if (files.length === 0) return;
     const status = this.root.querySelector('.library-status');
     status.hidden = false;
-    status.textContent = `Importiere ${files[0].name}…`;
+    status.textContent = t('library.import.reading', { name: files[0].name });
     try {
       const { title } = await importBundle(files[0], { dedupe: true });
-      status.textContent = `„${title}" importiert.`;
+      status.textContent = t('library.import.imported', { title });
     } catch (err) {
       console.error('Import fehlgeschlagen', err);
-      status.textContent = `Import fehlgeschlagen: ${err.message || err}`;
+      status.textContent = t('library.import.failed', { error: err.message || err });
     }
     await this.renderGrid();
     this.scrollToTop();
@@ -1448,7 +1452,7 @@ export class LibraryView {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      status.textContent = `Verarbeite ${i + 1}/${files.length}: ${file.name}…`;
+      status.textContent = t('library.import.processing', { index: i + 1, total: files.length, name: file.name });
       try {
         const pdf = await loadPdf(file);
         try {
@@ -1480,7 +1484,7 @@ export class LibraryView {
         }
       } catch (err) {
         console.error('Fehler beim Import', file.name, err);
-        await showAlert({ message: `„${file.name}" konnte nicht gelesen werden.` });
+        await showAlert({ message: t('library.import.unreadable', { name: file.name }) });
       }
     }
     status.hidden = true;
