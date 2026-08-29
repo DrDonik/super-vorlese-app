@@ -89,7 +89,7 @@ function generateRoomCode() {
   return code;
 }
 
-// The one reading of a typed Synchronisations-Code: read aloud over a video
+// The one reading of a typed Lese-Code: read aloud over a video
 // call, it arrives with stray spaces and in whatever case the keyboard felt
 // like. Both entry fields normalize as the user types (see code-field.js), and
 // lookupRoom / joinRoom normalize again for callers that pass a raw string.

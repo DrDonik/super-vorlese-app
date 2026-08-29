@@ -64,3 +64,59 @@ with a single point of reference — the **book**, never a „Raum" or a
 - A documentation gap is accepted on purpose: code and UI use different words for
   the same node. This ADR exists so that divergence is intentional and
   discoverable rather than a fresh source of confusion.
+
+## Amendment (2026-08-29): the code is the „Lese-Code", and „Trennen" is the way back
+
+Translating the app (ADR 38) forced the same naming decision a second time, in a
+language where „Synchronisation" has no everyday equivalent. English „sync" is
+the implementation's word and reads as jargon; the obvious English rendering of
+the original decision was therefore worse than the original. Working out what
+English should say showed that the German had the same weakness and had simply
+been read past:
+
+- **The name is long where it is spoken.** This code's whole purpose is to be
+  read out loud over a video call, usually by a grandparent to a child who then
+  types it. „Synchronisations-Code" is twenty-one characters and five syllables
+  of Latinate machinery around a six-character string.
+- **The name is long where the screen is short.** It sits on buttons and rubrics
+  that ADR 23 already asks to give up their words first on a narrow screen. A
+  shorter name relieves that pressure instead of adding to it.
+- **The pair was missing an end.** The sync panel has always offered
+  „Verbinden". Its opposite was called „Synchronisation trennen" — a different
+  noun, so the two never read as the two directions of one thing.
+
+The requirement this ADR actually makes is untouched by any of that: one name
+for the activity, one for the code, a single point of reference in the *book*,
+and never „Raum". Only the chosen words change.
+
+- **The code:** „Lese-Code", long form „Lese-Code des Buches". It says what the
+  code is for, stays anchored on the book, and a six-year-old can say it.
+- **The way back:** „Trennen", the counterpart to „Verbinden". The rubric
+  directly above it names the code and shows it, so the button needs no noun.
+- **The activity** stays „Gemeinsam lesen", **the person** stays „Lesepartner".
+- **English follows the same shape:** „Read together", „reading code" / „the
+  book's reading code", „reading partner", „Connect" / „Disconnect".
+- **„Synchronisation" leaves the user-facing vocabulary entirely.** The status
+  line that read „ist nicht mehr synchronisiert" named a concept the app no
+  longer has a word for; it now says „Ihr lest „{title}" nicht mehr gemeinsam",
+  which uses the name of the activity and needs no metaphor.
+- **Internal identifiers are still deliberately left alone**, as above: `room`,
+  `roomCode`, the `rooms/$roomCode` paths, the `sync-*` CSS classes and
+  `database.rules.json` are unchanged. The bridge this ADR describes is now two
+  planks wide — in the code it is the room, in the UI it is the Lese-Code — and
+  that is still cheaper than renaming a database path for no user benefit.
+
+## Amendment consequences
+
+- Fifteen dictionary keys change in each language, and the comments in `src/`
+  that quote the UI name follow. Nothing is stored under the old name — it lives
+  in no record in IndexedDB and in nothing Firebase holds — so there is no
+  migration and no compatibility question.
+- The nine older ADRs that quote „Synchronisations-Code" are **not** rewritten.
+  They are dated decisions and record what was true when they were made; this
+  amendment is the bridge, exactly as the original decision was the bridge
+  between `room` and the name on screen.
+- New user-facing strings follow the amended convention: „Gemeinsam lesen" for
+  the activity, „Lese-Code (des Buches)" for the code, „Lesepartner" for the
+  other person, „Verbinden" and „Trennen" for the two directions, and still
+  never „Raum".

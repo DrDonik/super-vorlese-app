@@ -191,7 +191,7 @@ export class ReaderView {
     this.onClose = onClose;
     this.onJoinRoom = onJoinRoom;
     this.joinCode = joinCode;
-    // Opened from the library to hand a Synchronisations-Code out: make sure
+    // Opened from the library to hand a Lese-Code out: make sure
     // there is one and put it on screen (see ensureSharedCode).
     this.startShared = startShared;
     this.source = null;
@@ -439,7 +439,7 @@ export class ReaderView {
     // it would spend the attempt on a rejection and could leave the request that
     // follows on `touchend` with nothing to do. Besides the transfer it has a
     // case of its own: on iOS a text field ends the fullscreen session, so the
-    // touch after the Synchronisations-Code or a page jump is what brings the
+    // touch after the Lese-Code or a page jump is what brings the
     // screen back.
     reader.addEventListener('touchend', keepFullscreen, { capture: true, passive: true });
 
@@ -473,7 +473,7 @@ export class ReaderView {
       return;
     }
     // Only now that the book actually opened — whether tapped in the library or
-    // joined via a Synchronisations-Code, both routes pass here. A book whose
+    // joined via a Lese-Code, both routes pass here. A book whose
     // pages are missing bails out above and must not be pushed to the top of
     // "Zuletzt gelesen".
     markOpened(this.bookId).catch(() => {});
@@ -523,7 +523,7 @@ export class ReaderView {
   }
 
   // The tail of the library's „Buch auswählen" path: the book is open, so all
-  // that is left is to have a Synchronisations-Code and show it.
+  // that is left is to have a Lese-Code and show it.
   //
   // Deliberately after the reconnect above, and only creating when that came up
   // empty. A book already carrying a code keeps it: creating a second one runs
@@ -2847,7 +2847,7 @@ export class ReaderView {
       }
       if (!this.source) return;
 
-      // A Synchronisations-Code points at one specific book. If it isn't the
+      // A Lese-Code points at one specific book. If it isn't the
       // book open here, syncing by page number would pair two different books —
       // so offer to switch to the book the code is for, over the same path the
       // library takes (local copy by hash, otherwise WebRTC download).
@@ -2867,7 +2867,7 @@ export class ReaderView {
         // Clearing programmatically fires no input event, so grey out "Verbinden"
         // by hand to keep it disabled on an empty field (rule 5: prevent errors).
         // On cancel nothing was started or torn down; the Sync-Panel stays open
-        // with both next steps — "Synchronisations-Code erstellen" and
+        // with both next steps — "Lese-Code erstellen" and
         // "Verbinden" — still visible.
         input.value = '';
         this.root.querySelector('.sync-join-btn').disabled = true;

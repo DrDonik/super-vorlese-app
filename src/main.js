@@ -80,7 +80,7 @@ function showLibrary({ revealBookId = null } = {}) {
     revealBookId,
     onOpenBook: (id) => showReader(id),
     // The library's „Gemeinsam lesen" → „Buch auswählen" path: open the book and
-    // put its Synchronisations-Code on screen, so the code can be read out
+    // put its Lese-Code on screen, so the code can be read out
     // without first having to find the sync control inside the reader.
     onStartShared: (id) => showReader(id, { startShared: true }),
     onAddPhotos: () => showCamera(),
@@ -98,11 +98,11 @@ function showReader(bookId, { joinCode = null, startShared = false } = {}) {
   }));
 }
 
-// Given a room already looked up by its Synchronisations-Code, make sure its
+// Given a room already looked up by its Lese-Code, make sure its
 // book is in the library — reusing a local copy if we have one, otherwise
 // fetching it from the partner over WebRTC — and then open the reader synced to
 // that room. Shared by the library's "Gemeinsam lesen" tile and the reader's
-// "Verbinden" field, so a Synchronisations-Code always lands in the book it
+// "Verbinden" field, so a Lese-Code always lands in the book it
 // belongs to no matter where it was entered.
 async function openRoom(room) {
   if (!room.book || !room.book.hash) {
@@ -170,6 +170,6 @@ showLibrary();
 // After the shelf is on screen, never before it: the library reads from
 // IndexedDB and owes the network nothing, while this is the app's first (and,
 // on most evenings, only) reason to load Firebase at all. It quietly forgets the
-// Synchronisations-Codes whose rooms have run out, so „Buch bearbeiten" shows a
+// Lese-Codes whose rooms have run out, so „Buch bearbeiten" shows a
 // code only while there is still a room behind it (issue #175).
 pruneDeadRooms().catch(() => {});

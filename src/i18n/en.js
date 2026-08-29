@@ -8,25 +8,31 @@
 // ADR 15 fixes one name for the activity, one for the code and one for the
 // other person, all anchored on the *book*. The English set:
 //
-//   „Gemeinsam lesen"              → „Read together"
-//   „Synchronisations-Code"        → „reading code"
-//   „Synchronisations-Code des Buches" → „the book's reading code"
-//   „Lesepartner"                  → „reading partner"
+//   „Gemeinsam lesen"        → „Read together"
+//   „Lese-Code"              → „reading code"
+//   „Lese-Code des Buches"   → „the book's reading code"
+//   „Lesepartner"            → „reading partner"
+//   „Verbinden" / „Trennen"  → „Connect" / „Disconnect"
 //
-// „Reading code" rather than „sync code" on purpose. German „Synchronisation"
-// is an everyday word; English „sync" is the implementation's word and reads as
-// jargon to the grandparent who has to say it out loud on the phone. ADR 15's
-// actual requirement is one consistent name anchored on the book, and this
-// meets it while staying sayable by a six-year-old. „Raum" has no English
-// equivalent here either — there is none, deliberately.
+// Both languages dropped „Synchronisation" together (ADR 15, Ergänzung vom
+// 2026-08-29): it is the implementation's word, it is long, and it has to be
+// said out loud on the phone by a grandparent. The requirement ADR 15 actually
+// makes — one consistent name, anchored on the book — is met by „reading code",
+// which a six-year-old can also say. „Raum" has no English equivalent here
+// either; there is none, deliberately.
 //
 // As in de.js: a value is a string or an object of CLDR plural forms, the
 // counting variable is always `n`, other placeholders are `{name}`. A language
 // that needs no plural for a given phrase may use a plain string where German
 // uses forms (see `pdf.ageTag`).
 //
-// No straight quotes (") and no angle brackets (<, >) in the values — some of
-// these go into markup. The typographic “…” and ’ are what is meant here.
+// English quotes here are “…” and the apostrophe is ’, both typographic — so
+// unlike the German „…" (whose upper half is a straight quote, project-wide
+// convention) no value in this file carries a straight quote at all.
+//
+// The rule that matters either way: never < or > in a value. Some of these are
+// interpolated into markup, and a value with quotes belongs only where it
+// reaches textContent or setAttribute — check the call site before adding one.
 
 export const en = {
   // ── Words that recur ─────────────────────────────────────────────────
@@ -69,7 +75,7 @@ export const en = {
   'library.book.moods': 'See the feelings for “{title}”',
   'library.book.edit': 'Edit book',
 
-  'library.disconnected': '“{title}” is no longer in step.',
+  'library.disconnected': 'You are no longer reading “{title}” together.',
   'library.titleSaveFailed': 'The new title could not be saved.',
   'library.deleteFailed': 'The book could not be deleted.',
 
@@ -98,8 +104,10 @@ export const en = {
   'bookEdit.newTagLabel': 'Add a new tag',
   'bookEdit.tagsSaveFailed': 'The tags could not be saved.',
   'bookEdit.syncCode': 'Reading code',
-  // The rubric above already says what this is, so the button says what leaves.
-  'bookEdit.disconnect': 'Give up this code',
+  // The counterpart to „Verbinden" / „Connect" in the sync panel — the missing
+  // end of a pair the app already had. The rubric right above names the code
+  // and shows it, so the button needs no noun of its own.
+  'bookEdit.disconnect': 'Disconnect',
   'bookEdit.delete': 'Delete book',
 
   // ── Reading together ─────────────────────────────────────────────────
@@ -118,7 +126,7 @@ export const en = {
   'sync.panel.create': 'Create a reading code',
   'sync.codeHint': 'Read it out to your reading partner on the phone.',
 
-  'sync.ended': 'Reading together has ended.',
+  'sync.ended': 'You are no longer reading together.',
   'sync.connectFailed': 'Could not connect.',
   'sync.connectFailedRetry': 'Could not connect. Please try again.',
   'sync.bookLoading': 'The book is still loading. Please wait.',
@@ -278,7 +286,7 @@ export const en = {
   'moodLabel.proud-of-you': 'Proud of you',
   'moodLabel.peering-out-from-hiding': 'Rather stay hidden',
   'moodLabel.hands-over-the-ears': 'Ears covered!',
-  'moodLabel.the-hot-whole-body-no': 'Furious',
+  'moodLabel.the-hot-whole-body-no': 'Really cross',
   'moodLabel.holding-back-the-tears': 'Holding back tears',
   'moodLabel.one-big-brave-breath': 'One big brave breath',
   'moodLabel.hand-across-the-distance': 'A hand across the distance',

@@ -33,9 +33,9 @@ device up.
 **What happens when the two readers differ.** A French grandmother reading to a
 German grandchild is not an edge case in this app — it is close to the point of
 it. That only works if nothing translated ever travels between the two devices.
-It happens to be true already: the Synchronisations-Code is six alphanumeric
-characters, the page number is a number, and the moods travel as the numeric
-`id` of an illustration, never as its name.
+It happens to be true already: the Lese-Code is six alphanumeric characters,
+the page number is a number, and the moods travel as the numeric `id` of an
+illustration, never as its name.
 
 **What the mood illustrations are called.** ADR 12 forbids printing their names
 on the board — the drawing is a projective prompt, not a vocabulary, and a

@@ -28,7 +28,7 @@
 //   the only kind of device this runs on at all.
 //
 // - **A text field throws us out.** On iOS, focusing a text-entry element ends
-//   the fullscreen session; the Synchronisations-Code and the page-jump field
+//   the fullscreen session; the Lese-Code and the page-jump field
 //   both do it. That exit is the platform's, not a decision, so the next touch
 //   puts the book back on the full screen.
 //

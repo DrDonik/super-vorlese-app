@@ -7,7 +7,7 @@
 // device is in.
 //
 // The two readers need not agree. Nothing translated here travels between
-// devices: the Synchronisations-Code is six characters, the moods travel as
+// devices: the Lese-Code is six characters, the moods travel as
 // numeric ids (see moods.js), and the page number is a number. A French
 // grandmother and a German grandchild read the same book on the same page and
 // see the same mood board, each in their own words.
