@@ -179,3 +179,101 @@ will be no `en-GB.js`.
   Germany as well. `de-DE.js` therefore lists the affected words one by one
   rather than deriving them, because a rule about „ss" would take the others
   with it.
+
+## Amendment (2026-08-30): the language comes from the browser, the country from the clock
+
+The amendment above rests on an assumption it never states: that when a browser
+names a country, it means it. Safari does not.
+
+Measured on macOS 26 against a local page, with the system set to Swiss German,
+British English, Danish and French — `AppleLanguages = ("de-CH", "en-GB",
+"da-CH", "fr-CH")`, `AppleLocale = de_CH`, time zone Europe/Zurich:
+
+```
+navigator.language   "de-DE"
+navigator.languages  ["de-DE"]
+Accept-Language      de-DE,de;q=0.9
+```
+
+The cause is one line in WebKit's `platformUserPreferredLanguages()`
+(`Source/WTF/wtf/cf/LanguageCF.cpp`): the system's list is passed through
+Apple's private `+[NSLocale minimizedLanguagesFromLanguages:]` before the page
+ever sees it, *„to reduce fingerprinting"* in the words of the comment beside
+it. Called directly, that function does this:
+
+```
+["de-CH", "en-GB", "da-CH", "fr-CH"]  →  ["de-DE", "de"]
+["de-CH"]                             →  ["de-DE", "de"]
+["de-AT"]                             →  ["de-DE", "de"]
+["fr-CH"]                             →  ["fr-FR", "fr"]
+["en-GB", "de-CH"]                    →  ["en-GB", "en"]
+```
+
+Two rules: every language is snapped onto its one CLDR-likely country — `de` →
+DE, `fr` → FR — and every preference after the first is dropped. The intent is
+sound. A reader whose browser announces „German, Switzerland, then British
+English, then Danish" is identifiable across the web by that list alone; one
+who announces „de-DE" looks like every German speaker alive.
+
+For this app the consequence is that the amendment above ran backwards on the
+platform it was written for. Every iPad and iPhone is WebKit, so `de-DE.js`
+answered on Swiss devices too: the household this app was built for was being
+shown ß and „…", and the Swiss source it is written in reached nobody except
+whoever opened it in Chrome. The region cannot be recovered by reading the tag
+more carefully — Safari's fabricated `de-DE` is byte-for-byte the one a Berlin
+browser honestly sends.
+
+## Amendment decision
+
+**The language comes from the browser, and the country comes from the clock.**
+`Intl.DateTimeFormat().resolvedOptions().timeZone` is not minimized — a browser
+that lies about the time zone breaks every calendar on the web — so
+`Europe/Zurich` arrives intact where `de-CH` does not. Five zones are enough:
+Zurich → CH, Vaduz → LI, Berlin and Büsingen → DE, Vienna → AT.
+
+**Only German consults the clock.** German is the only language whose country
+this app distinguishes. Everything else passes through with the browser's own
+tag, because nothing but date formats depends on it there and the browser's
+guess is as good as ours.
+
+**A German tag's own country is discarded, always** — not merely when it is
+absent. A tag saying `de-DE` is worth exactly what a tag saying nothing is
+worth, because Safari writes `de-DE` regardless. Outside the five zones a German
+tag is therefore cut back to bare `de`, which lands on the Swiss source by the
+rule this ADR already had for a tag that names no country.
+
+**This supersedes „a browser reporting bare `de` gets Switzerland"** in the
+amendment above. Bare `de` in Berlin now gets Germany; the tag stopped being the
+thing that decides.
+
+**`<html lang>` carries the language plus the clock's country** — `de-CH` in
+Zurich, `de-AT` in Vienna — rather than the tag the browser sent. Hyphenation
+and VoiceOver get the truth, which on Safari they previously did not.
+
+## Amendment consequences
+
+- The Swiss family sees Swiss orthography on their own iPads, which before this
+  amendment they did not. The German grandmother keeps her ß.
+- **Travel changes the spelling.** A Swiss tablet in Berlin sets „…" for the
+  week and «…» again on the way home; a German tablet in Spain falls to bare
+  `de` and shows Swiss quotation marks. Only quotation marks and five words are
+  affected, never a meaning, and it corrects itself on arrival. Asking the
+  reader instead is excluded by this ADR, and asking is worse than being wrong
+  about punctuation for a week.
+- **The whole amendment rests on an inconsistency in Safari**, and it is worth
+  naming: a time zone carries far more identifying entropy than a language
+  region, and Safari hands it over untouched while withholding the region. If
+  Apple ever closes that gap, every German device falls to bare `de` and the app
+  shows the Swiss source everywhere — the state it shipped in before #212, and
+  the right default for this household. The failure mode is benign, which is why
+  it is acceptable to depend on this.
+- **Büsingen is German, and the map says so.** The exclave has its own zone
+  because the tz database gives it one; a reader there gets German spelling,
+  which is correct. Vaduz gets `de-LI`, falls past every variant, and lands on
+  the Swiss source — Liechtenstein writes ss and «…».
+- **On Safari the multi-preference loop in `i18n.js` is dead code in practice.**
+  Only one language ever arrives. When the other four dictionaries land, an
+  Apple device will offer no second choice: whatever the system language is, that
+  is what the app must speak or fall back to English from. Nothing to fix — but
+  it means the fallback chain, not the preference list, is what will carry those
+  readers.

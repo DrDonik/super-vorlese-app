@@ -4,7 +4,9 @@
 // where one device is wrong is a household where somebody set it wrong.
 // `navigator.languages` is the answer the operating system already holds, and on
 // an installed PWA it is the system language — the same one the rest of the
-// device is in.
+// device is in. It answers *which language* and nothing else: the country in
+// that tag is not to be believed, and the clock is asked instead (see
+// CLOCK_COUNTRIES below).
 //
 // The two readers need not agree. Nothing translated here travels between
 // devices: the Lese-Code is six characters, the moods travel as
@@ -45,21 +47,82 @@ const SOURCE_LANG = 'de';
 // but anyone else who opens it is far more likely to get somewhere in English.
 const FALLBACK_LANG = 'en';
 
-// The first of the browser's preferences the app can actually speak. Each
-// preference is tried from its longest form down to its bare language before
-// the next one is looked at — the ordinary BCP-47 lookup — so `de-DE` finds the
-// German variant, `de-CH` falls past it to plain German, and `de-DE-1901` finds
-// the variant too. The full tag is kept for Intl either way, so a German
-// browser in Germany gets German date formats whichever dictionary it landed on.
+// Safari does not hand the browser's language preferences to the page as they
+// are. Every tag goes through Apple's `+[NSLocale minimizedLanguagesFromLanguages:]`
+// first — a fingerprinting countermeasure that snaps each language onto its one
+// likely country and keeps only the first preference. Measured on macOS 26 with
+// the system set to Swiss German, British English, Danish, French:
+//
+//   ["de-CH", "en-GB", "da-CH", "fr-CH"]  →  ["de-DE", "de"]
+//
+// So `de-CH`, `de-AT` and `de-DE` all reach the page as `de-DE`, on every iPad
+// and every iPhone, whatever the device is set to and wherever it stands. The
+// country is not merely missing there, it is confidently wrong — and nothing in
+// the tag tells that `de-DE` apart from the one a Berlin browser honestly sends.
+//
+// The clock is not minimized: a browser that lies about the time zone breaks
+// every calendar on the web, so `Europe/Zurich` arrives intact. The language
+// therefore comes from the browser and the country comes from the clock.
+//
+// Switzerland has exactly one zone, and so does each of its German-speaking
+// neighbours — the whole map is five lines. Only German is listed, because
+// German is the only language whose country this app distinguishes (see
+// de-DE.js). Should English or French ever gain a regional variant, they gain
+// lines here.
+const CLOCK_COUNTRIES = {
+  'Europe/Zurich': 'CH',
+  'Europe/Vaduz': 'LI', // Liechtenstein writes ss and «…», like Switzerland.
+  'Europe/Berlin': 'DE',
+  'Europe/Busingen': 'DE', // The German exclave inside Switzerland; spells German.
+  'Europe/Vienna': 'AT',
+};
+
+// Asked of `Intl` on every load rather than stored, because the zone travels
+// with the device: a tablet carried across the border answers differently the
+// next evening, which is exactly what should happen.
+function countryFromClock() {
+  try {
+    return CLOCK_COUNTRIES[Intl.DateTimeFormat().resolvedOptions().timeZone] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+// The country of a German tag is written by the clock and by nothing else. A
+// tag saying `de-DE` is worth no more than one saying nothing at all, since
+// Safari says `de-DE` for every German speaker alive — so outside the five
+// zones the tag is cut back to bare `de`, which lands on Switzerland by the
+// rule this file already had for a tag that names no country. A German reader
+// on holiday in Spain is then shown Swiss quotation marks for the week; a Swiss
+// reader at home is shown Swiss ones always, and that is the trade that counts.
+//
+// Every other language passes through untouched. Nothing in the app varies by
+// their country except date formats, and there the browser's own guess is as
+// good as this one.
+function withCountryFromClock(tag) {
+  const text = String(tag);
+  if (text.toLowerCase().split('-')[0] !== 'de') return text;
+  const country = countryFromClock();
+  return country ? `de-${country}` : 'de';
+}
+
+// The first of the browser's preferences the app can actually speak, its
+// country rewritten as above. Each preference is tried from its longest form
+// down to its bare language before the next one is looked at — the ordinary
+// BCP-47 lookup — so a device in Berlin finds the German variant and one in
+// Zurich falls past it to plain German. The full tag is kept for Intl either
+// way, so a Swiss device gets Swiss date formats off the very dictionary that
+// does not name a country.
 function resolveLanguage() {
   const wanted = navigator.languages?.length
     ? navigator.languages
     : [navigator.language].filter(Boolean);
-  for (const tag of wanted) {
-    const parts = String(tag).toLowerCase().split('-');
+  for (const preference of wanted) {
+    const tag = withCountryFromClock(preference);
+    const parts = tag.toLowerCase().split('-');
     while (parts.length) {
       const candidate = parts.join('-');
-      if (DICTIONARIES[candidate]) return { lang: candidate, tag: String(tag) };
+      if (DICTIONARIES[candidate]) return { lang: candidate, tag };
       parts.pop();
     }
   }
@@ -97,9 +160,11 @@ export const locale = (() => {
 // daran, und index.html kann es nicht wissen — dort steht die Sprache, in der
 // die Datei geschrieben ist, nicht die, in der die App gerade läuft.
 //
-// Der volle Tag und nicht der Name des Wörterbuchs: Ein Schweizer Browser liest
+// Der volle Tag und nicht der Name des Wörterbuchs: Wer in Zürich liest, liest
 // Schweizer Deutsch, also ist `de-CH` die genauere Auskunft als das `de`, unter
 // dem dieses Wörterbuch geführt wird — und die Silbentrennung darf sie haben.
+// Dass in Safari überhaupt wieder `de-CH` herauskommt, verdankt sich der Uhr;
+// der Browser selbst hätte hier `de-DE` gesagt.
 document.documentElement.lang = locale ?? lang;
 
 const pluralRules = new Intl.PluralRules(locale);
