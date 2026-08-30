@@ -841,15 +841,31 @@ button {
 }
 
 /* Full --fg, not --fg-dim: „Seite 3 / 20" is the answer to where we are in the
-   book, which is the reader's central state and not an aside. Dimmed, at 14px
-   over glass on a white page, it was also the weakest contrast in the app.
+   book, which is the reader's central state and not an aside. Dimmed, over
+   glass on a white page, it was also the weakest contrast in the app.
    It was also the smallest thing in the bar at ~30px (issue #130). Padding
    alone cannot carry the 44px — the text inside changes size when the
-   page-jump input opens — so the floor is a min-height, content centred. */
+   page-jump input opens — so the floor is a min-height, content centred.
+
+   1rem, like the back button, the title and the navigation toggle. This was
+   the one item in the bar below them, at 0.875rem, and two things fell out of
+   that. It put the app's smallest text on its hardest background, which is
+   the wrong place to save a pixel where ageing eyes are the constraint
+   (ADR 22, ADR 31). And it took the page-jump field down with it through
+   `font: inherit`: on iOS the root is `-apple-system-body`, 17px by default,
+   so the field stood at 14.9px — and WebKit zooms the whole viewport into any
+   focused field under 16px (issue #216). The reader is `position: fixed` with
+   `overflow: hidden`, so that zoom cannot be scrolled away, and while it
+   stands `nativeZoomActive` hands the two-finger gesture back to the browser:
+   a tap on the page number took the loupe with it (ADR 24). Every other field
+   in the app was already at 1rem — the dialog, the sync code, the new tag —
+   which is why this was the only one that zoomed. Below iOS's medium type
+   size the root itself drops under 16px and every field in the app goes with
+   it; that is not this field's question. */
 .reader-page-indicator {
   font-variant-numeric: tabular-nums;
   color: var(--fg);
-  font-size: 0.875rem;
+  font-size: 1rem;
   padding: 6px 12px;
   min-height: 44px;
   display: inline-flex;
@@ -1212,10 +1228,16 @@ button {
      stay put. Measured at 320px: a 148-page book went 8px over the screen edge
      before and now ends 20px inside it; the absurd case of a 1200-page book
      went 25px over and now lands 3px inside, eating into the side padding but
-     no longer off the screen. */
+     no longer off the screen.
+
+     The indicator's horizontal padding now goes entirely rather than halving,
+     and that is what pays for the larger type it carries since issue #216:
+     measured the same way at 320px, with the root at the 17px iOS gives it,
+     the editing row comes out ~1px narrower than it was before that type
+     change, while the resting row grows by ~9px. */
   .reader-chrome:has(.page-jump-input) { gap: 6px; }
   .reader-chrome:has(.page-jump-input) .reader-title { display: none; }
-  .reader-chrome:has(.page-jump-input) .reader-page-indicator { padding: 6px; }
+  .reader-chrome:has(.page-jump-input) .reader-page-indicator { padding: 6px 0; }
   .library-header { padding: 16px 16px 8px; padding: calc(16px + env(safe-area-inset-top, 0px)) calc(16px + env(safe-area-inset-right, 0px)) 8px calc(16px + env(safe-area-inset-left, 0px)); flex-wrap: wrap; }
   .library-header h1 { font-size: 1.375rem; }
   .library-grid { padding: 12px 16px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
