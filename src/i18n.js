@@ -20,6 +20,7 @@
 import { de } from './i18n/de.js';
 import { deDE } from './i18n/de-DE.js';
 import { en } from './i18n/en.js';
+import { da } from './i18n/da.js';
 
 // Every language the app actually ships, keyed by the tag it answers to.
 // Deliberately derived from what is here rather than from a wish list: a
@@ -35,6 +36,7 @@ const DICTIONARIES = {
   'de-de': deDE,
   'de-at': deDE,
   en,
+  da,
 };
 
 // The language the strings are written in. Every key exists here, so it is the
