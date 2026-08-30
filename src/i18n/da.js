@@ -329,5 +329,8 @@ export const da = {
   'moodLabel.holding-back-the-tears': 'Holder tårerne tilbage',
   'moodLabel.one-big-brave-breath': 'Tager en dyb indånding',
   'moodLabel.hand-across-the-distance': 'Hånd over afstand',
-  'moodLabel.thumbs-up-for-you': 'Tommel op til dig',
+  // Nicht „tommel op": das ist thumbs up übersetzt. „Godt gået!" ist, was ein
+  // Däne ruft, wenn er jemand anderem zujubelt — und es zeigt anders als
+  // „Sådan!" (fist-in-the-air) von selbst auf den anderen.
+  'moodLabel.thumbs-up-for-you': 'Godt gået!',
 };
