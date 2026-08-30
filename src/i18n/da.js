@@ -275,11 +275,14 @@ export const da = {
   'moodLabel.crash-and-still-grinning': 'Glad alligevel',
   'moodLabel.determined-chin-up': 'Giver ikke op',
   'moodLabel.tummy-butterflies': 'Sommerfugle i maven',
-  'moodLabel.mischief-brewing': 'Op til ballade',
+  // Nicht „op til ballade": das wäre „up to mischief" Wort für Wort, und
+  // „op til" heisst im Dänischen „bis zu" oder „im Vorfeld von". „Ude på
+  // ballade" ist die Wendung, die es wirklich gibt.
+  'moodLabel.mischief-brewing': 'Ude på ballade',
   'moodLabel.wide-eyed-wonder': 'Hold da op!',
   'moodLabel.righteous-stomp': 'Det er ikke fair!',
   'moodLabel.slumped-low': 'Helt ked af det',
-  'moodLabel.fist-in-the-air': 'Jeg klarede det!',
+  'moodLabel.fist-in-the-air': 'Sådan!',
   'moodLabel.sneaky-and-alert': 'Stille og på vagt',
   'moodLabel.cozy-pile': 'Hyggeligt sammen',
   'moodLabel.gloriously-dizzy': 'Dejligt forvirret',
@@ -299,7 +302,7 @@ export const da = {
   // also etwas durchgehen lassen. „frem mellem" rettet die Geste des Bildes.
   'moodLabel.peeking-through-fingers': 'Kigger frem mellem fingrene',
   'moodLabel.clutched-close-feeling': 'Tæt ind til hjertet',
-  'moodLabel.one-more-please': 'Læs videre!',
+  'moodLabel.one-more-please': 'En til!',
   'moodLabel.melting-sleepy': 'Træt og tryg',
   'moodLabel.hmmm-not-sure': 'Ikke helt overbevist',
   'moodLabel.thats-too-much': 'For meget på én gang',
