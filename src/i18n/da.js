@@ -288,20 +288,22 @@ export const da = {
   'moodLabel.gloriously-dizzy': 'Dejligt forvirret',
   'moodLabel.quiet-listening': 'Lytter godt efter',
   'moodLabel.fizzing-excitement': 'Helt spændt',
-  'moodLabel.brave-but-wobbly': 'Modig, men rystende',
+  // Nicht „rystende": das heisst attributiv erschütternd, nicht zittrig. Der
+  // Mut und die Angst stehen im Bild ohnehin nebeneinander.
+  'moodLabel.brave-but-wobbly': 'Modig, men bange',
   'moodLabel.puffed-cheek-exhale': 'Lettet',
   'moodLabel.lip-out-sulk': 'Fornærmet',
   'moodLabel.contained-glow': 'Hemmelig glæde',
   // „at holde masken" ist auf Dänisch genau das, was das Bild zeigt: die Miene
   // bewahren, während ringsum Unsinn passiert.
   'moodLabel.silly-serious': 'Holder masken',
-  'moodLabel.watery-smile': 'Smiler med tårer',
+  'moodLabel.watery-smile': 'Smiler gennem tårer',
   'moodLabel.arms-wide-free': 'Fri og let',
   'moodLabel.lachkrampf': 'Latterkrampe',
   // Nicht „kigger gennem fingrene": das heisst auf Dänisch ein Auge zudrücken,
   // also etwas durchgehen lassen. „frem mellem" rettet die Geste des Bildes.
   'moodLabel.peeking-through-fingers': 'Kigger frem mellem fingrene',
-  'moodLabel.clutched-close-feeling': 'Tæt ind til hjertet',
+  'moodLabel.clutched-close-feeling': 'Holdt tæt ind til sig',
   'moodLabel.one-more-please': 'En til!',
   'moodLabel.melting-sleepy': 'Træt og tryg',
   'moodLabel.hmmm-not-sure': 'Ikke helt overbevist',
@@ -310,20 +312,22 @@ export const da = {
   'moodLabel.slow-nod-of-getting-it': 'Nåh, nu forstår jeg',
   'moodLabel.warm-and-full': 'Varm og tilfreds',
   'moodLabel.secretly-moved': 'Hemmeligt rørt',
-  'moodLabel.again-from-the-start': 'Om igen fra starten!',
+  'moodLabel.again-from-the-start': 'Forfra igen!',
   'moodLabel.scary-shivers': 'Dejligt uhyggeligt',
   'moodLabel.gleeful-yuck': 'Føj, hvor klamt!',
   'moodLabel.real-tears': 'Rigtige tårer',
   'moodLabel.lost-the-thread': 'Har tabt tråden',
   'moodLabel.politely-elsewhere': 'Langt væk i tankerne',
-  'moodLabel.jaw-drop-twist': 'Det så jeg ikke komme!',
-  'moodLabel.kiss-across-the-miles': 'Kys over afstanden',
+  // Nicht „det så jeg ikke komme": das ist „I didn't see that coming" Wort für
+  // Wort. „Komme bag på nogen" ist das dänische Bild für dieselbe Überraschung.
+  'moodLabel.jaw-drop-twist': 'Det kom bag på mig!',
+  'moodLabel.kiss-across-the-miles': 'Kys over afstand',
   'moodLabel.proud-of-you': 'Stolt af dig',
   'moodLabel.peering-out-from-hiding': 'Helst i skjul',
   'moodLabel.hands-over-the-ears': 'Hænderne for ørerne',
   'moodLabel.the-hot-whole-body-no': 'Helt vildt sur',
   'moodLabel.holding-back-the-tears': 'Holder tårerne tilbage',
   'moodLabel.one-big-brave-breath': 'Tager en dyb indånding',
-  'moodLabel.hand-across-the-distance': 'Hånd over afstanden',
+  'moodLabel.hand-across-the-distance': 'Hånd over afstand',
   'moodLabel.thumbs-up-for-you': 'Tommel op til dig',
 };
