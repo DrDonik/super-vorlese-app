@@ -76,7 +76,9 @@ last did.**
 
 - **`members/$id` is `true`.** The key is the whole content; the value carries no
   time, and the database rule permits exactly that value (plus, for the
-  changeover, the number an old client still writes).
+  changeover, the number an old client still writes). *(Moot since
+  [ADR 27](0027-a-room-holds-a-lease-not-a-log.md): the member set is gone, and
+  its rule was removed once no old client was left.)*
 
 - **Joining reuses the membership this device already holds**, or leaves the old
   room first if the code differs. The library's join path reaches `joinRoom()`
@@ -133,7 +135,9 @@ What deliberately stays:
   writing timestamps. A rule that rejected them would make `enrollMember()` fail
   silently, drop that device out of the member set, and let the partner's
   „Trennen" delete the room out from under a running session. The tolerance can
-  be narrowed to `isBoolean()` once no old client is left.
+  be narrowed to `isBoolean()` once no old client is left. *(It was never
+  narrowed: [ADR 27](0027-a-room-holds-a-lease-not-a-log.md) dropped the member
+  set altogether, and on 2026-09-01 the whole `members` rule went with it.)*
 - ADR 7's "Stable member id" paragraph is amended: the id no longer doubles as
   the page-exchange `senderId`, and the member value is no longer a timestamp.
   Its actual decision — durable membership, no `onDisconnect`, last one out
