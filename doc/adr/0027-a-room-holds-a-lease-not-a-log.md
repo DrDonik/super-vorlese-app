@@ -75,7 +75,10 @@ does not hold a list of who is in it.**
   ([ADR 11](0011-ios-pwa-auto-update.md)). An old client that could no longer
   enrol would find an empty member set on „Trennen" and delete the room out from
   under a current client — issue #50 again, by accident. The rule can go once no
-  old client is left.
+  old client is left. *(Done on 2026-09-01: every client is on the current
+  build, so the rule — and with it ADR 26's boolean-or-number tolerance — is
+  removed. A `members` write is now refused by the room's `$other` rule, and the
+  subtrees left in existing rooms go with the room when its lease runs out.)*
 
 - **`memberId` stays durable, for a different reason than before.** ADR 7 and
   ADR 26 justified persisting it by the member set: a fresh id per app start
