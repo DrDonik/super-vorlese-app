@@ -56,6 +56,12 @@ export const de = {
 
   // ── Bibliothek ───────────────────────────────────────────────────────
   'library.title': 'Bibliothek',
+  // Der Umfang des Regals, neben der Überschrift. Zwei Formen, weil die Zahl
+  // zwei Fragen beantwortet: wie viele Bücher da sind, und was der Filter davon
+  // übrig lässt. `n` ist immer die Gesamtzahl, damit der Plural am letzten Wort
+  // hängt („1 von 1 Buch", „1 von 2 Büchern").
+  'library.count': { one: '{n} Buch', other: '{n} Bücher' },
+  'library.countFiltered': { one: '{shown} von {n} Buch', other: '{shown} von {n} Büchern' },
   // Ohne Emoji: das steht im Markup und ist in jeder Sprache dasselbe.
   'library.photograph': 'Fotografieren',
   'library.import': 'Importieren',

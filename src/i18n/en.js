@@ -50,6 +50,8 @@ export const en = {
 
   // ── Library ──────────────────────────────────────────────────────────
   'library.title': 'Library',
+  'library.count': { one: '{n} book', other: '{n} books' },
+  'library.countFiltered': { one: '{shown} of {n} book', other: '{shown} of {n} books' },
   'library.photograph': 'Take photos',
   'library.import': 'Import',
   'library.sortGroup': 'Sort books',
