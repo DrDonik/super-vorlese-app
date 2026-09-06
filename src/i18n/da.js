@@ -56,6 +56,8 @@ export const da = {
 
   // ── Bibliothek ───────────────────────────────────────────────────────
   'library.title': 'Bibliotek',
+  'library.count': { one: '{n} bog', other: '{n} bøger' },
+  'library.countFiltered': { one: '{shown} af {n} bog', other: '{shown} af {n} bøger' },
   'library.photograph': 'Tag billeder',
   'library.import': 'Importér',
   'library.sortGroup': 'Sortér bøger',

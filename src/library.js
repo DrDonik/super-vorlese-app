@@ -523,7 +523,10 @@ export class LibraryView {
     this.root.innerHTML = `
       <div class="library">
         <header class="library-header">
-          <h1>${t('library.title')}</h1>
+          <div class="library-heading">
+            <h1>${t('library.title')}</h1>
+            <span class="library-count" hidden></span>
+          </div>
           <div class="library-actions">
             <button class="add-book add-photos" type="button">
               <span>📷 ${t('library.photograph')}</span>
@@ -686,6 +689,33 @@ export class LibraryView {
     else this.root.querySelector('.connect-card')?.focus({ preventScroll: true });
   }
 
+  // Wie viele Bücher gerade auf dem Regal stehen, neben der Überschrift. Passiv
+  // und leise: das ist eine Auskunft über das Regal, kein drittes Bedienelement
+  // neben den beiden Knöpfen daneben — und deshalb auch nicht im <h1>, dessen
+  // fünf Taps die Viewport-Diagnose öffnen.
+  //
+  // Bei aktivem Filter steht die Gesamtzahl dabei. Das ist die eigentliche
+  // Arbeit dieser Zeile: Sie ist die Rückmeldung auf den Tipp auf einen Chip
+  // (Regel 3) und sagt geradeheraus, dass gerade etwas versteckt ist, statt es
+  // nur aus der Färbung der Chips ableiten zu lassen (Regel 7). Der eine Fall,
+  // in dem die Chips kein Buch übrig lassen — das Regal ändert sich unter einer
+  // schon getroffenen Auswahl, siehe renderGrid() — trägt hier „0 von 12".
+  //
+  // Das leere Regal zeigt nichts: Dort steht der eigene Text, und „0 Bücher"
+  // wäre eine zweite Auskunft über dieselbe Leere.
+  renderCount(shown, total) {
+    const el = this.root.querySelector('.library-count');
+    if (!el) return;
+    el.hidden = total === 0;
+    if (total === 0) {
+      el.textContent = '';
+      return;
+    }
+    el.textContent = shown === total
+      ? t('library.count', { n: total })
+      : t('library.countFiltered', { n: total, shown });
+  }
+
   // Rebuilt on every render rather than once like the sort pills, because the
   // chips themselves come and go as books are tagged, finished or deleted —
   // and because which of them are dead changes with every tap on a neighbour.
@@ -722,6 +752,10 @@ export class LibraryView {
     const { books, doneFlags, chips } = this.shelf;
     const kept = filteredIndices(books, doneFlags);
     this.renderFilterBar(chips, kept.map((i) => books[i]), kept.map((i) => doneFlags[i]));
+    // Mit derselben Begründung wie die Chips selbst: Bliebe der Zähler bis nach
+    // dem Speicher-Zugriff stehen, zeigte er einen Lidschlag lang eine Zahl, die
+    // die Reihe darüber schon widerlegt hat.
+    this.renderCount(kept.length, books.length);
   }
 
   // Chips toggle one by one and combine with AND. Tapping a pressed chip drops
@@ -780,6 +814,7 @@ export class LibraryView {
       activeFilters.clear();
       this.shelf = null;
       this.renderFilterBar([], [], []);
+      this.renderCount(0, 0);
       grid.innerHTML = '';
       grid.appendChild(this.buildConnectTile());
       const empty = document.createElement('div');
@@ -837,6 +872,7 @@ export class LibraryView {
     // After the filtering, because a chip is dead or alive relative to the
     // shelf that is about to be drawn.
     this.renderFilterBar(chips, books, kept.map((i) => doneFlags[i]));
+    this.renderCount(books.length, allBooks.length);
 
     const newUrls = [];
     const fragment = document.createDocumentFragment();
