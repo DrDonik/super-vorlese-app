@@ -15,8 +15,12 @@ import { t, collator, formatDate, foldCase } from './i18n.js';
 
 const ICON_PENCIL = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>`;
 
+// Der Dateiname ist beim PDF-Import die einzige Titelquelle, und er kommt
+// sauber geschrieben an. Ein Bindestrich gehört deshalb zum Titel selbst
+// („Räuber-Hotzenplotz") und bleibt stehen; nur der Unterstrich steht für
+// ein Leerzeichen, das ein Dateisystem nicht wollte.
 function deriveTitle(filename) {
-  return filename.replace(/\.pdf$/i, '').replace(/[_-]+/g, ' ').trim() || t('title.untitled');
+  return filename.replace(/\.pdf$/i, '').replace(/_+/g, ' ').replace(/\s+/g, ' ').trim() || t('title.untitled');
 }
 
 // --- Sorting ----------------------------------------------------------------
