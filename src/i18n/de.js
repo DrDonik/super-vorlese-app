@@ -132,15 +132,26 @@ export const de = {
   'sync.activity': 'Gemeinsam lesen',
   'sync.code': 'Lese-Code',
   'sync.codeOfBook': 'Lese-Code des Buches',
-  'sync.tileHint': 'Lese-Code eingeben und mitlesen',
+  // Nennt das Ergebnis, nicht einen der zwei Wege. „Lese-Code eingeben und
+  // mitlesen" beschrieb nur die Hälfte für den, der einen Code bekommen hat,
+  // und schickte damit die Person mit dem Buch schon vor dem Dialog weg.
+  'sync.tileHint': 'Beide sehen dieselbe Seite',
   'sync.selectPrompt': 'Wähle das Buch, das ihr lesen wollt',
 
-  'sync.start.message': 'Einer von euch beiden erstellt den Code und sagt ihn dem anderen am Telefon.',
-  'sync.start.selectBook': 'Buch auswählen und Code erstellen',
-  'sync.joinLabel': 'Lese-Code von deinem Lesepartner bekommen?',
+  'sync.start.selectBook': 'Buch auswählen',
   'sync.connect': 'Verbinden',
 
-  'sync.panel.desc': 'Damit ihr dieselbe Seite seht, braucht ihr beide den gleichen Lese-Code des Buches.',
+  // Der Satz nennt nur noch das Ziel. Dass genau einer den Code erstellt und
+  // der andere ihn eintippt, sagen die zwei Rubriken darunter — dort, wo
+  // gewählt wird, statt in einem Absatz, den man erst lesen, behalten und dann
+  // auf die Knöpfe anwenden müsste (Regel 8).
+  'sync.panel.desc': 'Damit ihr beide dieselbe Seite seht:',
+  // Gespiegelt gebaut: gleicher Satzbau, Subjekt und Objekt getauscht, der Name
+  // des Codes am Ende beider Zeilen. So ist die Gegenläufigkeit sichtbar statt
+  // behauptet. Beide tragen den Namen selbst statt eines Pronomens, das sich
+  // auf den grauen Satz darüber bezöge — genau der wird überflogen.
+  'sync.createLabel': 'Du sagst deinem Lesepartner den Lese-Code',
+  'sync.joinLabel': 'Dein Lesepartner sagt dir den Lese-Code',
   'sync.panel.create': 'Lese-Code erstellen',
   'sync.codeHint': 'Sag ihn deinem Lesepartner am Telefon.',
 
