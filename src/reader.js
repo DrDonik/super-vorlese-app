@@ -290,7 +290,7 @@ export class ReaderView {
       <div class="reader">
         <div class="reader-chrome">
           <button class="reader-back" type="button" aria-label="${t('reader.back')}">←<span class="reader-back-label">${t('reader.backLabel')}</span></button>
-          <button class="reader-sync-btn" type="button" aria-label="${t('sync.activity')}">👥</button>
+          <button class="reader-sync-btn" type="button" data-help-glyph="👥" aria-label="${t('sync.activity')}">👥<span class="reader-sync-label">${t('sync.activity')}</span></button>
           <div class="reader-title"></div>
           <button class="reader-nav-toggle" type="button" aria-label="${t('reader.navToggle')}" aria-pressed="true">◀▶</button>
           <div class="reader-page-indicator"></div>
@@ -301,11 +301,12 @@ export class ReaderView {
             <div class="sync-panel-title">${t('sync.activity')}</div>
             <div class="sync-panel-desc">${t('sync.panel.desc')}</div>
             <div class="sync-create-section">
+              <div class="sync-path-label">${t('sync.createLabel')}</div>
               <button class="sync-create-btn" type="button">${t('sync.panel.create')}</button>
             </div>
             <div class="sync-or">${t('common.or')}</div>
             <div class="sync-join-section">
-              <div class="sync-join-label">${t('sync.joinLabel')}</div>
+              <div class="sync-path-label">${t('sync.joinLabel')}</div>
               <input class="sync-join-input" type="text" placeholder="${t('sync.code')}" aria-label="${t('sync.code')}" />
             </div>
             <div class="sync-active-section" hidden>
@@ -2179,8 +2180,13 @@ export class ReaderView {
       // and „12 / 148" on a phone, „← Bibliothek" and „Seite 12 / 148" on a
       // tablet. That is exactly what the list needs to point back at the bar
       // once there is no arrow left doing it.
+      //
+      // `data-help-glyph` overrides that for a control whose own label is
+      // already the callout's text: the sync button would otherwise put
+      // „👥Gemeinsam lesen" in the glyph column beside „Gemeinsam lesen", which
+      // says it twice and widens the column every other row lines up against.
       const hint = this.addHelpHint('help-hint-chrome', t(textKey), {
-        controlGlyph: target.innerText.trim(),
+        controlGlyph: target.dataset.helpGlyph || target.innerText.trim(),
       });
       const arrow = document.createElement('span');
       arrow.className = 'help-hint-arrow';

@@ -116,15 +116,15 @@ export const en = {
   'sync.activity': 'Read together',
   'sync.code': 'Reading code',
   'sync.codeOfBook': 'The book’s reading code',
-  'sync.tileHint': 'Enter a reading code and read along',
+  'sync.tileHint': 'You both see the same page',
   'sync.selectPrompt': 'Choose the book you want to read',
 
-  'sync.start.message': 'One of you creates the code and reads it out to the other on the phone.',
-  'sync.start.selectBook': 'Choose a book and create a code',
-  'sync.joinLabel': 'Got a reading code from your reading partner?',
+  'sync.start.selectBook': 'Choose a book',
   'sync.connect': 'Connect',
 
-  'sync.panel.desc': 'To see the same page, you both need the same reading code for this book.',
+  'sync.panel.desc': 'So you both see the same page:',
+  'sync.createLabel': 'You tell your reading partner the reading code',
+  'sync.joinLabel': 'Your reading partner tells you the reading code',
   'sync.panel.create': 'Create a reading code',
   'sync.codeHint': 'Read it out to your reading partner on the phone.',
 

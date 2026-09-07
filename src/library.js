@@ -7,9 +7,9 @@ import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, mo
 import { loadPdf, renderThumbnail, readTitlePage } from './pdf.js';
 import { importBundle } from './bundle.js';
 import { attachDebugViewportTrigger } from './debug-viewport.js';
-import { closeSyncForBook, lookupRoom, getSavedRoomCode } from './sync.js';
+import { closeSyncForBook, lookupRoom, getSavedRoomCode, isCompleteRoomCode } from './sync.js';
 import { offerBook } from './offer.js';
-import { applyCodeField, bindCodeSubmit } from './code-field.js';
+import { applyCodeField } from './code-field.js';
 import { showAlert, showConfirm, openDialog } from './dialog.js';
 import { t, collator, formatDate, foldCase } from './i18n.js';
 
@@ -1306,69 +1306,93 @@ export class LibraryView {
     }
   }
 
-  // Resolves with { select: true }, { code }, or null when cancelled. Both ways
-  // out live in the content area because the dialog's button row cannot hold
-  // them: three buttons abreast do not fit a phone, and the "— oder —" between
-  // the two paths is the whole point. „Verbinden" therefore sits under the field
-  // it acts on, which is also where it belongs — it confirms the code, while the
-  // row below belongs to the dialog as a whole and carries „Abbrechen" for both
-  // paths.
+  // Resolves with { select: true }, { code }, or null when cancelled.
+  //
+  // Gebaut wie das Sync-Panel im Leser, Stück für Stück: derselbe Satz, dieselbe
+  // Reihenfolge, dieselben Klassen, dieselbe Knopfreihe. Die Bibliotheksfassung
+  // war davon abgedriftet und stapelte drei Knöpfe über die volle Breite —
+  // „Buch auswählen", „Verbinden" und darunter, an der Stelle, an der jeder
+  // andere Dialog dieser App sein Ja stehen hat, „Abbrechen" (Regel 1).
+  //
+  // „Verbinden" sitzt deshalb wieder in der Knopfreihe neben „Abbrechen", und
+  // das Ausgrauen bis zum sechsten Zeichen und Enter im Feld kommen jetzt von
+  // openDialog selbst statt von einer zweiten Verdrahtung hier.
+  //
+  // Dass genau einer den Code erstellt und der andere ihn eintippt, sagen die
+  // zwei gespiegelten Rubriken an den Wegen selbst. Als Absatz über den Knöpfen
+  // musste man es lesen, behalten und dann auf sie anwenden — und wer beide
+  // Male „erstellen" wählt, bekommt zwei verschiedene Codes und keine Meldung
+  // (Regeln 5 und 8).
   askShared(prefill) {
     const content = document.createElement('div');
     content.className = 'shared-start';
 
-    // The classes are the reader panel's: this is the same control doing the
-    // same job on another screen, and a second set of rules would drift.
+    const createSection = document.createElement('div');
+    createSection.className = 'sync-create-section';
+
+    const createLabel = document.createElement('div');
+    createLabel.className = 'sync-path-label';
+    createLabel.textContent = t('sync.createLabel');
+
+    // Anders als im Leser wird hier zuerst ein Buch gewählt; der Code kommt
+    // danach auf dem Bildschirm, den die Auswahl öffnet. Was der Knopf einbringt,
+    // steht in der Rubrik darüber, also muss er es nicht noch einmal sagen.
     const selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'sync-create-btn';
     selectBtn.textContent = t('sync.start.selectBook');
 
+    createSection.appendChild(createLabel);
+    createSection.appendChild(selectBtn);
+
     const or = document.createElement('div');
     or.className = 'sync-or';
     or.textContent = t('common.or');
 
-    const label = document.createElement('div');
-    label.className = 'sync-join-label';
-    label.textContent = t('sync.joinLabel');
+    const joinSection = document.createElement('div');
+    joinSection.className = 'sync-join-section';
 
-    const row = document.createElement('div');
-    row.className = 'shared-start-row';
+    const joinLabel = document.createElement('div');
+    joinLabel.className = 'sync-path-label';
+    joinLabel.textContent = t('sync.joinLabel');
+    joinSection.appendChild(joinLabel);
 
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'dialog-input';
-    input.value = prefill;
-    input.placeholder = t('sync.code');
-    input.setAttribute('aria-label', t('sync.code'));
-    applyCodeField(input);
-
-    const connectBtn = document.createElement('button');
-    connectBtn.type = 'button';
-    connectBtn.className = 'sync-join-btn';
-    connectBtn.textContent = t('sync.connect');
-
-    row.appendChild(input);
-    row.appendChild(connectBtn);
-
-    // Nothing to pick from on an empty shelf, so that path is not offered — it
-    // could only lead to a picker with no books in it (rule 5).
-    if (this.hasBooks) {
-      content.appendChild(selectBtn);
-      content.appendChild(or);
-    }
-    content.appendChild(label);
-    content.appendChild(row);
+    // Das Feld bekommt den Fokus nur, wenn es das Einzige ist, was hier zu tun
+    // ist (leeres Regal), oder wenn ein abgelehnter Code darin steht und
+    // überschrieben werden will. Sonst stünde die Telefontastatur vor der
+    // Hälfte des Dialogs, bevor er gelesen ist.
+    const focusCode = !this.hasBooks || Boolean(prefill);
 
     return openDialog({
       title: t('sync.activity'),
-      message: t('sync.start.message'),
-      content: (close) => {
+      message: t('sync.panel.desc'),
+      input: {
+        value: prefill,
+        placeholder: t('sync.code'),
+        label: t('sync.code'),
+        autoFocus: focusCode,
+        setup: applyCodeField,
+        validate: isCompleteRoomCode,
+      },
+      content: (close, inputEl) => {
+        // openDialog hängt sein Feld über den Inhalt; hier gehört es unter die
+        // Rubrik des zweiten Weges, weil der erste darüber steht. appendChild
+        // verschiebt es dorthin, samt der Verdrahtung, die der Dialog behält.
+        joinSection.appendChild(inputEl);
+        // Nichts zu wählen auf einem leeren Regal, also wird dieser Weg nicht
+        // angeboten — er könnte nur in eine leere Auswahl führen (Regel 5).
+        if (this.hasBooks) {
+          content.appendChild(createSection);
+          content.appendChild(or);
+        }
+        content.appendChild(joinSection);
         selectBtn.addEventListener('click', () => close({ select: true }));
-        bindCodeSubmit(input, connectBtn, () => close({ code: input.value }));
         return content;
       },
-      buttons: [{ label: t('common.cancel'), value: null }],
+      buttons: [
+        { label: t('common.cancel'), value: null },
+        { label: t('sync.connect'), primary: true, getValue: (code) => ({ code }) },
+      ],
       cancelValue: null,
     });
   }

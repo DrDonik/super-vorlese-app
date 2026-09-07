@@ -1224,6 +1224,25 @@ button {
   color: var(--fg-dim);
 }
 
+/* „Gemeinsam lesen" ist das längste Wort der Leiste und gibt deshalb vor allen
+   anderen nach (ADR 23: die Wörter weichen zuerst). Gemessen bei normaler
+   Schrift: mit dem Wort braucht die Zeile 649px, bevor der Titel überhaupt
+   etwas bekommt, und unterhalb davon rutschte das „?" in eine zweite Reihe —
+   das Ventil aus .reader-chrome, das bei normaler Schrift nie greifen soll.
+   720px lässt dem Titel dabei noch rund 70px. Ohne das Wort steht wieder genau
+   der Knopf von vorher da, und das 👥 sagt weiterhin, was er tut.
+
+   Gegen die Schriftgrösse hilft die Abfrage nicht: rem und em beziehen sich in
+   einer Media Query auf die Ausgangsschrift des Browsers, nicht auf die Wurzel,
+   die ADR 31 auf iOS an `-apple-system-body` hängt. Bei grosser Dynamic Type
+   bricht die Leiste deshalb auf dem Tablet um — in zwei ordentliche Reihen, was
+   das flex-wrap oben genau dafür vorsieht; ab etwa 1,6-facher Schrift wird eine
+   dritte daraus. Nichts läuft dabei über den Rand und kein Ziel wird kleiner. */
+@media (max-width: 720px) {
+  .reader-sync-btn { padding: 0 8px; }
+  .reader-sync-label { display: none; }
+}
+
 @media (max-width: 600px) {
   /* The chrome row holds six items on a phone and every one of them but the
      title is a 44px target now, which no longer fits with words in it: measured
@@ -1279,18 +1298,27 @@ button {
 
 /* ============ SYNC ============ */
 
+/* Mit Wort, wie „← Bibliothek" daneben: das 👥 allein wurde im echten Einsatz
+   nicht als Knopf erkannt und nicht wiedergefunden (Regel 3). Ab 720px abwärts
+   weicht das Wort — früher als die anderen, siehe die Abfrage weiter oben —,
+   und übrig bleibt genau der Knopf von vorher. */
 .reader-sync-btn {
   background: var(--surface-glass);
   border: none;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 8px;
+  padding: 0 14px;
   border-radius: 10px;
   cursor: pointer;
   font-size: 1.125rem;
   display: flex;
   align-items: center;
   justify-content: center;
+  /* Wie bei .reader-back: Zeichen und Wort sind zwei Flex-Elemente, der Abstand
+     dazwischen muss deshalb ein gap sein, und nowrap, damit die Beschriftung
+     die Leiste nicht zweizeilig macht. */
+  gap: 6px;
+  white-space: nowrap;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
   transition: background 0.15s;
@@ -1298,6 +1326,15 @@ button {
 
 .reader-sync-btn:hover {
   background: var(--surface-glass-hover);
+}
+
+/* Das Zeichen steht eine Spur grösser als das Wort, wie überall in der Leiste;
+   rem und nicht px, damit beide der Systemschrift folgen (ADR 31).
+   Kein eigenes font-weight: „← Bibliothek" nebenan trägt auch keins,
+   und zwei beschriftete Knöpfe in derselben Leiste dürfen nicht verschieden
+   schwer stehen (Regel 1). */
+.reader-sync-label {
+  font-size: 1rem;
 }
 
 /* Active = connected state, not an action: green, matching the room code
@@ -1403,15 +1440,25 @@ button {
   background: var(--surface-line);
 }
 
+.sync-create-section,
 .sync-join-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
-.sync-join-label {
+/* Die Rubrik über einem der beiden Wege. Beide Wege tragen eine, und die zwei
+   Sätze sind gespiegelt gebaut („Du sagst deinem Lesepartner den Lese-Code" /
+   „Dein Lesepartner sagt dir den Lese-Code"), damit an der Stelle, an der
+   gewählt wird, sichtbar ist, dass genau einer von beiden hier langgeht. */
+.sync-path-label {
   font-size: 0.875rem;
   color: var(--fg-dim);
+  /* Beide Sätze sind länger als die Karte breit ist, und ohne diese Zeile
+     brach der Umbruch am Bindestrich von „Lese-Code": eine volle Zeile, dann
+     „Code" allein darunter, in beiden Rubriken. balance verteilt stattdessen
+     auf gleich lange Zeilen und lässt den Namen zusammen. */
+  text-wrap: balance;
 }
 
 /* The Synchronisations-Code's own look, worn by every field that asks for one
@@ -1544,36 +1591,22 @@ button {
 }
 
 /* The library's „Gemeinsam lesen" dialog. It borrows the reader panel's own
-   parts — .sync-create-btn, .sync-or, .sync-join-label, .sync-join-btn — because
-   it asks the same two questions in the same order, and a second set of rules
-   for the same controls would drift apart (rule 1). Only the layout is its own:
-   dialog cards are left-aligned where the reader panel is centred. */
+   parts — .sync-create-section, .sync-create-btn, .sync-or, .sync-path-label,
+   .sync-join-section — because it asks the same two questions in the same order,
+   and a second set of rules for the same controls would drift apart (rule 1).
+   Both cards are centred and both carry the same 14px between their blocks, so
+   the two screens are now the same screen with one button relabelled.
+
+   „Verbinden" lives in the dialog's own button row beside „Abbrechen", which is
+   where the panel puts it too. It is the row's primary, but that says less than
+   it sounds: while the field holds fewer than six characters the button is
+   disabled, and .dialog-btn-primary:disabled is the same quiet filled grey the
+   panel's „Verbinden" wears. The accent arrives with the sixth character, where
+   it means „jetzt" rather than „hier entlang". */
 .shared-start {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-top: 4px;
-}
-
-.shared-start .sync-or {
-  text-align: center;
-}
-
-/* „Verbinden" sits under the field it confirms rather than in the dialog's
-   button row, which belongs to the dialog as a whole — and which already holds
-   „Abbrechen" for both paths. Stacked rather than side by side so the field
-   keeps the full width at every size: „Synchronisations-Code" is what the
-   placeholder has to be able to say, and a button beside it clips that on a
-   phone. Each path then ends in one full-width button, which is also what the
-   „Buch auswählen" half above looks like. */
-.shared-start-row {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.shared-start-row .sync-join-btn {
-  flex: none;
+  gap: 14px;
 }
 
 /* ============ HELP ============ */

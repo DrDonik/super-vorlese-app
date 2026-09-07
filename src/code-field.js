@@ -36,9 +36,13 @@ export function applyCodeField(input) {
 
 // Ties the field to the button that acts on it: gray while fewer than six
 // characters stand (rule 5 — nothing to press that could only fail), and Enter
-// from within the field does what the button does. Here rather than at the two
-// call sites for the same reason applyCodeField is: the field's behaviour has
-// one definition, so the reader panel and the library dialog cannot drift apart.
+// from within the field does what the button does.
+//
+// The reader's sync panel is the one caller: the library's dialog gets both from
+// openDialog, whose primary button already grays out against `input.validate`
+// and answers Enter from within the field. The two places therefore share what
+// matters — applyCodeField above and isCompleteRoomCode — rather than a wiring
+// helper, and still cannot disagree about what a complete code is.
 export function bindCodeSubmit(input, button, onSubmit) {
   const sync = () => { button.disabled = !isCompleteRoomCode(input.value); };
   input.addEventListener('input', sync);

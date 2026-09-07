@@ -129,15 +129,15 @@ export const da = {
   'sync.activity': 'Læs sammen',
   'sync.code': 'Læsekode',
   'sync.codeOfBook': 'Bogens læsekode',
-  'sync.tileHint': 'Skriv en læsekode og læs med',
+  'sync.tileHint': 'I ser begge den samme side',
   'sync.selectPrompt': 'Vælg den bog, I vil læse',
 
-  'sync.start.message': 'En af jer laver koden og læser den op for den anden i telefonen.',
-  'sync.start.selectBook': 'Vælg en bog og lav en kode',
-  'sync.joinLabel': 'Har du fået en læsekode af din læsemakker?',
+  'sync.start.selectBook': 'Vælg en bog',
   'sync.connect': 'Forbind',
 
-  'sync.panel.desc': 'For at I kan se den samme side, skal I begge have bogens læsekode.',
+  'sync.panel.desc': 'Så I begge ser den samme side:',
+  'sync.createLabel': 'Du siger læsekoden til din læsemakker',
+  'sync.joinLabel': 'Din læsemakker siger læsekoden til dig',
   'sync.panel.create': 'Lav en læsekode',
   'sync.codeHint': 'Læs den op for din læsemakker i telefonen.',
 

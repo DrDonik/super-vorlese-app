@@ -364,9 +364,7 @@ export function openDialog({ title, message, input, content, buttons, dangerButt
       // primary button, and focus would stay on whatever opened it — behind the
       // modal, so a screen reader never announces the dialog and the Tab trap
       // only rescues someone who presses Tab first. The first enabled control in
-      // DOM order is the right target: in the library's „Gemeinsam lesen" that
-      // is „Buch auswählen", and on an empty shelf, where that path is not
-      // offered, the code field — which is then the only thing to do.
+      // DOM order is the right target: it is the one the dialog leads with.
       card.querySelector('button:not([disabled]), input')?.focus();
     }
   }));
