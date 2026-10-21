@@ -24,7 +24,8 @@ jobs:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '26'
+          check-latest: true
           cache: npm
       - run: npm ci
       # Publish the database rules before the app: a new build may rely on rules
