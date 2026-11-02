@@ -11,6 +11,7 @@ This web app's purpose is remote bedtime reading for grandparents and their gran
 7. Never jump straight to implementation. Always present your plan and the resulting user experience first and deliberate with the person requesting new code. Only implement new code when the requester explicitly states you should.
 8. Do not propose adding automated tests or a linter — see [ADR 8](doc/adr/0008-no-tests-or-linter.md) for the reasoning.
 9. All new code will be carefully reviewed by an expert for correctness, security, edge cases, maintainability, and fit with the existing codebase. Implement with a goal of a single positive review and no iterations needed.
+10. All user-facing dialogs go through the helpers in `src/dialog.js`. Never use the native `alert`, `confirm` or `prompt`: they clash with the app's own modals, and `prompt` is unreliable in iOS standalone PWAs.
 
 # Mood Icons
 The source PNGs are not in the repository; only the WebP tiles generated from them in `public/mood-icons/` are. You need the sources only to change or add icons. They are kept in the GitHub release `mood-icons-source`: run `gh release download mood-icons-source`, then `unzip mood-icons-source.zip -d doc` to restore `doc/mood-icons/`, which `scripts/generate-mood-icons.js` reads. If the sources change, replace the ZIP in that release, because it is their only backup.
