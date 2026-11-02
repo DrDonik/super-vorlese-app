@@ -9,8 +9,10 @@ dist-ssr
 .claude/settings.local.json
 CLAUDE.local.md
 
-# Heavy source illustrations for the mood ritual (~49 MB). Only the small
+# Heavy source illustrations for the mood ritual (~124 MB). Only the small
 # generated WebP tiles in public/mood-icons/ are committed and shipped; this
 # folder is the local working source for scripts/generate-mood-icons.js, which
-# no-ops when it is absent. The briefs live in doc/mood-icon-descriptions.txt.
+# no-ops when it is absent. The originals are kept in the GitHub release
+# mood-icons-source (see AGENTS.md). The briefs live in
+# doc/mood-icon-descriptions.txt.
 doc/mood-icons/
