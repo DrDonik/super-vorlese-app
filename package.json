@@ -17,7 +17,7 @@
     "pdfjs-dist": "^6.5.438"
   },
   "devDependencies": {
-    "google-auth-library": "^11.3.3",
+    "google-auth-library": "^11.3.4",
     "sharp": "^0.35.5",
     "vite": "^8.3.6",
     "vite-plugin-pwa": "^2.0.0"
