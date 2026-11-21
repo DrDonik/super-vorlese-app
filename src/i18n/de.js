@@ -112,6 +112,11 @@ export const de = {
   'library.import.failed': 'Import fehlgeschlagen: {error}',
   'library.import.processing': 'Verarbeite {index}/{total}: {name}…',
   'library.import.unreadable': '«{name}» konnte nicht gelesen werden.',
+  'library.import.preparing': 'Import wird vorbereitet…',
+  'library.import.indexing': 'Regal wird gelesen: {done}/{total}…',
+  'library.import.summary': 'Fertig: {updated} ersetzt, {added} neu, {unchanged} unverändert.',
+  'library.import.summaryNew': 'Neu im Regal: {titles}',
+  'library.import.replaced': '«{title}» hat die neue Fassung bekommen.',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Buch bearbeiten',
@@ -177,6 +182,7 @@ export const de = {
   'transfer.message': '«{title}» wird von deinem Lesepartner gesendet…',
   'transfer.untitled': 'Buch',
   'transfer.saving': 'Buch wird gespeichert…',
+  'transfer.adopting': 'Regal wird abgeglichen…',
   'transfer.corrupt.title': 'Übertragung fehlerhaft',
   'transfer.corrupt.message': 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.',
   'transfer.failed.title': 'Verbindung nicht möglich',

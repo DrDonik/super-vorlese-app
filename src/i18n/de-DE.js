@@ -31,6 +31,7 @@ export const deDE = {
   'library.import.unsupported': '„{name}“ ist kein unterstütztes Format. Bitte eine PDF- oder .vorlese-Datei wählen.',
   'library.import.imported': '„{title}“ importiert.',
   'library.import.unreadable': '„{name}“ konnte nicht gelesen werden.',
+  'library.import.replaced': '„{title}“ hat die neue Fassung bekommen.',
   'transfer.message': '„{title}“ wird von deinem Lesepartner gesendet…',
 
   // ── Nur die Rechtschreibung ─────────────────────────────

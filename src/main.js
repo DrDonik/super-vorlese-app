@@ -3,9 +3,13 @@ import { registerSW } from 'virtual:pwa-register';
 import { LibraryView } from './library.js';
 import { ReaderView } from './reader.js';
 import { CameraView } from './camera.js';
-import { findBookByContentHash, ensureContentHash, deleteBook } from './storage.js';
+import {
+  findBookByContentHash, ensureContentHash, deleteBook, getBookFile, getMeta,
+  buildWorkTitleIndex, replaceBookFile,
+} from './storage.js';
+import { readWorkTitleFromBlob } from './pdf.js';
 import { importBundle } from './bundle.js';
-import { getFirebase, pruneDeadRooms } from './sync.js';
+import { getFirebase, pruneDeadRooms, closeSyncForBook } from './sync.js';
 import { receiveBook } from './transfer.js';
 import { showAlert, showProgress } from './dialog.js';
 import { restoreDebugViewport } from './debug-viewport.js';
@@ -98,6 +102,55 @@ function showReader(bookId, { joinCode = null, startShared = false } = {}) {
   }));
 }
 
+// A received book that is a newer edition of a book already on this shelf (the
+// same work title, ADR 40): its file moves onto that book and the fresh import
+// is deleted again. The side that only ever receives books therefore keeps its
+// keepsake, its tags and its Lese-Code instead of holding the same story twice,
+// once with every evening in it and once with none.
+//
+// Called only after the integrity check, and deliberately not from inside
+// importBundle(): the receive path needs a fresh id it can delete when the data
+// turns out to be damaged, and that must never be a book somebody's evenings
+// are attached to.
+//
+// The existing book's cover and tags stay exactly as they are. ADR 29 lets a
+// received book refresh nothing that is visible on the receiver's shelf, and
+// nothing visible changes here — only what sits behind the card.
+//
+// Returns the id of the book the edition was folded into, or null when it stays
+// a book of its own: no work title to go by, no single match, or a write that
+// did not land. The download is kept in every one of those cases.
+async function adoptEdition({ id, workTitle, contentHash, progress }) {
+  if (!workTitle) return null;
+  try {
+    progress.update(1, t('transfer.adopting'));
+    const byWorkTitle = await buildWorkTitleIndex(readWorkTitleFromBlob);
+    // Without the fresh import itself, which was just put on the shelf under
+    // this very work title.
+    const candidates = (byWorkTitle.get(workTitle) || []).filter((c) => c.id !== id);
+    if (candidates.length !== 1) return null;
+    const target = candidates[0].id;
+    const [fileBlob, meta] = await Promise.all([getBookFile(id), getMeta(id)]);
+    if (!fileBlob || !meta) return null;
+    if (!(await replaceBookFile(target, {
+      fileBlob, pageCount: meta.pageCount, contentHash, workTitle,
+    }))) return null;
+    // The code this book carried pointed at a room describing the edition that
+    // has just been replaced, so it is given up with it — the same move the
+    // library's own import makes. The code of the room being joined right now
+    // takes its place a moment later, when the reader opens.
+    closeSyncForBook(target);
+    await deleteBook(id);
+    return target;
+  } catch (err) {
+    // The book is downloaded and verified either way; failing to fold it into
+    // an older edition is a reason to leave it standing on its own, not to
+    // throw away a transfer that worked.
+    console.error('Fassung konnte nicht übernommen werden', err);
+    return null;
+  }
+}
+
 // Given a room already looked up by its Lese-Code, make sure its
 // book is in the library — reusing a local copy if we have one, otherwise
 // fetching it from the partner over WebRTC — and then open the reader synced to
@@ -135,14 +188,19 @@ async function openRoom(room) {
       onProgress: (fraction) => progress.update(fraction),
     });
     progress.update(1, t('transfer.saving'));
-    const { id } = await importBundle(bundleBlob);
+    const { id, workTitle } = await importBundle(bundleBlob);
     newBookId = id;
     const gotHash = await ensureContentHash(id);
     if (gotHash !== room.book.hash) {
       throw new Error('integrity');
     }
+    const adopted = await adoptEdition({ id, workTitle, contentHash: gotHash, progress });
+    // The temporary import is gone once it has been folded in, so there is
+    // nothing left for the catch below to delete — and the book it was folded
+    // into is the one thing it must never delete.
+    if (adopted) newBookId = null;
     progress.close();
-    showReader(id, { joinCode: room.code });
+    showReader(adopted ?? id, { joinCode: room.code });
   } catch (err) {
     progress.close();
     if (newBookId) await deleteBook(newBookId).catch(() => {});

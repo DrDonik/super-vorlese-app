@@ -54,7 +54,7 @@ export async function hashBook({ type, fileBlob, pages }) {
   return sha256Hex(await fileBlob.arrayBuffer());
 }
 
-export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash, tags }) {
+export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash, tags, workTitle }) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
@@ -67,6 +67,9 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, cont
     addedAt: Date.now(),
     lastPage: 1,
     contentHash: contentHash ?? await hashBook({ type: 'pdf', fileBlob }),
+    // Always written, null included, because the null carries information:
+    // "looked, and this PDF has no title" (see ensureWorkTitle).
+    workTitle: workTitle ?? null,
   };
   // Only written when there is something to write, so a book whose title page
   // yields no age recommendation keeps the shape every book has always had.
@@ -232,6 +235,102 @@ export async function findAndBumpExistingBook(hash, { type, pageCount } = {}) {
   // the file instead of skipping it as a duplicate of a book that is gone.
   if (!(await touchBook(existing.id))) return null;
   return existing;
+}
+
+// --- Work identity (ADR 40) -------------------------------------------------
+// contentHash above identifies one *edition* of a book: its bytes as they are.
+// workTitle identifies the *work*, so a corrected re-export can be recognised
+// as the same book and replace the edition on the shelf instead of landing
+// beside it as a second card with no keepsake on it.
+//
+// The two are deliberately apart, and nothing here is ever used in place of the
+// hash. Every question the sync layer asks — "do I already have this book",
+// "does this code belong to the book I have open", "did the file arrive
+// intact" — keeps asking contentHash, so two editions can never be taken for
+// one another and then synchronised page by page against a different break.
+//
+// The reader that pulls the title out of a PDF is passed in rather than
+// imported here: storage knows how to keep a field, not how a PDF is built, and
+// importing src/pdf.js would start its worker for every module that only ever
+// wanted IndexedDB — the camera, for one. Same reasoning as the `isSame` that
+// addBookTag() takes.
+
+// The work title of a stored book, read and persisted on first access for books
+// saved before it was recorded. A PDF that carries no title stores null, which
+// is the answer "looked, there is none" and keeps the next import from parsing
+// the whole file again; only a missing field means "never looked".
+export async function ensureWorkTitle(id, readWorkTitleFromBlob) {
+  const meta = await get(metaKey(id));
+  if (!meta) return null;
+  if ((meta.type || 'pdf') !== 'pdf') return null;
+  if ('workTitle' in meta) return meta.workTitle;
+  const fileBlob = await get(bookKey(id));
+  if (!fileBlob) return null;
+  const workTitle = await readWorkTitleFromBlob(fileBlob);
+  // Opening a PDF takes long enough for the book to be deleted meanwhile (the
+  // library stays usable while an import runs) — the same race
+  // ensureContentHash() guards against, with the same answer: report no title
+  // rather than let a caller act on a book that is gone.
+  if (!(await updateMeta(id, (m) => ({ ...m, workTitle })))) return null;
+  return workTitle;
+}
+
+// Every PDF book on the shelf by its work title: Map<workTitle, [{id, title}]>.
+// Books stored before the title was recorded are read on the way through, so the
+// index is complete the first time it is built and free every time after that.
+// `onBackfill(done, total)` reports only that reading, because it is the one
+// part of this a person waits for.
+export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
+  const books = (await listBooks()).filter((b) => (b.type || 'pdf') === 'pdf');
+  const total = books.filter((b) => !('workTitle' in b)).length;
+  let done = 0;
+  const index = new Map();
+  for (const book of books) {
+    let workTitle;
+    if ('workTitle' in book) {
+      workTitle = book.workTitle;
+    } else {
+      workTitle = await ensureWorkTitle(book.id, readWorkTitleFromBlob);
+      onBackfill?.(++done, total);
+    }
+    if (!workTitle) continue;
+    const entry = { id: book.id, title: book.title };
+    const found = index.get(workTitle);
+    if (found) found.push(entry);
+    else index.set(workTitle, [entry]);
+  }
+  return index;
+}
+
+// Hands a book already on the shelf the file of a newer edition of itself: the
+// same story, re-exported after a correction. It keeps its id, so everything
+// keyed by that id stays with it — the shared-reading keepsake (ADR 11), the
+// title, the reader's own tags — and only what the new file actually changes is
+// written. The reading position is carried over but clamped: a correction can
+// shorten a book, and "weiter, wo wir waren" must not point past its last page.
+//
+// The cover and the age tag are not written here. They are read off the title
+// page by the one reader every import path uses (ADR 29), so the caller hands
+// them to the book afterwards, exactly as it does for a copy it recognised by
+// its hash.
+//
+// False if the book was deleted meanwhile, and the file written for it is taken
+// back again — like updateBookThumb(), and for the same reason.
+export async function replaceBookFile(id, { fileBlob, pageCount, contentHash, workTitle }) {
+  await set(bookKey(id), fileBlob);
+  const updated = await updateMeta(id, (meta) => ({
+    ...meta,
+    pageCount,
+    contentHash,
+    workTitle: workTitle ?? null,
+    lastPage: Math.min(Math.max(meta.lastPage || 1, 1), pageCount),
+    // Where the hash path bumps a re-imported book to the front of the shelf,
+    // this one does too: dropping a file that is already there is one act with
+    // one answer, whether or not its bytes changed in the meantime.
+    addedAt: Date.now(),
+  }));
+  if (!updated) await del(bookKey(id));
+  return updated;
 }
 
 // Records that the book was just opened, so the library can offer a "zuletzt

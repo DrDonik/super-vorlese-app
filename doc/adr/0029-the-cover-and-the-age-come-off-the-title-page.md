@@ -160,3 +160,28 @@ the failure would surface as books that quietly look the way they did before.
 The same note sits in the tool's `render_typst`, at the code that would break
 it. No test guards this ([ADR 8](0008-no-tests-or-linter.md)); the two comments
 are the guard.
+
+## Amendment (2026-11-21): a received book may replace the edition it supersedes
+
+„A book arriving as a bundle or over a sync session never refreshes an existing
+one" is kept, and one thing is taken out of its scope.
+[ADR 40](0040-a-book-has-an-edition-and-a-provenance.md) gives a book a second
+identity, its work title, and lets a received file be recognised as a corrected
+edition of a book the receiver already holds. Such a file is folded into that
+book instead of landing beside it as a second card.
+
+What the rule above protects is unchanged: **nothing visible on the receiver's
+shelf is refreshed by a book that arrives.** The cover stays, the tags stay, the
+title stays, the card stays where it is. Only the file behind it is replaced, and
+only when the work title matches exactly one book.
+
+The alternative was worse for the same person the rule was written for: the side
+that only ever receives books would hold the same story twice, once with every
+evening in it and once with none, and would have to work out which is which.
+
+Two conditions make it safe, and both are stated at the code:
+
+- it happens **after** the transfer's integrity check, never before. A book that
+  fails that check is deleted again, and a fold-in before the check would hand
+  that deletion a book with months of keepsake in it;
+- **exactly one** book may carry the work title, or nothing happens at all.

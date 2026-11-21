@@ -97,6 +97,11 @@ export const en = {
   'library.import.failed': 'Import failed: {error}',
   'library.import.processing': 'Processing {index}/{total}: {name}…',
   'library.import.unreadable': '“{name}” could not be read.',
+  'library.import.preparing': 'Preparing the import…',
+  'library.import.indexing': 'Reading the shelf: {done}/{total}…',
+  'library.import.summary': 'Done: {updated} replaced, {added} new, {unchanged} unchanged.',
+  'library.import.summaryNew': 'New on the shelf: {titles}',
+  'library.import.replaced': '“{title}” now has the new edition.',
 
   // ── Edit book ────────────────────────────────────────────────────────
   'bookEdit.title': 'Edit book',
@@ -147,6 +152,7 @@ export const en = {
   'transfer.message': '“{title}” is being sent by your reading partner…',
   'transfer.untitled': 'The book',
   'transfer.saving': 'Saving the book…',
+  'transfer.adopting': 'Checking the shelf…',
   'transfer.corrupt.title': 'Transfer damaged',
   'transfer.corrupt.message': 'The book that arrived was incomplete or damaged. Please try again.',
   'transfer.failed.title': 'Cannot connect',

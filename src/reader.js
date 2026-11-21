@@ -1,5 +1,5 @@
 import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
-import { loadPdf, renderPageToCanvas } from './pdf.js';
+import { loadPdf, closePdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, lookupRoom } from './sync.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
@@ -157,7 +157,10 @@ class PdfSource {
     await renderPageToCanvas(this.pdf, n, canvas, w, h);
   }
   destroy() {
-    this.pdf?.destroy?.();
+    // Not awaited: the reader is torn down from a synchronous destroy(), and
+    // closePdf() reports its own failures. See closePdf() for why the document
+    // proxy is not the thing to ask.
+    closePdf(this.pdf);
   }
 }
 

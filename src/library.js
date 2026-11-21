@@ -1,10 +1,12 @@
 import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
-  getCompletionsMany, getCompletions,
+  getCompletionsMany, getCompletions, buildWorkTitleIndex, replaceBookFile,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
-import { loadPdf, renderThumbnail, readTitlePage } from './pdf.js';
+import {
+  loadPdf, closePdf, renderThumbnail, readTitlePage, readWorkTitle, readWorkTitleFromBlob,
+} from './pdf.js';
 import { importBundle } from './bundle.js';
 import { attachDebugViewportTrigger } from './debug-viewport.js';
 import { closeSyncForBook, lookupRoom, getSavedRoomCode, isCompleteRoomCode } from './sync.js';
@@ -249,6 +251,53 @@ function normalizeTag(raw) {
 async function refreshFromTitlePage(bookId, { cover, ageTag }) {
   if (cover) await updateBookThumb(bookId, cover);
   if (ageTag) await addBookTag(bookId, ageTag, sameTag);
+}
+
+// Which book on the shelf a freshly imported file replaces, or none. Only ever
+// at exactly one candidate: with two the choice would be a guess, and a book
+// replaced by mistake takes the right one's keepsake down with it (rule 5). The
+// chosen candidate leaves the index, so two files of the same work in one go
+// cannot both aim at the same book — the second one lands as a book of its own
+// and says so in the closing line.
+function takeSoleCandidate(byWorkTitle, workTitle) {
+  if (!workTitle) return null;
+  const candidates = byWorkTitle.get(workTitle);
+  if (!candidates || candidates.length !== 1) return null;
+  byWorkTitle.delete(workTitle);
+  return candidates[0];
+}
+
+// How long the closing line of an import stays up. Longer than the one
+// handleBundle() shows for a single file: this one ends a run that can take
+// minutes, and it is read after looking up from something else (rule 4).
+const SUMMARY_LINGER_MS = 8000;
+
+// The closing line of an import run: a beginning, a middle and an end, and the
+// end says what happened (rule 4).
+//
+// A single newly added file needs none — the new card on the shelf is the
+// answer. A single *replaced* one very much does: its card looks exactly as it
+// did, and whether the book was replaced or laid down beside itself is the one
+// difference a person cannot see.
+function showImportSummary(status, { files, unchanged, updated, added, replacedTitle }) {
+  let message = '';
+  if (files === 1 && updated === 1) {
+    message = t('library.import.replaced', { title: replacedTitle });
+  } else if (files > 1) {
+    message = t('library.import.summary', { updated, added: added.length, unchanged });
+    // Named, not just counted: on a shelf of corrected books a title that comes
+    // in as new is the one thing worth looking at, and the count alone would
+    // leave the reader hunting for which it was.
+    if (added.length > 0) message += ` ${t('library.import.summaryNew', { titles: added.join(', ') })}`;
+  }
+  if (!message) {
+    status.hidden = true;
+    return;
+  }
+  status.textContent = message;
+  setTimeout(() => {
+    if (status.textContent === message) status.hidden = true;
+  }, SUMMARY_LINGER_MS);
 }
 
 let tagLabelSeq = 0;
@@ -1513,6 +1562,26 @@ export class LibraryView {
     if (files.length === 0) return;
     const status = this.root.querySelector('.library-status');
     status.hidden = false;
+    status.textContent = t('library.import.preparing');
+
+    // Once per run, not once per file: ordering the shelf by work title costs
+    // one PDF opened per book the first time (ADR 40), and nothing at all
+    // afterwards, because the title is then in the book's metadata.
+    //
+    // A shelf that cannot be read must not stop the import: without an index
+    // nothing is replaced and every file lands as a new book, which is exactly
+    // where this stood before ADR 40.
+    const byWorkTitle = await buildWorkTitleIndex(readWorkTitleFromBlob, (done, total) => {
+      status.textContent = t('library.import.indexing', { done, total });
+    }).catch((err) => {
+      console.error('Werktitel-Index konnte nicht gebaut werden', err);
+      return new Map();
+    });
+
+    let unchanged = 0;
+    let updated = 0;
+    let replacedTitle = null;
+    const addedTitles = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -1528,30 +1597,60 @@ export class LibraryView {
           const { cover, ageTag } = await readTitlePage(pdf);
           if (existing) {
             await refreshFromTitlePage(existing.id, { cover, ageTag });
+            unchanged++;
             continue;
           }
+          // Bytes nobody has seen, but a work title that is already on the
+          // shelf: the same story, corrected and set again. It replaces the
+          // edition standing there instead of becoming a second card the reader
+          // cannot tell apart from the first (ADR 40).
+          const workTitle = await readWorkTitle(pdf);
+          const target = takeSoleCandidate(byWorkTitle, workTitle);
+          if (target && await replaceBookFile(target.id, { fileBlob: file, pageCount, contentHash, workTitle })) {
+            await refreshFromTitlePage(target.id, { cover, ageTag });
+            // The saved Lese-Code belonged to the old edition: its room names
+            // that edition's hash, and the offer behind it would now hand out a
+            // file the room does not describe. So the code is given up with the
+            // edition, and the next shared reading of this book starts with a
+            // fresh one (ADR 40).
+            closeSyncForBook(target.id);
+            updated++;
+            replacedTitle = target.title;
+            continue;
+          }
+          // Either no work title to go by, or more than one book could be meant,
+          // or the candidate was deleted while its file was being written. All
+          // three end the same way they did before any of this existed: as a new
+          // book on the shelf, visible in the closing line.
+          const title = deriveTitle(file.name);
           await saveBook({
             id: uid(),
-            title: deriveTitle(file.name),
+            title,
             fileBlob: file,
             // No cover to be made out means this is not a book whose title page
             // we know, and the whole first page stands in for it as it always did.
             thumbBlob: cover ?? await renderThumbnail(pdf, 1, 480),
             pageCount,
             contentHash,
+            workTitle,
             tags: ageTag ? [ageTag] : undefined,
           });
+          addedTitles.push(title);
         } finally {
-          // Release PDF.js document/worker resources on every path (duplicate,
-          // success, or error) to avoid OOM crashes on memory-limited devices.
-          pdf.destroy?.();
+          // Release PDF.js document/worker resources on every path (replaced,
+          // duplicate, success, or error) to avoid OOM crashes on
+          // memory-limited devices. See closePdf() for why it is not
+          // pdf.destroy().
+          await closePdf(pdf);
         }
       } catch (err) {
         console.error('Fehler beim Import', file.name, err);
         await showAlert({ message: t('library.import.unreadable', { name: file.name }) });
       }
     }
-    status.hidden = true;
+    showImportSummary(status, {
+      files: files.length, unchanged, updated, added: addedTitles, replacedTitle,
+    });
     await this.renderGrid();
     this.scrollToTop();
   }
