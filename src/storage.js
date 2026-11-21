@@ -485,7 +485,14 @@ export function replaceBookFile(id, {
         contentHash,
         lastPage: Math.min(Math.max(meta.lastPage || 1, 1), pageCount),
       };
-      if (workTitle !== undefined) next.workTitle = workTitle;
+      // Three states, each with meaning (ADR 40): a string is the title the
+      // new PDF carries, null is "read it, no title there", undefined is
+      // "could not read it at all" — and that last one must drop the stored
+      // title, not leave the predecessor's in place. A stale workTitle would
+      // otherwise let a later import's title-path match this book and
+      // overwrite the file the person chose.
+      if (workTitle === undefined) delete next.workTitle;
+      else next.workTitle = workTitle;
       if (!keepAddedAt) next.addedAt = Date.now();
       // The book's provenance list (ADR 41): what it already carried, plus
       // the edition being replaced right now, plus anything the sender knew
