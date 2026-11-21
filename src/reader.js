@@ -2823,6 +2823,11 @@ export class ReaderView {
     // meantime would otherwise pass this very check too, and two rooms would
     // be created, the first of them orphaned but still listening.
     this.isSyncing = true;
+    // Whether the old session has already been given up. The catch below tears
+    // a half-built session down, but it must not do that when the throw came
+    // before any of it: a failed read of the descriptor would otherwise cost
+    // this book the Lese-Code it already had, for a room that was never made.
+    let tornDown = false;
     try {
       // Before anything is torn down — syncStop() further down gives up the code
       // this book may already have, and that must not happen for a room that is
@@ -2841,6 +2846,7 @@ export class ReaderView {
         return;
       }
       this.syncStop();
+      tornDown = true;
       const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
@@ -2854,9 +2860,22 @@ export class ReaderView {
         this.syncSession = null;
         return;
       }
+      // Creating a room is several network round trips long, and an import can
+      // finish inside them. The descriptor in the room then names an edition
+      // the shelf no longer holds, while the offer behind the code would hand
+      // out the file it holds now — the room would promise one book and serve
+      // another. So the shelf is asked once more, before showSyncActive() puts
+      // the book on offer at all (ADR 33), and a room that no longer matches is
+      // given up instead of being announced.
+      const current = await this.buildBookDescriptor();
+      if (!current || current.hash !== descriptor.hash) {
+        this.syncStop();
+        if (this.source) await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
       this.showSyncActive(code);
     } catch (err) {
-      this.syncStop();
+      if (tornDown) this.syncStop();
       if (this.source) await showAlert({ message: err.message || t('sync.connectFailedRetry') });
     } finally {
       this.isSyncing = false;
