@@ -2,7 +2,7 @@ import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany, getCompletions, buildWorkTitleIndex, replaceBookFile,
-  ensureContentHash,
+  ensureContentHash, getMeta,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import {
@@ -1317,8 +1317,14 @@ export class LibraryView {
       return false;
     }
     if (!oldHash) {
-      // The book or its file is gone. Nothing to replace, and nothing to
-      // say to the person — the card is already gone from the shelf.
+      // Two cases hide under the same null: the book is gone, or the
+      // metadata is still there but the PDF file is missing (ensureContentHash
+      // reads bookKey(id), and a book with no fileBlob yields null even
+      // though listBooks() would still show it). A card the person can
+      // see must not fail silently — one by one:
+      if (await getMeta(book.id)) {
+        await showAlert({ message: t('library.replace.failed') });
+      }
       return false;
     }
     let pdf;
