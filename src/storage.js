@@ -1,4 +1,16 @@
-import { get, set, del, keys, getMany, setMany, delMany, update } from 'idb-keyval';
+import {
+  get, set, del, keys, getMany, setMany, delMany, update, createStore,
+} from 'idb-keyval';
+
+// A second handle on the very store idb-keyval's own get/set use, for the one
+// operation here that cannot be expressed as a single-key read-modify-write:
+// replacing a book's file (see replaceBookFile). The two names are idb-keyval's
+// own defaults — `createStore('keyval-store', 'keyval')` in its
+// defaultGetStore(), as of idb-keyval 6.3, which package-lock pins. They have to
+// match, or this would quietly operate on a private store of its own and every
+// replacement would miss; nothing else in this file names them, so they are
+// named here.
+const bookStore = createStore('keyval-store', 'keyval');
 
 const BOOK_PREFIX = 'book:';
 const META_PREFIX = 'meta:';
@@ -315,19 +327,6 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
   return { index, unreadable };
 }
 
-// The books that carry this work title *right now*, read from storage rather
-// than from an index built minutes ago. The index above decides which book a
-// file is meant for; this is what confirms that decision immediately before the
-// file is written, so a shelf that changed in between (a second import run, a
-// book deleted) cannot have the wrong book replaced.
-export async function findBookIdsByWorkTitle(workTitle) {
-  if (!workTitle) return [];
-  const books = await listBooks();
-  return books
-    .filter((b) => (b.type || 'pdf') === 'pdf' && b.workTitle === workTitle)
-    .map((b) => b.id);
-}
-
 // Hands a book already on the shelf the file of a newer edition of itself: the
 // same story, re-exported after a correction. It keeps its id, so everything
 // keyed by that id stays with it — the shared-reading keepsake (ADR 11), the
@@ -340,11 +339,25 @@ export async function findBookIdsByWorkTitle(workTitle) {
 // them to the book afterwards, exactly as it does for a copy it recognised by
 // its hash.
 //
-// The file and the metadata are written in one transaction, and nothing at all
-// is written when the book has gone. Two writes would mean a window in which the
-// book holds the new bytes under the old page count and the old hash — and if
-// the second write failed, it would stay that way: a book whose bytes nobody
-// has the metadata for any more.
+// Everything happens in one IndexedDB transaction: the book's record is read,
+// the caller's precondition is checked against the shelf as it stands *inside*
+// that transaction, and the file and the record are written together or not at
+// all. That is three separate reasons in one shape:
+//
+//   * The file and the record must land together. Two writes left a window in
+//     which the book held the new bytes under the old page count and the old
+//     hash, and if the second write failed it stayed that way.
+//   * The record must be modified from the version in the transaction, not from
+//     a copy read a moment earlier — otherwise a tag tapped in „Buch
+//     bearbeiten" while a long import runs is written back over. This is why
+//     every other writer here goes through updateMeta().
+//   * `soleWorkTitle` is the shelf's condition for replacing anything at all:
+//     exactly one book carries this work title, and it is this one (ADR 40).
+//     Checked here rather than before the call, because between a check outside
+//     and the write there is always a gap — another tab, another import run —
+//     and a book replaced by mistake takes the right one's keepsake with it.
+//     `ignoreIds` leaves a book out of that count: the receive path holds the
+//     freshly imported copy, which carries the same title by definition.
 //
 // `keepAddedAt` leaves the book's place on the shelf alone. The library's own
 // import does bump it, because dropping a file that is already there is one act
@@ -352,22 +365,69 @@ export async function findBookIdsByWorkTitle(workTitle) {
 // sync session must not move, because nothing on the receiver's shelf may
 // rearrange itself under their hands (ADR 29).
 //
-// False if the book was deleted meanwhile, which is also the answer when the
-// read below finds nothing. The remaining window — a delete between that read
-// and the transaction — is the one every writer here lives with.
-export async function replaceBookFile(id, { fileBlob, pageCount, contentHash, workTitle, keepAddedAt = false }) {
-  const meta = await get(metaKey(id));
-  if (!meta) return false;
-  const next = {
-    ...meta,
-    pageCount,
-    contentHash,
-    lastPage: Math.min(Math.max(meta.lastPage || 1, 1), pageCount),
-  };
-  if (workTitle !== undefined) next.workTitle = workTitle;
-  if (!keepAddedAt) next.addedAt = Date.now();
-  await setMany([[bookKey(id), fileBlob], [metaKey(id), next]]);
-  return true;
+// False when nothing was written: the book is gone, or the precondition does not
+// hold. The caller then treats the file as a book of its own.
+export function replaceBookFile(id, {
+  fileBlob, pageCount, contentHash, workTitle, keepAddedAt = false,
+  soleWorkTitle = null, ignoreIds = [],
+}) {
+  return bookStore('readwrite', (store) => new Promise((resolve, reject) => {
+    const tx = store.transaction;
+    let written = false;
+    // Resolved from the transaction, not from the last request: `written` is
+    // only true once the writes have actually committed. A failing request
+    // aborts the transaction on its own, which lands here as a rejection.
+    tx.oncomplete = () => resolve(written);
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error || new Error('IndexedDB-Transaktion abgebrochen'));
+
+    const write = (meta) => {
+      const next = {
+        ...meta,
+        pageCount,
+        contentHash,
+        lastPage: Math.min(Math.max(meta.lastPage || 1, 1), pageCount),
+      };
+      if (workTitle !== undefined) next.workTitle = workTitle;
+      if (!keepAddedAt) next.addedAt = Date.now();
+      store.put(fileBlob, bookKey(id));
+      store.put(next, metaKey(id));
+      written = true;
+    };
+
+    const metaReq = store.get(metaKey(id));
+    metaReq.onsuccess = () => {
+      const meta = metaReq.result;
+      if (!meta) return;
+      if (!soleWorkTitle) {
+        write(meta);
+        return;
+      }
+      const keysReq = store.getAllKeys();
+      keysReq.onsuccess = () => {
+        const skip = new Set(ignoreIds.map(metaKey));
+        const metaKeys = keysReq.result.filter(
+          (k) => typeof k === 'string' && k.startsWith(META_PREFIX) && !skip.has(k),
+        );
+        let pending = metaKeys.length;
+        if (pending === 0) return;
+        let matches = 0;
+        let matchesThisBook = false;
+        for (const key of metaKeys) {
+          const req = store.get(key);
+          req.onsuccess = () => {
+            const m = req.result;
+            if (m && (m.type || 'pdf') === 'pdf' && m.workTitle === soleWorkTitle) {
+              matches++;
+              if (key === metaKey(id)) matchesThisBook = true;
+            }
+            // The last answer decides, still inside this transaction.
+            if (--pending === 0 && matches === 1 && matchesThisBook) write(meta);
+          };
+        }
+      };
+    };
+  }));
 }
 
 // Records that the book was just opened, so the library can offer a "zuletzt

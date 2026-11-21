@@ -193,16 +193,26 @@ a way the rules above could be true on paper and wrong in the data.
   nobody holds the metadata for any more. `replaceBookFile()` now reads the
   record, and writes the file and the record together or not at all.
 
-- **Import runs are serialised, and the decision is confirmed before the
-  write.** The work-title index is a snapshot taken when a run starts, and a
-  file is written minutes later. Nothing stopped a second drop meanwhile — the
+- **Import runs are serialised, and the condition is checked in the write's own
+  transaction.** The work-title index is a snapshot taken when a run starts, and
+  a file is written minutes later. Nothing stopped a second drop meanwhile — the
   drop target is the whole window, and the file dialog stays open for business —
   so two runs could each replace a book from their own view of the shelf. They
-  are queued now, one after another; drops are kept rather than refused. And
-  immediately before a file is written, the shelf is asked again whether this
-  work title still names exactly one book, and still this one. A changed shelf
-  therefore cannot have the wrong book replaced: the file lands as a book of its
-  own, and the closing line says so.
+  are queued now, one after another; drops are kept rather than refused.
+
+  The index is therefore only a first answer. „Exactly one book carries this
+  work title, and it is this one" is a condition the caller states and
+  `replaceBookFile()` checks *inside* the transaction it writes in, because
+  between any check outside and the write there is a gap — another tab, another
+  run — and a book replaced by mistake takes the right one's keepsake with it.
+  When it does not hold, nothing is written and the file lands as a book of its
+  own, which the closing line says.
+
+  The same transaction is also why the record is modified from the version it
+  reads there rather than from a copy: a tag tapped in „Buch bearbeiten" while a
+  long import runs must not be written back over. Every other writer in
+  `src/storage.js` goes through `updateMeta()` for exactly that reason, and this
+  one cannot, because it writes two keys at once.
 
 - **A file that cannot be read is not a book without a title.** Both answers
   used to come back as null, and the null was written into the record — so one

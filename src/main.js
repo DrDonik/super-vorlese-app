@@ -137,6 +137,10 @@ async function adoptEdition({ id, workTitle, contentHash, progress }) {
       // books, nothing may rearrange itself under their hands (ADR 29), and
       // „Zuletzt hinzugefügt" orders by exactly this field.
       fileBlob, pageCount: meta.pageCount, contentHash, workTitle, keepAddedAt: true,
+      // The same condition the library's import writes under, checked inside the
+      // write's own transaction — without the fresh import, which carries this
+      // work title by definition and is deleted a moment later.
+      soleWorkTitle: workTitle, ignoreIds: [id],
     }))) return null;
     // The code this book carried pointed at a room describing the edition that
     // has just been replaced, so it is given up with it — the same move the

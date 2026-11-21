@@ -2,7 +2,6 @@ import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany, getCompletions, buildWorkTitleIndex, replaceBookFile,
-  findBookIdsByWorkTitle,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import {
@@ -254,9 +253,11 @@ async function refreshFromTitlePage(bookId, { cover, ageTag }) {
   if (ageTag) await addBookTag(bookId, ageTag, sameTag);
 }
 
-// Which book on the shelf a freshly imported file replaces, or none. Only ever
-// at exactly one candidate: with two the choice would be a guess, and a book
-// replaced by mistake takes the right one's keepsake down with it (rule 5). The
+// Which book on the shelf a freshly imported file replaces, or none. A first
+// answer from the snapshot taken at the start of the run; the write re-checks it
+// against the shelf itself (see replaceBookFile). Only ever at exactly one
+// candidate: with two the choice would be a guess, and a book replaced by
+// mistake takes the right one's keepsake down with it (rule 5). The
 // chosen candidate leaves the index, so two files of the same work in one go
 // cannot both aim at the same book — the second one lands as a book of its own
 // and says so in the closing line.
@@ -266,17 +267,6 @@ function takeSoleCandidate(byWorkTitle, workTitle) {
   if (!candidates || candidates.length !== 1) return null;
   byWorkTitle.delete(workTitle);
   return candidates[0];
-}
-
-// The index is a snapshot from the start of the run, and a file is written
-// seconds or minutes later. So the choice is confirmed against the shelf as it
-// stands immediately before the write: still exactly one book under this work
-// title, and still this one. A shelf that changed in between — a book deleted,
-// a book arrived — therefore cannot have the wrong book replaced; the file
-// lands as a book of its own instead, which is visible in the closing line.
-async function isStillSoleCandidate(bookId, workTitle) {
-  const ids = await findBookIdsByWorkTitle(workTitle);
-  return ids.length === 1 && ids[0] === bookId;
 }
 
 // How long the closing line of an import stays up. Longer than the one
@@ -1648,9 +1638,12 @@ export class LibraryView {
           // cannot tell apart from the first (ADR 40).
           const workTitle = await readWorkTitle(pdf);
           const target = takeSoleCandidate(byWorkTitle, workTitle);
-          if (target
-            && await isStillSoleCandidate(target.id, workTitle)
-            && await replaceBookFile(target.id, { fileBlob: file, pageCount, contentHash, workTitle })) {
+          // The index picked the candidate; `soleWorkTitle` is the condition the
+          // write itself checks, inside its own transaction, so a shelf that
+          // changed since the snapshot cannot have the wrong book replaced.
+          if (target && await replaceBookFile(target.id, {
+            fileBlob: file, pageCount, contentHash, workTitle, soleWorkTitle: workTitle,
+          })) {
             // Before the refresh below, not after it. The saved Lese-Code names
             // the old edition's hash in its room, while the offer behind it
             // would now hand out the new file — so the code has to go the
