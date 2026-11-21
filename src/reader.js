@@ -2985,6 +2985,18 @@ export class ReaderView {
       // session, the next opening of the book may have taken it over, and the
       // code that joining saved describes a room that exists.
       if (!this.source) return;
+      // Joining saved a code for this book, and showSyncActive() would put the
+      // book on offer under it. An import that finished during the join above
+      // would make that an offer of a file this screen is not showing, so the
+      // shelf is asked once more — the same question syncCreate asks after
+      // createRoom.
+      if (!(await this.stillShowingShelfEdition())) {
+        if (!this.source) return;
+        this.syncStop();
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
+      if (!this.source) return;
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
@@ -3008,11 +3020,34 @@ export class ReaderView {
         session.detach();
         return;
       }
+      // Same question as in syncJoin: the join awaited, and a code must not
+      // offer a file this screen is not showing.
+      if (!(await this.stillShowingShelfEdition())) {
+        if (this.syncSession !== session) return;
+        this.syncStop();
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
+      if (this.syncSession !== session) {
+        session.detach();
+        return;
+      }
       this.showSyncActive(normalizedCode);
     } catch (err) {
       if (this.syncSession === session) this.syncSession = null;
       await showAlert({ message: err.message || t('sync.connectFailed') });
     }
+  }
+
+  // Does the shelf still hold the edition this reader is showing? Asked after
+  // every await that could have let an import finish in the meantime, because
+  // what a Lese-Code offers is the shelf's file, not the one on this screen
+  // (ADR 33, ADR 40). True when there is nothing to compare — a book stored
+  // before hashing existed, or a hash that cannot be read — because then the
+  // answer would be a guess either way.
+  async stillShowingShelfEdition() {
+    const edition = await ensureContentHash(this.bookId);
+    return !this.loadedEdition || !edition || edition === this.loadedEdition;
   }
 
   // The hash first, which also backfills a book stored before hashing existed,
