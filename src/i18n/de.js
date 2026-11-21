@@ -119,6 +119,11 @@ export const de = {
   'library.import.replaced': '«{title}» hat die neue Fassung bekommen.',
   'library.import.unreadableShelf': 'Im Regal nicht lesbar: {n} (beim Erkennen übersprungen).',
 
+  // „PDF ersetzen" aus „Buch bearbeiten" (ADR 41).
+  'library.replace.unreadable': '«{name}» konnte nicht gelesen werden.',
+  'library.replace.failed': 'Die neue Fassung konnte nicht gespeichert werden.',
+  'library.replace.done': '«{title}» hat die neue Fassung bekommen.',
+
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Buch bearbeiten',
   'bookEdit.titleField': 'Titel',
@@ -132,6 +137,9 @@ export const de = {
   // Das Gegenstück zu „Verbinden" im Sync-Panel, und mehr braucht der Knopf
   // nicht: die Rubrik direkt darüber nennt den Code und zeigt ihn.
   'bookEdit.disconnect': 'Trennen',
+  // Eigene Rubrik unterhalb der Lese-Code-Rubrik: eine seltene, bewusste
+  // Datei-Aktion, dasselbe neutrale Aussehen wie „Trennen" (ADR 41).
+  'bookEdit.replacePdf': 'PDF ersetzen',
   'bookEdit.delete': 'Buch löschen',
 
   // ── Gemeinsam lesen ──────────────────────────────────────────────────

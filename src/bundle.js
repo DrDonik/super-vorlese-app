@@ -2,6 +2,7 @@ import { zip, unzip } from 'fflate';
 import {
   getMeta, getPhotoPages, getBookFile, getThumb,
   savePhotoBook, saveBook, uid, hashBook, findAndBumpExistingBook,
+  mergeProvenance,
 } from './storage.js';
 import { loadPdf, closePdf, readTitlePage, readWorkTitle } from './pdf.js';
 import { t } from './i18n.js';
@@ -52,6 +53,13 @@ export async function exportBook(id) {
     title: meta.title,
     pageCount: meta.pageCount,
   };
+  // The provenance travels with the bundle so the receiver can recognise the
+  // older edition on its own shelf and fold the new one in (ADR 41). Only when
+  // the sender has something to say, so a book never replaced carries the same
+  // manifest it always did.
+  if (Array.isArray(meta.previousContentHashes) && meta.previousContentHashes.length > 0) {
+    manifest.previousContentHashes = meta.previousContentHashes;
+  }
   const entries = {
     'manifest.json': new TextEncoder().encode(JSON.stringify(manifest, null, 2)),
   };
@@ -112,6 +120,14 @@ export async function importBundle(file, { dedupe = false } = {}) {
     throw new Error(t('error.badPageCount'));
   }
 
+  // The sender's chain of earlier editions (ADR 41). Only string entries are
+  // kept, so a manifest with the wrong shape never reaches storage. The field
+  // is optional in every direction: an older bundle has none and works, a
+  // newer bundle with none works too.
+  const previousContentHashes = Array.isArray(manifest.previousContentHashes)
+    ? manifest.previousContentHashes.filter((h) => typeof h === 'string' && h.length > 0)
+    : [];
+
   const id = uid();
   const thumbBytes = entries['thumb.jpg'];
   const thumbBlob = thumbBytes ? new Blob([thumbBytes], { type: 'image/jpeg' }) : null;
@@ -132,7 +148,16 @@ export async function importBundle(file, { dedupe = false } = {}) {
     const contentHash = await hashBook({ type: 'photos', pages });
     if (dedupe) {
       const existing = await findAndBumpExistingBook(contentHash, { type: 'photos', pageCount });
-      if (existing) return { id: existing.id, title: existing.title };
+      if (existing) {
+        // The bundle is being discarded as a duplicate, but its ancestors
+        // belong on the local book so a later re-send from here still carries
+        // them (ADR 41). A photographed book normally has no provenance, but
+        // the shape is kept uniform with the PDF path.
+        if (previousContentHashes.length > 0) {
+          await mergeProvenance(existing.id, previousContentHashes);
+        }
+        return { id: existing.id, title: existing.title, previousContentHashes };
+      }
     }
     await savePhotoBook({ id, title, pages, thumbBlob, contentHash });
   } else if (manifest.type === 'pdf') {
@@ -166,7 +191,14 @@ export async function importBundle(file, { dedupe = false } = {}) {
       // one place that does refresh an existing book is the library's own PDF
       // import, where re-adding the file is the deliberate act (ADR 29).
       const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount: actualPageCount });
-      if (existing) return { id: existing.id, title: existing.title, workTitle };
+      if (existing) {
+        // Keep the incoming ancestry on the local book, see the photos path
+        // above (ADR 41).
+        if (previousContentHashes.length > 0) {
+          await mergeProvenance(existing.id, previousContentHashes);
+        }
+        return { id: existing.id, title: existing.title, workTitle, previousContentHashes };
+      }
     }
     await saveBook({
       id,
@@ -180,11 +212,14 @@ export async function importBundle(file, { dedupe = false } = {}) {
       contentHash,
       workTitle,
       tags: ageTag ? [ageTag] : undefined,
+      // The provenance travels onto the new card so a later send from this
+      // device still carries the whole chain (ADR 41).
+      previousContentHashes,
     });
   } else {
     throw new Error(t('error.unknownBookType', { type: manifest.type }));
   }
-  return { id, title, workTitle };
+  return { id, title, workTitle, previousContentHashes };
 }
 
 // Deliberately without a caller since the export button left the book cards

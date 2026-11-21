@@ -2,6 +2,7 @@ import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany, getCompletions, buildWorkTitleIndex, replaceBookFile,
+  ensureContentHash, getMeta,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import {
@@ -324,6 +325,7 @@ let tagLabelSeq = 0;
 // misread, and neither can ever collide with a title.
 const DELETE_REQUESTED = Symbol('delete-requested');
 const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
+const REPLACE_REQUESTED = Symbol('replace-requested');
 
 // „Buch bearbeiten": title, tags and deletion in one dialog, opened by the
 // pencil that used to only rename. Putting tags on the existing button means
@@ -349,9 +351,11 @@ const DISCONNECT_REQUESTED = Symbol('disconnect-requested');
 // the title is stored by whoever called us, on every way out. So there is no
 // „Speichern" and no „Abbrechen", only „Fertig".
 //
-// Resolves with { title, action }, where action is DELETE_REQUESTED,
-// DISCONNECT_REQUESTED, or undefined for a plain „Fertig".
-function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
+// Resolves with { title, action, replaceFile? }, where action is
+// DELETE_REQUESTED, DISCONNECT_REQUESTED, REPLACE_REQUESTED, or undefined for
+// a plain „Fertig". REPLACE_REQUESTED carries the file picked for the
+// replacement (ADR 41).
+function showBookEdit({ title, type, tags, allTags, syncCode, onTagsChange }) {
   const content = document.createElement('div');
   content.className = 'book-edit-body';
 
@@ -537,6 +541,35 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
     content.appendChild(syncSection);
   }
 
+  // „PDF ersetzen" (ADR 41). PDF only — a photographed book is never a
+  // re-export of itself, and the camera is still the way to redo its pages.
+  // The hidden <input> lives next to the button so the file picker opens
+  // inside the same user-gesture tick as the tap, which is what iOS Safari
+  // and an installed PWA need.
+  let replaceInput = null;
+  if ((type || 'pdf') === 'pdf') {
+    const replaceSection = document.createElement('div');
+    replaceSection.className = 'book-edit-actions';
+
+    const replaceBtn = document.createElement('button');
+    replaceBtn.type = 'button';
+    // Same outlined neutral as „Trennen": a rare file-level action, and the
+    // destructive one (ADR 40, delete) stays alone below the divider.
+    replaceBtn.className = 'dialog-btn';
+    replaceBtn.textContent = t('bookEdit.replacePdf');
+
+    replaceInput = document.createElement('input');
+    replaceInput.type = 'file';
+    replaceInput.accept = '.pdf,application/pdf';
+    replaceInput.hidden = true;
+
+    replaceBtn.addEventListener('click', () => replaceInput.click());
+
+    replaceSection.appendChild(replaceBtn);
+    replaceSection.appendChild(replaceInput);
+    content.appendChild(replaceSection);
+  }
+
   return openDialog({
     title: t('bookEdit.title'),
     // Not focused on opening, and so not selected either: see dialog.js. What
@@ -550,6 +583,13 @@ function showBookEdit({ title, tags, allTags, syncCode, onTagsChange }) {
         title: inputEl.value,
         action: DISCONNECT_REQUESTED,
       }));
+      // The picker's change event ends the dialog; a cancelled picker leaves
+      // it open so the person can go on editing tags or close the normal way.
+      replaceInput?.addEventListener('change', () => {
+        const file = replaceInput.files?.[0];
+        if (!file) return;
+        close({ title: inputEl.value, action: REPLACE_REQUESTED, replaceFile: file });
+      });
       return content;
     },
     dangerButton: { label: t('bookEdit.delete'), value: { action: DELETE_REQUESTED } },
@@ -1098,6 +1138,7 @@ export class LibraryView {
         try {
           edited = await showBookEdit({
             title: book.title,
+            type: book.type,
             tags: initialTags,
             allTags,
             syncCode,
@@ -1164,11 +1205,18 @@ export class LibraryView {
           this.showStatus(t('library.disconnected', { title: book.title }));
         }
 
+        let replaced = false;
+        if (edited.action === REPLACE_REQUESTED && edited.replaceFile) {
+          replaced = await this.replaceBookPdf(book, edited.replaceFile);
+        }
+
         // Changed tags can add or drop a filter chip, and can push this very
         // book out of the active filters, so the shelf has to be rebuilt. A new
         // title only moves the card under A–Z; the other orders keep it where
-        // it is, and then there is nothing to rebuild at all.
-        if (tagsChanged || (titleChanged && !titleFailed && this.sortMode === 'title')) {
+        // it is, and then there is nothing to rebuild at all. A replacement
+        // can bring in a new age tag off the title page and a new cover, so
+        // rebuilds for the same reason.
+        if (tagsChanged || replaced || (titleChanged && !titleFailed && this.sortMode === 'title')) {
           await this.renderGrid();
           // „Anton" was „Zebra" a moment ago and now sits at the other end of
           // the shelf: follow it, or renaming a book would look like losing it.
@@ -1240,6 +1288,88 @@ export class LibraryView {
       const status = this.root.querySelector('.library-status');
       if (status && status.textContent === message) status.hidden = true;
     }, holdMs);
+  }
+
+  // „PDF ersetzen" from the edit dialog (ADR 41). The book keeps its id, its
+  // keepsake and its tags; the file, pageCount, contentHash, workTitle and
+  // (if the title page says so) cover and age tag change. The previous
+  // contentHash is appended to the book's provenance by replaceBookFile so a
+  // partner's device can match it on the next shared reading.
+  //
+  // Returns whether a replacement was actually written. The caller uses this
+  // to decide whether to rebuild the shelf — a new age tag can add a filter
+  // chip, a new cover changes the card, so the grid cannot stand as it is.
+  async replaceBookPdf(book, file) {
+    // The old file's hash records the predecessor in the book's provenance.
+    // A legacy book may have none yet (ensureContentHash supports that), so
+    // compute it before the transaction overwrites the old bytes — otherwise
+    // the partner cannot adopt the replacement through either match path
+    // (ADR 41). A failure or a null return (book gone, file unreadable) must
+    // stop the replacement, not swallow it: writing the new file anyway
+    // would silently lose the predecessor, and the partner would see a
+    // bundle with no ancestor to match.
+    let oldHash;
+    try {
+      oldHash = await ensureContentHash(book.id);
+    } catch (err) {
+      console.error('Vorgänger-Hash konnte nicht berechnet werden', err);
+      await showAlert({ message: t('library.replace.failed') });
+      return false;
+    }
+    if (!oldHash) {
+      // Two cases hide under the same null: the book is gone, or the
+      // metadata is still there but the PDF file is missing (ensureContentHash
+      // reads bookKey(id), and a book with no fileBlob yields null even
+      // though listBooks() would still show it). A card the person can
+      // see must not fail silently — one by one:
+      if (await getMeta(book.id)) {
+        await showAlert({ message: t('library.replace.failed') });
+      }
+      return false;
+    }
+    let pdf;
+    try {
+      pdf = await loadPdf(file);
+    } catch (err) {
+      console.error('PDF konnte nicht gelesen werden', file.name, err);
+      await showAlert({ message: t('library.replace.unreadable', { name: file.name }) });
+      return false;
+    }
+    try {
+      const pageCount = pdf.numPages;
+      const [contentHash, workTitle, { cover, ageTag }] = await Promise.all([
+        hashBook({ type: 'pdf', fileBlob: file }),
+        readWorkTitle(pdf),
+        readTitlePage(pdf),
+      ]);
+      // No `soleWorkTitle` and no index check: this is a deliberate, single-
+      // book action the person just took on this exact id, and the race
+      // ADR 40's soleWorkTitle guards against is not possible here.
+      let written;
+      try {
+        written = await replaceBookFile(book.id, {
+          fileBlob: file, pageCount, contentHash, workTitle,
+        });
+      } catch (err) {
+        console.error('PDF ersetzen fehlgeschlagen', err);
+        await showAlert({ message: t('library.replace.failed') });
+        return false;
+      }
+      if (!written) {
+        // The book was deleted while the picker was open. Nothing to say to
+        // the person — the card is already gone from the shelf.
+        return false;
+      }
+      // A Lese-Code pointing to the edition that just left is no longer the
+      // code of the file behind it, same as in the library's drop-import
+      // replace path (ADR 40).
+      closeSyncForBook(book.id);
+      await refreshFromTitlePageQuietly(book.id, { cover, ageTag });
+      this.showStatus(t('library.replace.done', { title: book.title }));
+      return true;
+    } finally {
+      await closePdf(pdf);
+    }
   }
 
   // Reached from the „Buch bearbeiten" dialog, which has closed by the time

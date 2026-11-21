@@ -32,6 +32,8 @@ export const deDE = {
   'library.import.imported': '„{title}“ importiert.',
   'library.import.unreadable': '„{name}“ konnte nicht gelesen werden.',
   'library.import.replaced': '„{title}“ hat die neue Fassung bekommen.',
+  'library.replace.unreadable': '„{name}“ konnte nicht gelesen werden.',
+  'library.replace.done': '„{title}“ hat die neue Fassung bekommen.',
   'transfer.message': '„{title}“ wird von deinem Lesepartner gesendet…',
 
   // ── Nur die Rechtschreibung ─────────────────────────────

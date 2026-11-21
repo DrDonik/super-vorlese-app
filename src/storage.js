@@ -66,7 +66,10 @@ export async function hashBook({ type, fileBlob, pages }) {
   return sha256Hex(await fileBlob.arrayBuffer());
 }
 
-export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash, tags, workTitle }) {
+export async function saveBook({
+  id, title, fileBlob, thumbBlob, pageCount, contentHash, tags, workTitle,
+  previousContentHashes,
+}) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
@@ -87,6 +90,11 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, cont
   // Only written when there is something to write, so a book whose title page
   // yields no age recommendation keeps the shape every book has always had.
   if (tags?.length) meta.tags = tags;
+  // The provenance list travels with a received bundle (ADR 41); a book never
+  // replaced carries nothing here, so the field stays absent for those.
+  if (Array.isArray(previousContentHashes) && previousContentHashes.length > 0) {
+    meta.previousContentHashes = previousContentHashes;
+  }
   await set(metaKey(id), meta);
 }
 
@@ -249,6 +257,56 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
   return null;
 }
 
+// Finds the single PDF book whose current contentHash is in the given list, or
+// null when nothing matches or more than one does (ADR 41). Used by the receive
+// path to recognise a locally held edition as an ancestor of the newer one that
+// is being folded in: a hard-identity match that does not rely on workTitle.
+// `ignoreIds` leaves a book out of the count — the receive path holds the
+// freshly imported copy by its own id.
+//
+// Unknown hashes are backfilled before the "exactly one match" rule decides.
+// A shelf with `A` stored and a second book whose hash is `B` but unrecorded
+// would otherwise pass as "one match on `A`" while two of the incoming
+// ancestors are in fact on the shelf, and the wrong book would be folded
+// into. Resolving them up front costs a few PDF opens on the very first
+// shared reading after an update, and nothing after that.
+export async function findBookByAnyContentHash(hashes, { ignoreIds = [] } = {}) {
+  if (!Array.isArray(hashes) || hashes.length === 0) return null;
+  const skip = new Set(ignoreIds);
+  const wanted = new Set(hashes);
+  const books = (await listBooks()).filter(
+    (b) => !skip.has(b.id) && (b.type || 'pdf') === 'pdf',
+  );
+  for (const book of books) {
+    if (book.contentHash) continue;
+    const h = await ensureContentHash(book.id);
+    if (h) book.contentHash = h;
+  }
+  const matches = books.filter((b) => b.contentHash && wanted.has(b.contentHash));
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
+// Merges the given hashes into a book's provenance list without touching its
+// current contentHash. Used when a .vorlese bundle carries ancestors the
+// local book did not know about and the bundle itself is being discarded as
+// a duplicate (ADR 41): the receiver still has to carry the chain forward,
+// or the next re-send from this device would drop it. The book's own
+// contentHash is never pushed, and anything already there stays in place.
+export async function mergeProvenance(id, hashes) {
+  if (!Array.isArray(hashes) || hashes.length === 0) return false;
+  return updateMeta(id, (meta) => {
+    const existing = Array.isArray(meta.previousContentHashes) ? meta.previousContentHashes : [];
+    const merged = [...existing];
+    for (const h of hashes) {
+      if (!h || h === meta.contentHash || merged.includes(h)) continue;
+      merged.push(h);
+    }
+    if (merged.length === existing.length) return meta;
+    return { ...meta, previousContentHashes: merged };
+  });
+}
+
 // If a book with the given content is already in the library, bump it to the
 // front and return it; otherwise return null. Lets re-imports of an existing
 // book resurface that copy (preserving its reading progress and title) instead
@@ -394,7 +452,20 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
 // False when nothing was written: the book is gone, or the precondition does not
 // hold. The caller then treats the file as a book of its own.
 export function replaceBookFile(id, {
-  fileBlob, pageCount, contentHash, workTitle, keepAddedAt = false,
+  fileBlob, pageCount, contentHash, workTitle,
+  // The sender's own chain of predecessors, merged in on the receive path so
+  // the next step of the chain still recognises either side's ancestry
+  // (ADR 41). Omitted on the library's own „PDF ersetzen" and import paths,
+  // where only the local predecessor needs to be remembered.
+  incomingPreviousContentHashes = [],
+  // The hash-match path's in-transaction guard (ADR 41): the target's current
+  // contentHash must still be one of the ancestor hashes the caller found it
+  // by. A book that was replaced locally between the lookup and the write no
+  // longer qualifies, and the write is refused — the newer file stays, and
+  // adoptEdition falls through to the title-path. The soleWorkTitle check
+  // below is the equivalent guard for the title path.
+  requireContentHashIn = null,
+  keepAddedAt = false,
   soleWorkTitle = null, ignoreIds = [], requireKnownShelf = false,
 }) {
   return bookStore('readwrite', (store) => new Promise((resolve, reject) => {
@@ -416,6 +487,24 @@ export function replaceBookFile(id, {
       };
       if (workTitle !== undefined) next.workTitle = workTitle;
       if (!keepAddedAt) next.addedAt = Date.now();
+      // The book's provenance list (ADR 41): what it already carried, plus
+      // the edition being replaced right now, plus anything the sender knew
+      // about further back. Order kept, duplicates dropped, and the current
+      // hash never appears in its own provenance — which matters on a
+      // revert, where the stored history and the new contentHash can
+      // overlap (replacing `B` with `A` on a book whose history is `[A]`
+      // must not keep `A` under its own current hash).
+      const provenance = [];
+      const push = (h) => {
+        if (!h || h === contentHash || provenance.includes(h)) return;
+        provenance.push(h);
+      };
+      if (Array.isArray(meta.previousContentHashes)) {
+        for (const h of meta.previousContentHashes) push(h);
+      }
+      push(meta.contentHash);
+      for (const h of incomingPreviousContentHashes) push(h);
+      if (provenance.length > 0) next.previousContentHashes = provenance;
       store.put(fileBlob, bookKey(id));
       store.put(next, metaKey(id));
       written = true;
@@ -425,10 +514,27 @@ export function replaceBookFile(id, {
     metaReq.onsuccess = () => {
       const meta = metaReq.result;
       if (!meta) return;
-      if (!soleWorkTitle) {
+      // Hash-path guard: the target's current contentHash must still be one
+      // the caller matched against. If the book was replaced locally in the
+      // gap between the lookup and this transaction, the match is void.
+      const hashGuardActive = Array.isArray(requireContentHashIn) && requireContentHashIn.length > 0;
+      if (hashGuardActive && !requireContentHashIn.includes(meta.contentHash)) {
+        return;
+      }
+      if (!soleWorkTitle && !hashGuardActive) {
         write(meta);
         return;
       }
+      // The condition for either path runs over every PDF book on the shelf,
+      // minus this write's `ignoreIds`. The workTitle path checks "exactly
+      // one carries this title, and it is this one" (ADR 40). The hash path
+      // checks the same under its own key: "exactly one carries a hash from
+      // this ancestor list, and it is this one" — same race, same guarantee
+      // (ADR 41). Combined with the hashGuard above, which has already
+      // asserted this book's own hash is still in the list, the uniqueness
+      // check closes the window in which a second shelf book could have
+      // been given an ancestor hash after the caller's lookup.
+      const wantedHashes = hashGuardActive ? new Set(requireContentHashIn) : null;
       const keysReq = store.getAllKeys();
       keysReq.onsuccess = () => {
         const skip = new Set(ignoreIds.map(metaKey));
@@ -439,21 +545,36 @@ export function replaceBookFile(id, {
         if (pending === 0) return;
         let matches = 0;
         let matchesThisBook = false;
+        let hashMatches = 0;
+        let hashMatchesThisBook = false;
         let unknown = false;
         for (const key of metaKeys) {
           const req = store.get(key);
           req.onsuccess = () => {
             const m = req.result;
             if (m && (m.type || 'pdf') === 'pdf') {
-              if (!('workTitle' in m)) unknown = true;
-              else if (m.workTitle === soleWorkTitle) {
-                matches++;
-                if (key === metaKey(id)) matchesThisBook = true;
+              if (wantedHashes && m.contentHash && wantedHashes.has(m.contentHash)) {
+                hashMatches++;
+                if (key === metaKey(id)) hashMatchesThisBook = true;
+              }
+              if (soleWorkTitle) {
+                if (!('workTitle' in m)) unknown = true;
+                else if (m.workTitle === soleWorkTitle) {
+                  matches++;
+                  if (key === metaKey(id)) matchesThisBook = true;
+                }
               }
             }
             // The last answer decides, still inside this transaction.
             if (--pending > 0) return;
-            if (matches === 1 && matchesThisBook && !(requireKnownShelf && unknown)) write(meta);
+            let ok = true;
+            if (soleWorkTitle) {
+              ok = ok && matches === 1 && matchesThisBook && !(requireKnownShelf && unknown);
+            }
+            if (hashGuardActive) {
+              ok = ok && hashMatches === 1 && hashMatchesThisBook;
+            }
+            if (ok) write(meta);
           };
         }
       };

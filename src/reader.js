@@ -3014,8 +3014,16 @@ export class ReaderView {
       if (!this.source) return;
       this.showSyncActive(normalizedCode);
     } catch (err) {
+      // Reader gone while the join was in flight: nothing to wind back.
+      // syncStop() would call closeSyncForBook() on this book id, and that
+      // would give up the saved Lese-Code (normally none here, since the
+      // input field is only shown when the book has no active code) and end
+      // whichever session is currently registered under the book id — which,
+      // if the book was reopened in the meantime, is a brand new session
+      // the new reader has just started (#258).
+      if (!this.source) return;
       this.syncStop();
-      if (this.source) await showAlert({ message: err?.message || t('sync.connectFailed') });
+      await showAlert({ message: err?.message || t('sync.connectFailed') });
     } finally {
       this.isSyncing = false;
     }
