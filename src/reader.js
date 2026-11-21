@@ -2855,11 +2855,14 @@ export class ReaderView {
       };
       this.syncSession = session;
       const code = await session.createRoom(this.currentPage, descriptor);
-      if (!this.source) {
-        session.stop();
-        this.syncSession = null;
-        return;
-      }
+      // Left the reader while the room was being made. Nothing is wound back:
+      // destroy() has already detached this session, and stop() would do two
+      // things that are not wanted here. It ends the session — which the next
+      // opening of this book may already have taken over, listeners and all
+      // (see the getSessionForBook() branch in init) — and it drops the saved
+      // code, although the room exists and works. The code then simply waits
+      // in „Buch bearbeiten" until the book is opened again (ADR 33).
+      if (!this.source) return;
       // Creating a room is several network round trips long, and an import can
       // finish inside them. The descriptor in the room then names an edition
       // the shelf no longer holds, while the offer behind the code would hand
@@ -2869,14 +2872,11 @@ export class ReaderView {
       // given up instead of being announced.
       const current = await this.buildBookDescriptor();
       // That read awaits too, so the reader may have been left in the meantime
-      // — the same check every other await in here makes. Without it,
-      // showSyncActive() would reach into a torn-down DOM, and the throw would
-      // land in the catch and take this book's Lese-Code with it.
-      if (!this.source) {
-        session.stop();
-        this.syncSession = null;
-        return;
-      }
+      // — the same check every other await in here makes, and for the same two
+      // reasons as above. Without it, showSyncActive() would reach into a
+      // torn-down DOM, and the throw would land in the catch and take this
+      // book's Lese-Code with it.
+      if (!this.source) return;
       if (!current || current.hash !== descriptor.hash) {
         this.syncStop();
         await showAlert({ message: t('sync.staleEdition') });
@@ -2980,11 +2980,11 @@ export class ReaderView {
       };
       this.syncSession = session;
       const normalizedCode = await session.joinRoom(code);
-      if (!this.source) {
-        session.stop();
-        this.syncSession = null;
-        return;
-      }
+      // Left the reader while the room was being joined, and the same answer as
+      // in syncCreate: nothing is wound back. destroy() has detached this
+      // session, the next opening of the book may have taken it over, and the
+      // code that joining saved describes a room that exists.
+      if (!this.source) return;
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
