@@ -3,7 +3,7 @@ import {
   getMeta, getPhotoPages, getBookFile, getThumb,
   savePhotoBook, saveBook, uid, hashBook, findAndBumpExistingBook,
 } from './storage.js';
-import { loadPdf, readTitlePage } from './pdf.js';
+import { loadPdf, closePdf, readTitlePage, readWorkTitle } from './pdf.js';
 import { t } from './i18n.js';
 
 const APP_TAG = 'super-vorlese';
@@ -116,6 +116,12 @@ export async function importBundle(file, { dedupe = false } = {}) {
   const thumbBytes = entries['thumb.jpg'];
   const thumbBlob = thumbBytes ? new Blob([thumbBytes], { type: 'image/jpeg' }) : null;
 
+  // Read on the PDF path below and handed back to the caller, which is how a
+  // received book can be recognised as a newer edition of one already on this
+  // shelf (ADR 40). A photographed book has no work title — it is nobody's
+  // re-export — and none is invented for it.
+  let workTitle = null;
+
   if (manifest.type === 'photos') {
     const pages = [];
     for (let i = 1; i <= pageCount; i++) {
@@ -149,8 +155,9 @@ export async function importBundle(file, { dedupe = false } = {}) {
       // book takes when it comes over a sync session or as a .vorlese file, so
       // it reads the title page just like the drag-and-drop import does.
       ({ cover, ageTag } = await readTitlePage(pdf));
+      workTitle = await readWorkTitle(pdf);
     } finally {
-      pdf.destroy?.();
+      await closePdf(pdf);
     }
     const contentHash = await hashBook({ type: 'pdf', fileBlob });
     if (dedupe) {
@@ -159,7 +166,7 @@ export async function importBundle(file, { dedupe = false } = {}) {
       // one place that does refresh an existing book is the library's own PDF
       // import, where re-adding the file is the deliberate act (ADR 29).
       const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount: actualPageCount });
-      if (existing) return { id: existing.id, title: existing.title };
+      if (existing) return { id: existing.id, title: existing.title, workTitle };
     }
     await saveBook({
       id,
@@ -171,12 +178,13 @@ export async function importBundle(file, { dedupe = false } = {}) {
       thumbBlob: cover ?? thumbBlob,
       pageCount: actualPageCount,
       contentHash,
+      workTitle,
       tags: ageTag ? [ageTag] : undefined,
     });
   } else {
     throw new Error(t('error.unknownBookType', { type: manifest.type }));
   }
-  return { id, title };
+  return { id, title, workTitle };
 }
 
 // Deliberately without a caller since the export button left the book cards

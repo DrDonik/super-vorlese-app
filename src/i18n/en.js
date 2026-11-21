@@ -97,6 +97,12 @@ export const en = {
   'library.import.failed': 'Import failed: {error}',
   'library.import.processing': 'Processing {index}/{total}: {name}…',
   'library.import.unreadable': '“{name}” could not be read.',
+  'library.import.preparing': 'Preparing the import…',
+  'library.import.indexing': 'Reading the shelf: {done}/{total}…',
+  'library.import.summary': 'Done: {updated} replaced, {added} new, {unchanged} unchanged.',
+  'library.import.summaryNew': 'New on the shelf: {titles}',
+  'library.import.replaced': '“{title}” now has the new edition.',
+  'library.import.unreadableShelf': 'Unreadable on the shelf: {n} (skipped when matching).',
 
   // ── Edit book ────────────────────────────────────────────────────────
   'bookEdit.title': 'Edit book',
@@ -131,6 +137,7 @@ export const en = {
   'sync.ended': 'You are no longer reading together.',
   'sync.connectFailed': 'Could not connect.',
   'sync.connectFailedRetry': 'Could not connect. Please try again.',
+  'sync.staleEdition': 'There is a newer edition of this book. Please close it and open it again, then you can read together.',
   'sync.bookLoading': 'The book is still loading. Please wait.',
 
   'sync.error.length': 'A reading code has {n} characters.',
@@ -147,6 +154,7 @@ export const en = {
   'transfer.message': '“{title}” is being sent by your reading partner…',
   'transfer.untitled': 'The book',
   'transfer.saving': 'Saving the book…',
+  'transfer.adopting': 'Checking the shelf…',
   'transfer.corrupt.title': 'Transfer damaged',
   'transfer.corrupt.message': 'The book that arrived was incomplete or damaged. Please try again.',
   'transfer.failed.title': 'Cannot connect',

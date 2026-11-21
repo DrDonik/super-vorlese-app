@@ -112,6 +112,12 @@ export const de = {
   'library.import.failed': 'Import fehlgeschlagen: {error}',
   'library.import.processing': 'Verarbeite {index}/{total}: {name}…',
   'library.import.unreadable': '«{name}» konnte nicht gelesen werden.',
+  'library.import.preparing': 'Import wird vorbereitet…',
+  'library.import.indexing': 'Regal wird gelesen: {done}/{total}…',
+  'library.import.summary': 'Fertig: {updated} ersetzt, {added} neu, {unchanged} unverändert.',
+  'library.import.summaryNew': 'Neu im Regal: {titles}',
+  'library.import.replaced': '«{title}» hat die neue Fassung bekommen.',
+  'library.import.unreadableShelf': 'Im Regal nicht lesbar: {n} (beim Erkennen übersprungen).',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Buch bearbeiten',
@@ -159,6 +165,7 @@ export const de = {
   'sync.connectFailed': 'Verbindung fehlgeschlagen.',
   'sync.connectFailedRetry': 'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
   'sync.bookLoading': 'Buch wird noch geladen. Bitte warten.',
+  'sync.staleEdition': 'Von diesem Buch gibt es eine neuere Fassung. Bitte schliesse es und öffne es noch einmal, dann könnt ihr gemeinsam lesen.',
 
   // {n} ist die Codelänge aus sync.js, damit der Satz mitwandert, falls sie
   // sich je ändert.
@@ -177,6 +184,7 @@ export const de = {
   'transfer.message': '«{title}» wird von deinem Lesepartner gesendet…',
   'transfer.untitled': 'Buch',
   'transfer.saving': 'Buch wird gespeichert…',
+  'transfer.adopting': 'Regal wird abgeglichen…',
   'transfer.corrupt.title': 'Übertragung fehlerhaft',
   'transfer.corrupt.message': 'Das empfangene Buch war unvollständig oder beschädigt. Bitte versuche es erneut.',
   'transfer.failed.title': 'Verbindung nicht möglich',

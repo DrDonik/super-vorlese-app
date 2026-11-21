@@ -107,6 +107,12 @@ export const da = {
   'library.import.failed': 'Importen mislykkedes: {error}',
   'library.import.processing': 'Behandler {index}/{total}: {name}…',
   'library.import.unreadable': '»{name}« kunne ikke læses.',
+  'library.import.preparing': 'Importen forberedes…',
+  'library.import.indexing': 'Reolen læses: {done}/{total}…',
+  'library.import.summary': 'Færdig: {updated} erstattet, {added} tilføjet, {unchanged} uændret.',
+  'library.import.summaryNew': 'Nyt i reolen: {titles}',
+  'library.import.replaced': '»{title}« har fået den nye udgave.',
+  'library.import.unreadableShelf': 'Ikke læsbare i reolen: {n} (sprunget over ved genkendelse).',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Redigér bogen',
@@ -144,6 +150,7 @@ export const da = {
   'sync.ended': 'I læser ikke længere sammen.',
   'sync.connectFailed': 'Forbindelsen mislykkedes.',
   'sync.connectFailedRetry': 'Forbindelsen mislykkedes. Prøv igen.',
+  'sync.staleEdition': 'Der findes en nyere udgave af bogen. Luk den og åbn den igen, så kan I læse sammen.',
   'sync.bookLoading': 'Bogen indlæses stadig. Vent et øjeblik.',
 
   // {n} ist die Codelänge aus sync.js, damit der Satz mitwandert, falls sie
@@ -162,6 +169,7 @@ export const da = {
   'transfer.message': '»{title}« sendes af din læsemakker…',
   'transfer.untitled': 'Bogen',
   'transfer.saving': 'Bogen gemmes…',
+  'transfer.adopting': 'Reolen gennemgås…',
   'transfer.corrupt.title': 'Overførslen er beskadiget',
   'transfer.corrupt.message': 'Bogen, der kom frem, var ufuldstændig eller beskadiget. Prøv igen.',
   'transfer.failed.title': 'Kan ikke forbinde',

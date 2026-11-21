@@ -5,6 +5,32 @@ import { deviceScaleFor } from './canvas-scale.js';
 
 pdfjsLib.GlobalWorkerOptions.workerPort = new PdfWorker();
 
+// Lets a document opened with loadPdf() go again, worker side included.
+//
+// It has to be `loadingTask.destroy()`: PDF.js keeps `destroy()` on the loading
+// task, and the document proxy has only `cleanup()` (measured against
+// pdfjs-dist 6.5 in a browser: `pdf.destroy` is undefined, `pdf.loadingTask
+// .destroy` is a function). The `pdf.destroy?.()` this app called on every
+// import path was therefore an optional call on a method that does not exist —
+// it never threw and it never released anything, and the worker kept every book
+// ever opened in a run. That is harmless for one book and not harmless for
+// fifty-seven on an iPad, which is what a correction round drops on the window
+// (ADR 40).
+//
+// Destroying the task also tears down PDF.js's wrapper around the shared
+// worker port, which it rebuilds on the next getDocument() — verified in
+// Chromium: three books opened and released one after another through one
+// workerPort all read correctly. It does assume the app never holds two
+// documents open at once, which it does not: a view is torn down before the
+// next one is mounted.
+export async function closePdf(pdf) {
+  try {
+    await pdf?.loadingTask?.destroy();
+  } catch (err) {
+    console.warn('PDF konnte nicht freigegeben werden', err);
+  }
+}
+
 export async function loadPdf(source) {
   let data;
   if (source instanceof Blob) {
@@ -280,4 +306,53 @@ export async function readTitlePage(pdf) {
     readAgeTag(page).catch(fallback('die Altersangabe')),
   ]);
   return { cover, ageTag };
+}
+
+// The book's own title, as the typesetter wrote it into the PDF's document
+// metadata. Not the file's name, and not what the shelf shows — this is the one
+// thing about a book that survives a correction of its text, which is what
+// makes it the identity of the *work* rather than of this file (ADR 40).
+//
+// The books this app holds carry it because retypeset-book.py sets
+// `#set document(title: …)`; a PDF from anywhere else may carry nothing, and
+// then there is no work identity to be had and nothing is guessed in its place.
+//
+// Capped because it is kept in a book's metadata record, where nothing
+// downstream cares about more than a title's worth of characters.
+const MAX_WORK_TITLE_LENGTH = 300;
+
+// Three answers, and the third one matters: a string, `null` for "read it, and
+// this PDF carries no title", and `undefined` for "could not read it at all".
+// Collapsing the last two would be the quiet kind of wrong — a book whose file
+// failed to open once would be remembered as a book without a title, stay
+// invisible to the shelf's index forever, and get a duplicate at the next
+// correction round with nothing on screen to say why.
+export async function readWorkTitle(pdf) {
+  let info;
+  try {
+    ({ info } = await pdf.getMetadata());
+  } catch (err) {
+    // Loud, for the same reason readTitlePage() is: "this book has no work
+    // title" and "the metadata could not be read" would otherwise look alike.
+    console.warn('Werktitel: die PDF-Metadaten konnten nicht gelesen werden', err);
+    return undefined;
+  }
+  const title = typeof info?.Title === 'string' ? info.Title.trim() : '';
+  return title ? title.slice(0, MAX_WORK_TITLE_LENGTH) : null;
+}
+
+// The same for a book already on the shelf, whose PDF is not open. This is what
+// reads the work title off the books that were stored before it was recorded,
+// and it keeps the same three answers.
+export async function readWorkTitleFromBlob(blob) {
+  let pdf = null;
+  try {
+    pdf = await loadPdf(blob);
+    return await readWorkTitle(pdf);
+  } catch (err) {
+    console.warn('Werktitel: die Datei konnte nicht geöffnet werden', err);
+    return undefined;
+  } finally {
+    await closePdf(pdf);
+  }
 }

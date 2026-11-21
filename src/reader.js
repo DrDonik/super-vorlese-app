@@ -1,5 +1,5 @@
-import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
-import { loadPdf, renderPageToCanvas } from './pdf.js';
+import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, hashBook, uid } from './storage.js';
+import { loadPdf, closePdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, lookupRoom } from './sync.js';
 import { applyCodeField, bindCodeSubmit } from './code-field.js';
@@ -157,7 +157,10 @@ class PdfSource {
     await renderPageToCanvas(this.pdf, n, canvas, w, h);
   }
   destroy() {
-    this.pdf?.destroy?.();
+    // Not awaited: the reader is torn down from a synchronous destroy(), and
+    // closePdf() reports its own failures. See closePdf() for why the document
+    // proxy is not the thing to ask.
+    closePdf(this.pdf);
   }
 }
 
@@ -174,14 +177,24 @@ class PhotoSource {
   destroy() {}
 }
 
+// The source plus the edition it is made of: `{ source, edition }`, or null.
+//
+// The edition is hashed from the very bytes handed to loadPdf, not read from
+// the record. Those two can differ, because a book can be replaced while it is
+// being opened: the record says one thing before the file is read and another
+// after it. What the reader needs to know is which pages are on the screen, and
+// only the bytes themselves answer that (ADR 40). It costs one digest per book
+// opened, which is the price of the answer being true.
+//
+// A photographed book has no edition to speak of: nothing ever replaces one.
 async function createSource(meta) {
   if (meta.type === 'photos') {
-    return new PhotoSource(meta.id, meta.pageCount);
+    return { source: new PhotoSource(meta.id, meta.pageCount), edition: null };
   }
   const fileBlob = await getBookFile(meta.id);
   if (!fileBlob) return null;
   const pdf = await loadPdf(fileBlob);
-  return new PdfSource(pdf);
+  return { source: new PdfSource(pdf), edition: await hashBook({ type: 'pdf', fileBlob }) };
 }
 
 export class ReaderView {
@@ -452,6 +465,9 @@ export class ReaderView {
     window.addEventListener('resize', this.boundResize);
 
     const meta = await getMeta(this.bookId);
+    // Left again while the record was being read: nothing further is opened,
+    // and no alert is shown over whatever is on screen now.
+    if (this.disposed) return;
     if (!meta) {
       await showAlert({ message: t('error.bookNotFound') });
       this.close();
@@ -467,12 +483,27 @@ export class ReaderView {
       if (blob && this.readerEl) this.coverUrl = URL.createObjectURL(blob);
     }).catch(() => {});
 
-    this.source = await createSource(meta);
-    if (!this.source) {
+    const opened = await createSource(meta);
+    // Opening a book reads the whole file and hashes it, and the reader can be
+    // left inside that wait. Assigning this.source now would undo destroy()'s
+    // teardown and let the rest of init() render and sync into a view that is
+    // gone — and the document just opened would never be released.
+    if (this.disposed) {
+      opened?.source?.destroy();
+      return;
+    }
+    if (!opened) {
       await showAlert({ message: t('error.bookNotFound') });
       this.close();
       return;
     }
+    this.source = opened.source;
+    // Which edition is on screen from here on, hashed from the bytes that were
+    // actually loaded. A book can be replaced while it is open — an import keeps
+    // running when the shelf is left (ADR 40) — and then the pages here are no
+    // longer the pages the shelf holds. Everything that would offer this book to
+    // somebody else compares against this value (see syncCreate and syncJoin).
+    this.loadedEdition = opened.edition;
     // Only now that the book actually opened — whether tapped in the library or
     // joined via a Lese-Code, both routes pass here. A book whose
     // pages are missing bails out above and must not be pushed to the top of
@@ -483,6 +514,10 @@ export class ReaderView {
     this.currentPage = Math.min(Math.max(meta.lastPage || 1, 1), this.totalPages);
 
     await this.renderCurrent();
+    // The first render can take a moment, and the reader may be gone by the
+    // time it returns: everything below writes to a screen that is no longer
+    // there, and showSyncActive() would fail on the replacement view's DOM.
+    if (this.disposed) return;
     reader.querySelector('.reader-loading')?.remove();
     this.showChrome();
 
@@ -2799,9 +2834,34 @@ export class ReaderView {
       return;
     }
     if (this.isSyncing) return;
+    // Set before the read below, because that read awaits: a second tap in the
+    // meantime would otherwise pass this very check too, and two rooms would
+    // be created, the first of them orphaned but still listening.
     this.isSyncing = true;
-    this.syncStop();
+    // Whether the old session has already been given up. The catch below tears
+    // a half-built session down, but it must not do that when the throw came
+    // before any of it: a failed read of the descriptor would otherwise cost
+    // this book the Lese-Code it already had, for a room that was never made.
+    let tornDown = false;
     try {
+      // Before anything is torn down — syncStop() further down gives up the code
+      // this book may already have, and that must not happen for a room that is
+      // then not created.
+      //
+      // A code puts the book on offer (ADR 33), and what it offers is the
+      // edition the shelf holds, not the one on this screen. Those are the same
+      // until an import replaces this book while it is open, and from that
+      // moment a partner joining this code would read page numbers against a
+      // different break (ADR 40). The book has to be opened again first; no
+      // descriptor either, which means the book or its hash is gone.
+      const descriptor = await this.buildBookDescriptor();
+      if (!this.source) return;
+      if (!descriptor || (this.loadedEdition && descriptor.hash !== this.loadedEdition)) {
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
+      this.syncStop();
+      tornDown = true;
       const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
@@ -2809,16 +2869,42 @@ export class ReaderView {
         showAlert({ message: t('sync.ended') });
       };
       this.syncSession = session;
-      const code = await session.createRoom(this.currentPage, await this.buildBookDescriptor());
-      if (!this.source) {
-        session.stop();
-        this.syncSession = null;
+      const code = await session.createRoom(this.currentPage, descriptor);
+      // Left the reader while the room was being made. Nothing is wound back:
+      // destroy() has already detached this session, and stop() would do two
+      // things that are not wanted here. It ends the session — which the next
+      // opening of this book may already have taken over, listeners and all
+      // (see the getSessionForBook() branch in init) — and it drops the saved
+      // code, although the room exists and works. The code then simply waits
+      // in „Buch bearbeiten" until the book is opened again (ADR 33).
+      if (!this.source) return;
+      // Creating a room is several network round trips long, and an import can
+      // finish inside them. The descriptor in the room then names an edition
+      // the shelf no longer holds, while the offer behind the code would hand
+      // out the file it holds now — the room would promise one book and serve
+      // another. So the shelf is asked once more, before showSyncActive() puts
+      // the book on offer at all (ADR 33), and a room that no longer matches is
+      // given up instead of being announced.
+      const current = await this.buildBookDescriptor();
+      // That read awaits too, so the reader may have been left in the meantime
+      // — the same check every other await in here makes, and for the same two
+      // reasons as above. Without it, showSyncActive() would reach into a
+      // torn-down DOM, and the throw would land in the catch and take this
+      // book's Lese-Code with it.
+      if (!this.source) return;
+      if (!current || current.hash !== descriptor.hash) {
+        this.syncStop();
+        await showAlert({ message: t('sync.staleEdition') });
         return;
       }
       this.showSyncActive(code);
     } catch (err) {
-      this.syncStop();
-      if (this.source) await showAlert({ message: err.message || t('sync.connectFailedRetry') });
+      // Nothing is touched once the reader is gone: syncStop() reads the
+      // reader's own DOM and would give up the saved code on the way, and the
+      // session has already been detached by destroy().
+      if (!this.source) return;
+      if (tornDown) this.syncStop();
+      await showAlert({ message: err.message || t('sync.connectFailedRetry') });
     } finally {
       this.isSyncing = false;
     }
@@ -2859,6 +2945,17 @@ export class ReaderView {
       // library takes (local copy by hash, otherwise WebRTC download).
       const ownHash = await ensureContentHash(this.bookId);
       if (!this.source) return;
+      // The same question as in syncCreate, from the other side: the comparison
+      // below asks the *shelf's* hash against the room, and that says nothing
+      // about the pages on this screen if the book was replaced while it was
+      // open. Joining then looks like a match and reads against a different
+      // break (ADR 40).
+      if (this.loadedEdition && ownHash && ownHash !== this.loadedEdition) {
+        input.value = '';
+        this.root.querySelector('.sync-join-btn').disabled = true;
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
       if (room.book?.hash && room.book.hash !== ownHash) {
         const goThere = await showConfirm({
           title: t('sync.otherBook.title'),
@@ -2898,11 +2995,23 @@ export class ReaderView {
       };
       this.syncSession = session;
       const normalizedCode = await session.joinRoom(code);
-      if (!this.source) {
-        session.stop();
-        this.syncSession = null;
+      // Left the reader while the room was being joined, and the same answer as
+      // in syncCreate: nothing is wound back. destroy() has detached this
+      // session, the next opening of the book may have taken it over, and the
+      // code that joining saved describes a room that exists.
+      if (!this.source) return;
+      // Joining saved a code for this book, and showSyncActive() would put the
+      // book on offer under it. An import that finished during the join above
+      // would make that an offer of a file this screen is not showing, so the
+      // shelf is asked once more — the same question syncCreate asks after
+      // createRoom.
+      if (!(await this.stillShowingShelfEdition())) {
+        if (!this.source) return;
+        this.syncStop();
+        await showAlert({ message: t('sync.staleEdition') });
         return;
       }
+      if (!this.source) return;
       this.showSyncActive(normalizedCode);
     } catch (err) {
       this.syncStop();
@@ -2926,17 +3035,57 @@ export class ReaderView {
         session.detach();
         return;
       }
+      // Same question as in syncJoin: the join awaited, and a code must not
+      // offer a file this screen is not showing.
+      if (!(await this.stillShowingShelfEdition())) {
+        if (this.syncSession !== session) return;
+        this.syncStop();
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
+      if (this.syncSession !== session) {
+        session.detach();
+        return;
+      }
       this.showSyncActive(normalizedCode);
     } catch (err) {
-      if (this.syncSession === session) this.syncSession = null;
+      // The reader is gone, or this session was superseded: the same answer as
+      // in syncJoin — nothing is wound back. destroy() has detached this
+      // session, the next opening of the book may have taken it over, and the
+      // code that joining saved describes a room that exists.
+      if (this.syncSession !== session) return;
+      // joinRoom() may well have succeeded and only something after it failed.
+      // The session is then listening to its room and registered for the book,
+      // where destroy() cannot reach it, because destroy() only detaches
+      // this.syncSession. So it is given up for good instead of merely let go
+      // of; syncStop() covers the session that never joined just as well.
+      this.syncStop();
       await showAlert({ message: err.message || t('sync.connectFailed') });
     }
   }
 
+  // Does the shelf still hold the edition this reader is showing? Asked after
+  // every await that could have let an import finish in the meantime, because
+  // what a Lese-Code offers is the shelf's file, not the one on this screen
+  // (ADR 33, ADR 40). True when there is nothing to compare — a book stored
+  // before hashing existed, or a hash that cannot be read — because then the
+  // answer would be a guess either way.
+  async stillShowingShelfEdition() {
+    const edition = await ensureContentHash(this.bookId);
+    return !this.loadedEdition || !edition || edition === this.loadedEdition;
+  }
+
+  // The hash first, which also backfills a book stored before hashing existed,
+  // and the record after it: both have to describe one and the same edition. The
+  // other way round, a replacement landing between the two reads would put the
+  // new edition's hash in the room next to the old one's page count, and a
+  // device that recognises the hash would synchronise against a book of a
+  // different length. Null when they disagree, and the caller does not offer the
+  // book at all.
   async buildBookDescriptor() {
-    const meta = await getMeta(this.bookId);
     const hash = await ensureContentHash(this.bookId);
-    if (!meta || !hash) return null;
+    const meta = await getMeta(this.bookId);
+    if (!meta || !hash || meta.contentHash !== hash) return null;
     // Cap the title to the length the room's validation rule permits, so a long
     // (e.g. filename-derived) title can't make room creation fail.
     const title = (meta.title || '').slice(0, 200);
@@ -3029,6 +3178,12 @@ export class ReaderView {
   }
 
   destroy() {
+    // Set first and never cleared: opening a book is a chain of awaits, and the
+    // view can be torn down inside any of them. `this.source` is no use as that
+    // signal, because init() assigns it after the book has opened and would
+    // bring a dead view back to life (see init). Everything in init() that
+    // resumes after an await asks this instead.
+    this.disposed = true;
     // No book on screen any more, so the device may sleep on its own schedule
     // again (ADR 25) — and the browser gets its bars back, because the library
     // behind this is a surface where they are wanted (ADR 34).
