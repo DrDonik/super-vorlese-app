@@ -490,14 +490,18 @@ export function replaceBookFile(id, {
       // The book's provenance list (ADR 41): what it already carried, plus
       // the edition being replaced right now, plus anything the sender knew
       // about further back. Order kept, duplicates dropped, and the current
-      // hash never appears in its own provenance.
-      const provenance = Array.isArray(meta.previousContentHashes)
-        ? [...meta.previousContentHashes]
-        : [];
+      // hash never appears in its own provenance — which matters on a
+      // revert, where the stored history and the new contentHash can
+      // overlap (replacing `B` with `A` on a book whose history is `[A]`
+      // must not keep `A` under its own current hash).
+      const provenance = [];
       const push = (h) => {
         if (!h || h === contentHash || provenance.includes(h)) return;
         provenance.push(h);
       };
+      if (Array.isArray(meta.previousContentHashes)) {
+        for (const h of meta.previousContentHashes) push(h);
+      }
       push(meta.contentHash);
       for (const h of incomingPreviousContentHashes) push(h);
       if (provenance.length > 0) next.previousContentHashes = provenance;
@@ -513,15 +517,24 @@ export function replaceBookFile(id, {
       // Hash-path guard: the target's current contentHash must still be one
       // the caller matched against. If the book was replaced locally in the
       // gap between the lookup and this transaction, the match is void.
-      if (Array.isArray(requireContentHashIn)
-          && requireContentHashIn.length > 0
-          && !requireContentHashIn.includes(meta.contentHash)) {
+      const hashGuardActive = Array.isArray(requireContentHashIn) && requireContentHashIn.length > 0;
+      if (hashGuardActive && !requireContentHashIn.includes(meta.contentHash)) {
         return;
       }
-      if (!soleWorkTitle) {
+      if (!soleWorkTitle && !hashGuardActive) {
         write(meta);
         return;
       }
+      // The condition for either path runs over every PDF book on the shelf,
+      // minus this write's `ignoreIds`. The workTitle path checks "exactly
+      // one carries this title, and it is this one" (ADR 40). The hash path
+      // checks the same under its own key: "exactly one carries a hash from
+      // this ancestor list, and it is this one" — same race, same guarantee
+      // (ADR 41). Combined with the hashGuard above, which has already
+      // asserted this book's own hash is still in the list, the uniqueness
+      // check closes the window in which a second shelf book could have
+      // been given an ancestor hash after the caller's lookup.
+      const wantedHashes = hashGuardActive ? new Set(requireContentHashIn) : null;
       const keysReq = store.getAllKeys();
       keysReq.onsuccess = () => {
         const skip = new Set(ignoreIds.map(metaKey));
@@ -532,21 +545,36 @@ export function replaceBookFile(id, {
         if (pending === 0) return;
         let matches = 0;
         let matchesThisBook = false;
+        let hashMatches = 0;
+        let hashMatchesThisBook = false;
         let unknown = false;
         for (const key of metaKeys) {
           const req = store.get(key);
           req.onsuccess = () => {
             const m = req.result;
             if (m && (m.type || 'pdf') === 'pdf') {
-              if (!('workTitle' in m)) unknown = true;
-              else if (m.workTitle === soleWorkTitle) {
-                matches++;
-                if (key === metaKey(id)) matchesThisBook = true;
+              if (wantedHashes && m.contentHash && wantedHashes.has(m.contentHash)) {
+                hashMatches++;
+                if (key === metaKey(id)) hashMatchesThisBook = true;
+              }
+              if (soleWorkTitle) {
+                if (!('workTitle' in m)) unknown = true;
+                else if (m.workTitle === soleWorkTitle) {
+                  matches++;
+                  if (key === metaKey(id)) matchesThisBook = true;
+                }
               }
             }
             // The last answer decides, still inside this transaction.
             if (--pending > 0) return;
-            if (matches === 1 && matchesThisBook && !(requireKnownShelf && unknown)) write(meta);
+            let ok = true;
+            if (soleWorkTitle) {
+              ok = ok && matches === 1 && matchesThisBook && !(requireKnownShelf && unknown);
+            }
+            if (hashGuardActive) {
+              ok = ok && hashMatches === 1 && hashMatchesThisBook;
+            }
+            if (ok) write(meta);
           };
         }
       };
