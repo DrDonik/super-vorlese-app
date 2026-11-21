@@ -124,7 +124,18 @@ async function adoptEdition({ id, workTitle, contentHash, progress }) {
   if (!workTitle) return null;
   try {
     progress.update(1, t('transfer.adopting'));
-    const { index: byWorkTitle } = await buildWorkTitleIndex(readWorkTitleFromBlob);
+    const { index: byWorkTitle, unreadable } = await buildWorkTitleIndex(readWorkTitleFromBlob);
+    // An index that could not read every book is incomplete, and an incomplete
+    // index can name one candidate where two exist. The library's own import
+    // carries on in that case and says so in its closing line — holding back
+    // there would turn one broken file into thirty duplicates (ADR 40). Here
+    // the arithmetic is the other way round: this path has no closing line to
+    // say it in, and holding back costs exactly one book standing twice on a
+    // shelf, which is visible and can be deleted. So it holds back.
+    if (unreadable > 0) {
+      console.warn('Fassung nicht übernommen: das Regal ist nicht vollständig lesbar');
+      return null;
+    }
     // Without the fresh import itself, which was just put on the shelf under
     // this very work title.
     const candidates = (byWorkTitle.get(workTitle) || []).filter((c) => c.id !== id);

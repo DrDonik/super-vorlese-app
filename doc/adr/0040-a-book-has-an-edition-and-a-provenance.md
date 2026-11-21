@@ -224,6 +224,10 @@ a way the rules above could be true on paper and wrong in the data.
   lesbar: 1"), because a book missing from the index is exactly the case this
   cannot otherwise show.
 
+  A book whose file is missing entirely counts the same way: that is unreadable,
+  not titleless, and only a book that has gone altogether in the meantime is
+  passed over in silence.
+
   What this deliberately does **not** do is refuse every replacement while one
   book on the shelf is unreadable. For the wrong book to be replaced, that
   unreadable book would have to share its work title with another book *and* a
@@ -231,3 +235,9 @@ a way the rules above could be true on paper and wrong in the data.
   the certain cost: a single broken file would turn a correction round into
   thirty duplicates. The incompleteness is reported instead of being traded for
   that.
+
+  **The receive path does hold back**, and for the same arithmetic read the other
+  way: it has no closing line to report an incomplete index in, and holding back
+  there costs exactly one book standing twice on the receiver's shelf, which is
+  visible and can be deleted. So `adoptEdition()` folds nothing in while any
+  book on that shelf could not be read.

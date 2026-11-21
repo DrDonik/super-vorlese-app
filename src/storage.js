@@ -278,7 +278,12 @@ export async function ensureWorkTitle(id, readWorkTitleFromBlob) {
   if ((meta.type || 'pdf') !== 'pdf') return null;
   if ('workTitle' in meta) return meta.workTitle;
   const fileBlob = await get(bookKey(id));
-  if (!fileBlob) return null;
+  if (!fileBlob) {
+    // A book without its file is unreadable, not titleless, and has to be
+    // counted as such — unless the whole book has gone in the meantime, which
+    // is nothing to report to anybody.
+    return (await get(metaKey(id))) ? undefined : null;
+  }
   const workTitle = await readWorkTitleFromBlob(fileBlob);
   // A file that could not be read is not a book without a title, and writing it
   // down as one would be permanent: undefined is passed straight back and
