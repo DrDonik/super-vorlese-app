@@ -465,6 +465,9 @@ export class ReaderView {
     window.addEventListener('resize', this.boundResize);
 
     const meta = await getMeta(this.bookId);
+    // Left again while the record was being read: nothing further is opened,
+    // and no alert is shown over whatever is on screen now.
+    if (this.disposed) return;
     if (!meta) {
       await showAlert({ message: t('error.bookNotFound') });
       this.close();
@@ -481,6 +484,14 @@ export class ReaderView {
     }).catch(() => {});
 
     const opened = await createSource(meta);
+    // Opening a book reads the whole file and hashes it, and the reader can be
+    // left inside that wait. Assigning this.source now would undo destroy()'s
+    // teardown and let the rest of init() render and sync into a view that is
+    // gone — and the document just opened would never be released.
+    if (this.disposed) {
+      opened?.source?.destroy();
+      return;
+    }
     if (!opened) {
       await showAlert({ message: t('error.bookNotFound') });
       this.close();
@@ -3153,6 +3164,12 @@ export class ReaderView {
   }
 
   destroy() {
+    // Set first and never cleared: opening a book is a chain of awaits, and the
+    // view can be torn down inside any of them. `this.source` is no use as that
+    // signal, because init() assigns it after the book has opened and would
+    // bring a dead view back to life (see init). Everything in init() that
+    // resumes after an await asks this instead.
+    this.disposed = true;
     // No book on screen any more, so the device may sleep on its own schedule
     // again (ADR 25) — and the browser gets its bars back, because the library
     // behind this is a surface where they are wanted (ADR 34).
