@@ -66,7 +66,10 @@ export async function hashBook({ type, fileBlob, pages }) {
   return sha256Hex(await fileBlob.arrayBuffer());
 }
 
-export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, contentHash, tags, workTitle }) {
+export async function saveBook({
+  id, title, fileBlob, thumbBlob, pageCount, contentHash, tags, workTitle,
+  previousContentHashes,
+}) {
   await set(bookKey(id), fileBlob);
   if (thumbBlob) {
     await set(thumbKey(id), thumbBlob);
@@ -87,6 +90,11 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, cont
   // Only written when there is something to write, so a book whose title page
   // yields no age recommendation keeps the shape every book has always had.
   if (tags?.length) meta.tags = tags;
+  // The provenance list travels with a received bundle (ADR 41); a book never
+  // replaced carries nothing here, so the field stays absent for those.
+  if (Array.isArray(previousContentHashes) && previousContentHashes.length > 0) {
+    meta.previousContentHashes = previousContentHashes;
+  }
   await set(metaKey(id), meta);
 }
 
@@ -249,6 +257,37 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
   return null;
 }
 
+// Finds the single PDF book whose current contentHash is in the given list, or
+// null when nothing matches or more than one does (ADR 41). Used by the receive
+// path to recognise a locally held edition as an ancestor of the newer one that
+// is being folded in: a hard-identity match that does not rely on workTitle.
+// `ignoreIds` leaves a book out of the count — the receive path holds the
+// freshly imported copy by its own id.
+export async function findBookByAnyContentHash(hashes, { ignoreIds = [] } = {}) {
+  if (!Array.isArray(hashes) || hashes.length === 0) return null;
+  const skip = new Set(ignoreIds);
+  const wanted = new Set(hashes);
+  const books = (await listBooks()).filter(
+    (b) => !skip.has(b.id) && (b.type || 'pdf') === 'pdf',
+  );
+  const matches = books.filter((b) => b.contentHash && wanted.has(b.contentHash));
+  if (matches.length === 0) {
+    // Older books on the shelf may not have their contentHash recorded yet —
+    // the same backfill findBookByContentHash does, kept to the type and the
+    // candidate hashes so nothing is digested that cannot match.
+    for (const book of books) {
+      if (book.contentHash) continue;
+      const h = await ensureContentHash(book.id);
+      if (h && wanted.has(h)) {
+        book.contentHash = h;
+        matches.push(book);
+      }
+    }
+  }
+  if (matches.length !== 1) return null;
+  return matches[0];
+}
+
 // If a book with the given content is already in the library, bump it to the
 // front and return it; otherwise return null. Lets re-imports of an existing
 // book resurface that copy (preserving its reading progress and title) instead
@@ -394,7 +433,13 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
 // False when nothing was written: the book is gone, or the precondition does not
 // hold. The caller then treats the file as a book of its own.
 export function replaceBookFile(id, {
-  fileBlob, pageCount, contentHash, workTitle, keepAddedAt = false,
+  fileBlob, pageCount, contentHash, workTitle,
+  // The sender's own chain of predecessors, merged in on the receive path so
+  // the next step of the chain still recognises either side's ancestry
+  // (ADR 41). Omitted on the library's own „PDF ersetzen" and import paths,
+  // where only the local predecessor needs to be remembered.
+  incomingPreviousContentHashes = [],
+  keepAddedAt = false,
   soleWorkTitle = null, ignoreIds = [], requireKnownShelf = false,
 }) {
   return bookStore('readwrite', (store) => new Promise((resolve, reject) => {
@@ -416,6 +461,20 @@ export function replaceBookFile(id, {
       };
       if (workTitle !== undefined) next.workTitle = workTitle;
       if (!keepAddedAt) next.addedAt = Date.now();
+      // The book's provenance list (ADR 41): what it already carried, plus
+      // the edition being replaced right now, plus anything the sender knew
+      // about further back. Order kept, duplicates dropped, and the current
+      // hash never appears in its own provenance.
+      const provenance = Array.isArray(meta.previousContentHashes)
+        ? [...meta.previousContentHashes]
+        : [];
+      const push = (h) => {
+        if (!h || h === contentHash || provenance.includes(h)) return;
+        provenance.push(h);
+      };
+      push(meta.contentHash);
+      for (const h of incomingPreviousContentHashes) push(h);
+      if (provenance.length > 0) next.previousContentHashes = provenance;
       store.put(fileBlob, bookKey(id));
       store.put(next, metaKey(id));
       written = true;

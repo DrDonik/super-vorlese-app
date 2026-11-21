@@ -4,8 +4,8 @@ import { LibraryView } from './library.js';
 import { ReaderView } from './reader.js';
 import { CameraView } from './camera.js';
 import {
-  findBookByContentHash, ensureContentHash, deleteBook, getBookFile, getMeta,
-  buildWorkTitleIndex, replaceBookFile,
+  findBookByContentHash, findBookByAnyContentHash, ensureContentHash,
+  deleteBook, getBookFile, getMeta, buildWorkTitleIndex, replaceBookFile,
 } from './storage.js';
 import { readWorkTitleFromBlob } from './pdf.js';
 import { importBundle } from './bundle.js';
@@ -118,12 +118,65 @@ function showReader(bookId, { joinCode = null, startShared = false } = {}) {
 // nothing visible changes here — only what sits behind the card.
 //
 // Returns the id of the book the edition was folded into, or null when it stays
-// a book of its own: no work title to go by, no single match, or a write that
+// a book of its own: no identity to go by, no single match, or a write that
 // did not land. The download is kept in every one of those cases.
-async function adoptEdition({ id, workTitle, contentHash, progress }) {
-  if (!workTitle) return null;
+//
+// Two paths are tried in order (ADR 41 then ADR 40):
+//
+//   1. The sender's `previousContentHashes`. A hard-identity match — exactly
+//      one book on this shelf currently holds a hash the sender knows as an
+//      ancestor of what it just sent — so the fold-in is unambiguous. This is
+//      what carries the "the file was replaced on the sender's side" case
+//      across to shelves whose old copies have no `info.Title` and therefore
+//      no `workTitle` to be found by.
+//
+//   2. The arriving `workTitle`. The ADR 40 path, unchanged.
+async function adoptEdition({ id, workTitle, contentHash, previousContentHashes, progress }) {
+  const [fileBlob, meta] = await Promise.all([getBookFile(id), getMeta(id)]);
+  if (!fileBlob || !meta) return null;
+  // Replaces a target book's file with the freshly imported one, then clears
+  // the keepsake of what just left and deletes the temporary import that
+  // carried the new file in. `extraOptions` are passed straight through to
+  // `replaceBookFile`, so each path brings its own race-safety conditions:
+  // `incomingPreviousContentHashes` for the hash chain, `soleWorkTitle` /
+  // `ignoreIds` / `requireKnownShelf` for the work-title path.
+  const foldInto = async (targetId, extraOptions) => {
+    if (!(await replaceBookFile(targetId, {
+      // The card must not move: on the shelf of someone who only receives
+      // books, nothing may rearrange itself under their hands (ADR 29), and
+      // „Zuletzt hinzugefügt" orders by exactly this field.
+      fileBlob, pageCount: meta.pageCount, contentHash, workTitle, keepAddedAt: true,
+      ...extraOptions,
+    }))) return false;
+    // The code this book carried pointed at a room describing the edition that
+    // has just been replaced, so it is given up with it — the same move the
+    // library's own import makes. The code of the room being joined right now
+    // takes its place a moment later, when the reader opens.
+    closeSyncForBook(targetId);
+    // From here the fold-in has happened, and the book to open is the old one
+    // whatever else goes wrong. Clearing away the temporary import is tidying
+    // up, not part of the decision: if it fails, the shelf holds one book too
+    // many — visible, deletable — and that is far better than sending the
+    // reader to a copy with none of their evenings in it.
+    try {
+      await deleteBook(id);
+    } catch (err) {
+      console.error('Übernommener Zwischenimport konnte nicht gelöscht werden', err);
+    }
+    return true;
+  };
+
   try {
     progress.update(1, t('transfer.adopting'));
+    if (Array.isArray(previousContentHashes) && previousContentHashes.length > 0) {
+      const target = await findBookByAnyContentHash(previousContentHashes, { ignoreIds: [id] });
+      // The sender's chain is merged in so the next step still recognises
+      // either side's ancestry (ADR 41).
+      if (target && await foldInto(target.id, { incomingPreviousContentHashes: previousContentHashes })) {
+        return target.id;
+      }
+    }
+    if (!workTitle) return null;
     const { index: byWorkTitle, unreadable } = await buildWorkTitleIndex(readWorkTitleFromBlob);
     // An index that could not read every book is incomplete, and an incomplete
     // index can name one candidate where two exist. The library's own import
@@ -141,39 +194,18 @@ async function adoptEdition({ id, workTitle, contentHash, progress }) {
     const candidates = (byWorkTitle.get(workTitle) || []).filter((c) => c.id !== id);
     if (candidates.length !== 1) return null;
     const target = candidates[0].id;
-    const [fileBlob, meta] = await Promise.all([getBookFile(id), getMeta(id)]);
-    if (!fileBlob || !meta) return null;
-    if (!(await replaceBookFile(target, {
-      // The card must not move: on the shelf of someone who only receives
-      // books, nothing may rearrange itself under their hands (ADR 29), and
-      // „Zuletzt hinzugefügt" orders by exactly this field.
-      fileBlob, pageCount: meta.pageCount, contentHash, workTitle, keepAddedAt: true,
-      // The same condition the library's import writes under, checked inside the
-      // write's own transaction — without the fresh import, which carries this
-      // work title by definition and is deleted a moment later.
-      //
-      // `requireKnownShelf` goes with the `unreadable` check above and says the
-      // same thing one layer down: this path folds nothing in while any book
-      // here is of unknown title, a book that arrived since the index was built
-      // included. It cannot be counted without reading its PDF, so it might be
-      // the second book carrying this title.
+    // The same condition the library's import writes under, checked inside the
+    // write's own transaction — without the fresh import, which carries this
+    // work title by definition and is deleted a moment later.
+    //
+    // `requireKnownShelf` goes with the `unreadable` check above and says the
+    // same thing one layer down: this path folds nothing in while any book
+    // here is of unknown title, a book that arrived since the index was built
+    // included. It cannot be counted without reading its PDF, so it might be
+    // the second book carrying this title.
+    if (!(await foldInto(target, {
       soleWorkTitle: workTitle, ignoreIds: [id], requireKnownShelf: true,
     }))) return null;
-    // The code this book carried pointed at a room describing the edition that
-    // has just been replaced, so it is given up with it — the same move the
-    // library's own import makes. The code of the room being joined right now
-    // takes its place a moment later, when the reader opens.
-    closeSyncForBook(target);
-    // From here the fold-in has happened, and the book to open is the old one
-    // whatever else goes wrong. Clearing away the temporary import is tidying
-    // up, not part of the decision: if it fails, the shelf holds one book too
-    // many — visible, deletable — and that is far better than sending the
-    // reader to a copy with none of their evenings in it.
-    try {
-      await deleteBook(id);
-    } catch (err) {
-      console.error('Übernommener Zwischenimport konnte nicht gelöscht werden', err);
-    }
     return target;
   } catch (err) {
     // Nothing has been written to the existing book at this point: the index
@@ -222,13 +254,15 @@ async function openRoom(room) {
       onProgress: (fraction) => progress.update(fraction),
     });
     progress.update(1, t('transfer.saving'));
-    const { id, workTitle } = await importBundle(bundleBlob);
+    const { id, workTitle, previousContentHashes } = await importBundle(bundleBlob);
     newBookId = id;
     const gotHash = await ensureContentHash(id);
     if (gotHash !== room.book.hash) {
       throw new Error('integrity');
     }
-    const adopted = await adoptEdition({ id, workTitle, contentHash: gotHash, progress });
+    const adopted = await adoptEdition({
+      id, workTitle, previousContentHashes, contentHash: gotHash, progress,
+    });
     // The temporary import is gone once it has been folded in, so there is
     // nothing left for the catch below to delete — and the book it was folded
     // into is the one thing it must never delete.

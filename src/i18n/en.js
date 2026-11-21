@@ -104,6 +104,11 @@ export const en = {
   'library.import.replaced': '“{title}” now has the new edition.',
   'library.import.unreadableShelf': 'Unreadable on the shelf: {n} (skipped when matching).',
 
+  // „Replace PDF" from the edit dialog (ADR 41).
+  'library.replace.unreadable': '“{name}” could not be read.',
+  'library.replace.failed': 'The new edition could not be saved.',
+  'library.replace.done': '“{title}” now has the new edition.',
+
   // ── Edit book ────────────────────────────────────────────────────────
   'bookEdit.title': 'Edit book',
   'bookEdit.titleField': 'Title',
@@ -116,6 +121,9 @@ export const en = {
   // end of a pair the app already had. The rubric right above names the code
   // and shows it, so the button needs no noun of its own.
   'bookEdit.disconnect': 'Disconnect',
+  // Its own row below the reading-code row: a rare, deliberate file action
+  // with the same neutral look as „Disconnect" (ADR 41).
+  'bookEdit.replacePdf': 'Replace PDF',
   'bookEdit.delete': 'Delete book',
 
   // ── Reading together ─────────────────────────────────────────────────

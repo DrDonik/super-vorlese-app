@@ -114,6 +114,11 @@ export const da = {
   'library.import.replaced': '»{title}« har fået den nye udgave.',
   'library.import.unreadableShelf': 'Ikke læsbare i reolen: {n} (sprunget over ved genkendelse).',
 
+  // „Udskift PDF" fra „Redigér bogen" (ADR 41).
+  'library.replace.unreadable': '»{name}« kunne ikke læses.',
+  'library.replace.failed': 'Den nye udgave kunne ikke gemmes.',
+  'library.replace.done': '»{title}« har fået den nye udgave.',
+
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Redigér bogen',
   'bookEdit.titleField': 'Titel',
@@ -129,6 +134,9 @@ export const da = {
   // und „Slet" darf hier nicht stehen, weil einen Blick weiter „Slet bogen" den
   // ganzen Abend mitnimmt (Regel 5).
   'bookEdit.disconnect': 'Afbryd',
+  // Egen række under læsekoden: en sjælden, bevidst filhandling, samme
+  // neutrale udseende som „Afbryd" (ADR 41).
+  'bookEdit.replacePdf': 'Udskift PDF',
   'bookEdit.delete': 'Slet bogen',
 
   // ── Gemeinsam lesen ──────────────────────────────────────────────────
