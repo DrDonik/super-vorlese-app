@@ -240,4 +240,8 @@ a way the rules above could be true on paper and wrong in the data.
   way: it has no closing line to report an incomplete index in, and holding back
   there costs exactly one book standing twice on the receiver's shelf, which is
   visible and can be deleted. So `adoptEdition()` folds nothing in while any
-  book on that shelf could not be read.
+  book on that shelf could not be read — nor while any book there has no work
+  title recorded at all, which after an index has been built means a book that
+  arrived since. Such a book cannot be counted, because only reading its PDF
+  would say what it is and that cannot be done inside the write's transaction,
+  so it might be the second book carrying the title in question.

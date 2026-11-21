@@ -363,6 +363,15 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
 //     and a book replaced by mistake takes the right one's keepsake with it.
 //     `ignoreIds` leaves a book out of that count: the receive path holds the
 //     freshly imported copy, which carries the same title by definition.
+//   * `requireKnownShelf` additionally refuses when any book here has no work
+//     title recorded at all. Such a book cannot be counted — only reading its
+//     PDF would say what it is, and that cannot happen inside a transaction —
+//     so it might be the second book carrying this very title. After an index
+//     has been built, it means a book that arrived since. The receive path asks
+//     for this, because it holds back whenever the shelf is not fully known
+//     (see adoptEdition); the library's import deliberately does not, because
+//     there it would turn one unreadable file into a shelf full of duplicates
+//     (ADR 40).
 //
 // `keepAddedAt` leaves the book's place on the shelf alone. The library's own
 // import does bump it, because dropping a file that is already there is one act
@@ -374,7 +383,7 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
 // hold. The caller then treats the file as a book of its own.
 export function replaceBookFile(id, {
   fileBlob, pageCount, contentHash, workTitle, keepAddedAt = false,
-  soleWorkTitle = null, ignoreIds = [],
+  soleWorkTitle = null, ignoreIds = [], requireKnownShelf = false,
 }) {
   return bookStore('readwrite', (store) => new Promise((resolve, reject) => {
     const tx = store.transaction;
@@ -418,16 +427,21 @@ export function replaceBookFile(id, {
         if (pending === 0) return;
         let matches = 0;
         let matchesThisBook = false;
+        let unknown = false;
         for (const key of metaKeys) {
           const req = store.get(key);
           req.onsuccess = () => {
             const m = req.result;
-            if (m && (m.type || 'pdf') === 'pdf' && m.workTitle === soleWorkTitle) {
-              matches++;
-              if (key === metaKey(id)) matchesThisBook = true;
+            if (m && (m.type || 'pdf') === 'pdf') {
+              if (!('workTitle' in m)) unknown = true;
+              else if (m.workTitle === soleWorkTitle) {
+                matches++;
+                if (key === metaKey(id)) matchesThisBook = true;
+              }
             }
             // The last answer decides, still inside this transaction.
-            if (--pending === 0 && matches === 1 && matchesThisBook) write(meta);
+            if (--pending > 0) return;
+            if (matches === 1 && matchesThisBook && !(requireKnownShelf && unknown)) write(meta);
           };
         }
       };

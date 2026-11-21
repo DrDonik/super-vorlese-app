@@ -151,7 +151,13 @@ async function adoptEdition({ id, workTitle, contentHash, progress }) {
       // The same condition the library's import writes under, checked inside the
       // write's own transaction — without the fresh import, which carries this
       // work title by definition and is deleted a moment later.
-      soleWorkTitle: workTitle, ignoreIds: [id],
+      //
+      // `requireKnownShelf` goes with the `unreadable` check above and says the
+      // same thing one layer down: this path folds nothing in while any book
+      // here is of unknown title, a book that arrived since the index was built
+      // included. It cannot be counted without reading its PDF, so it might be
+      // the second book carrying this title.
+      soleWorkTitle: workTitle, ignoreIds: [id], requireKnownShelf: true,
     }))) return null;
     // The code this book carried pointed at a room describing the edition that
     // has just been replaced, so it is given up with it — the same move the
