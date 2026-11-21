@@ -175,7 +175,7 @@ function imageRectInViewport(ctm, viewport) {
 
 const MIN_COVER_PIXELS = 120;        // below this it is a logo, not a cover
 const MIN_COVER_ASPECT = 0.5;        // width / height of the placed picture …
-const MAX_COVER_ASPECT = 1.1;        // … upright to roughly square
+const MAX_COVER_ASPECT = 1.3;        // … upright, square, or gently landscape
 const MIN_COVER_HEIGHT_SHARE = 0.15; // of the page height
 const MIN_COVER_AREA_SHARE = 0.04;   // of the page area
 const MAX_RENDER_SIDE = 4000;        // ceiling for the page canvas we crop from

@@ -185,3 +185,21 @@ Two conditions make it safe, and both are stated at the code:
   fails that check is deleted again, and a fold-in before the check would hand
   that deletion a book with months of keepsake in it;
 - **exactly one** book may carry the work title, or nothing happens at all.
+
+## Amendment (2026-11-21): the aspect window admits gently landscape covers
+
+„Der OktoBus auf grosser Fahrt" paints its cover 300 × 254 px, placed on page 1
+with width/height 1.18 — the first measured book whose cover is wider than
+tall. The original 0.5–1.1 window, drawn around the 50 books held when this ADR
+was written (all between 0.64 and 0.99), rejected it, and the shelf fell back
+to the full-page thumbnail.
+
+**`MAX_COVER_ASPECT` is 1.3.** The lower bound stays at 0.5, so a tall sidebar
+illustration still cannot be mistaken for a cover. The upper bound now admits
+covers up to roughly 4:3 landscape, which covers the OktoBus book and leaves
+headroom for a few more of the same shape without reopening this.
+
+The alternative — asking the user to remeasure every time a new book arrives
+with an unusual cover — was worse for exactly the person the shelf is for. The
+worst case this change admits is unchanged: a cover showing page 1's picture
+instead of page 1.
