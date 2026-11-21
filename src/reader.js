@@ -514,6 +514,10 @@ export class ReaderView {
     this.currentPage = Math.min(Math.max(meta.lastPage || 1, 1), this.totalPages);
 
     await this.renderCurrent();
+    // The first render can take a moment, and the reader may be gone by the
+    // time it returns: everything below writes to a screen that is no longer
+    // there, and showSyncActive() would fail on the replacement view's DOM.
+    if (this.disposed) return;
     reader.querySelector('.reader-loading')?.remove();
     this.showChrome();
 
@@ -3045,7 +3049,17 @@ export class ReaderView {
       }
       this.showSyncActive(normalizedCode);
     } catch (err) {
-      if (this.syncSession === session) this.syncSession = null;
+      // The reader is gone, or this session was superseded: the same answer as
+      // in syncJoin — nothing is wound back. destroy() has detached this
+      // session, the next opening of the book may have taken it over, and the
+      // code that joining saved describes a room that exists.
+      if (this.syncSession !== session) return;
+      // joinRoom() may well have succeeded and only something after it failed.
+      // The session is then listening to its room and registered for the book,
+      // where destroy() cannot reach it, because destroy() only detaches
+      // this.syncSession. So it is given up for good instead of merely let go
+      // of; syncStop() covers the session that never joined just as well.
+      this.syncStop();
       await showAlert({ message: err.message || t('sync.connectFailed') });
     }
   }
