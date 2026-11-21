@@ -2868,15 +2868,28 @@ export class ReaderView {
       // the book on offer at all (ADR 33), and a room that no longer matches is
       // given up instead of being announced.
       const current = await this.buildBookDescriptor();
+      // That read awaits too, so the reader may have been left in the meantime
+      // — the same check every other await in here makes. Without it,
+      // showSyncActive() would reach into a torn-down DOM, and the throw would
+      // land in the catch and take this book's Lese-Code with it.
+      if (!this.source) {
+        session.stop();
+        this.syncSession = null;
+        return;
+      }
       if (!current || current.hash !== descriptor.hash) {
         this.syncStop();
-        if (this.source) await showAlert({ message: t('sync.staleEdition') });
+        await showAlert({ message: t('sync.staleEdition') });
         return;
       }
       this.showSyncActive(code);
     } catch (err) {
+      // Nothing is touched once the reader is gone: syncStop() reads the
+      // reader's own DOM and would give up the saved code on the way, and the
+      // session has already been detached by destroy().
+      if (!this.source) return;
       if (tornDown) this.syncStop();
-      if (this.source) await showAlert({ message: err.message || t('sync.connectFailedRetry') });
+      await showAlert({ message: err.message || t('sync.connectFailedRetry') });
     } finally {
       this.isSyncing = false;
     }
