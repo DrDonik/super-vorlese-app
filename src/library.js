@@ -281,7 +281,7 @@ const SUMMARY_LINGER_MS = 8000;
 // answer. A single *replaced* one very much does: its card looks exactly as it
 // did, and whether the book was replaced or laid down beside itself is the one
 // difference a person cannot see.
-function showImportSummary(status, { files, unchanged, updated, added, replacedTitle, unreadable }) {
+function importSummary({ files, unchanged, updated, added, replacedTitle, unreadable }) {
   const parts = [];
   if (files === 1 && updated === 1) {
     parts.push(t('library.import.replaced', { title: replacedTitle }));
@@ -297,15 +297,7 @@ function showImportSummary(status, { files, unchanged, updated, added, replacedT
   // duplicate. That is said out loud, even when there would otherwise be
   // nothing to say: it is the one thing here that cannot be seen on the shelf.
   if (unreadable > 0) parts.push(t('library.import.unreadableShelf', { n: unreadable }));
-  if (parts.length === 0) {
-    status.hidden = true;
-    return;
-  }
-  const message = parts.join(' ');
-  status.textContent = message;
-  setTimeout(() => {
-    if (status.textContent === message) status.hidden = true;
-  }, SUMMARY_LINGER_MS);
+  return parts.join(' ');
 }
 
 // Serialises import runs; see handleImport().
@@ -1203,18 +1195,37 @@ export class LibraryView {
     for (const url of oldUrls) URL.revokeObjectURL(url);
   }
 
-  // One-shot message in the status line above the shelf, cleared after a few
-  // seconds unless something newer has taken its place. The import flows drive
-  // the same element step by step; this is for an action that simply happened
-  // and would otherwise leave no trace on screen.
-  showStatus(message) {
+  // The status line above the shelf, in three parts: one step of a running
+  // job (setStatus), a message that stands for a few seconds unless something
+  // newer takes its place (showStatus), and nothing at all (clearStatus).
+  //
+  // All three do nothing when the line is not on screen, and that is the point
+  // rather than defensiveness: an import is queued behind another one and the
+  // chain outlives the view (see handleImport), so a run can begin after the
+  // shelf has left the screen — a book was opened meanwhile. The books belong
+  // in the shelf, not on the line, so the run carries on and renderGrid() shows
+  // the result whenever the reader comes back. Before this, the missing element
+  // threw and the queued import was lost without a word.
+  setStatus(message) {
     const status = this.root.querySelector('.library-status');
     if (!status) return;
     status.hidden = false;
     status.textContent = message;
+  }
+
+  clearStatus() {
+    const status = this.root.querySelector('.library-status');
+    if (status) status.hidden = true;
+  }
+
+  showStatus(message, holdMs = 4000) {
+    this.setStatus(message);
     setTimeout(() => {
-      if (status.textContent === message) status.hidden = true;
-    }, 4000);
+      // Re-read: the line may have been replaced, or may have gone with the
+      // view, in the seconds this waited.
+      const status = this.root.querySelector('.library-status');
+      if (status && status.textContent === message) status.hidden = true;
+    }, holdMs);
   }
 
   // Reached from the „Buch bearbeiten" dialog, which has closed by the time
@@ -1568,30 +1579,24 @@ export class LibraryView {
   async handleBundle(fileList) {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
-    const status = this.root.querySelector('.library-status');
-    status.hidden = false;
-    status.textContent = t('library.import.reading', { name: files[0].name });
+    this.setStatus(t('library.import.reading', { name: files[0].name }));
+    let message;
     try {
       const { title } = await importBundle(files[0], { dedupe: true });
-      status.textContent = t('library.import.imported', { title });
+      message = t('library.import.imported', { title });
     } catch (err) {
       console.error('Import fehlgeschlagen', err);
-      status.textContent = t('library.import.failed', { error: err.message || err });
+      message = t('library.import.failed', { error: err.message || err });
     }
+    this.showStatus(message);
     await this.renderGrid();
     this.scrollToTop();
-    const finalMsg = status.textContent;
-    setTimeout(() => {
-      if (status.textContent === finalMsg) status.hidden = true;
-    }, 4000);
   }
 
   async handleFiles(filesOrFileList) {
     const files = Array.isArray(filesOrFileList) ? filesOrFileList : Array.from(filesOrFileList || []);
     if (files.length === 0) return;
-    const status = this.root.querySelector('.library-status');
-    status.hidden = false;
-    status.textContent = t('library.import.preparing');
+    this.setStatus(t('library.import.preparing'));
 
     // Once per run, not once per file: ordering the shelf by work title costs
     // one PDF opened per book the first time (ADR 40), and nothing at all
@@ -1603,7 +1608,7 @@ export class LibraryView {
     const { index: byWorkTitle, unreadable } = await buildWorkTitleIndex(
       readWorkTitleFromBlob,
       (done, total) => {
-        status.textContent = t('library.import.indexing', { done, total });
+        this.setStatus(t('library.import.indexing', { done, total }));
       },
     ).catch((err) => {
       console.error('Werktitel-Index konnte nicht gebaut werden', err);
@@ -1617,7 +1622,7 @@ export class LibraryView {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
-      status.textContent = t('library.import.processing', { index: i + 1, total: files.length, name: file.name });
+      this.setStatus(t('library.import.processing', { index: i + 1, total: files.length, name: file.name }));
       try {
         const pdf = await loadPdf(file);
         try {
@@ -1685,9 +1690,11 @@ export class LibraryView {
         await showAlert({ message: t('library.import.unreadable', { name: file.name }) });
       }
     }
-    showImportSummary(status, {
+    const summary = importSummary({
       files: files.length, unchanged, updated, added: addedTitles, replacedTitle, unreadable,
     });
+    if (summary) this.showStatus(summary, SUMMARY_LINGER_MS);
+    else this.clearStatus();
     await this.renderGrid();
     this.scrollToTop();
   }
