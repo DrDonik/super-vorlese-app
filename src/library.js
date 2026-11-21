@@ -1304,8 +1304,23 @@ export class LibraryView {
     // A legacy book may have none yet (ensureContentHash supports that), so
     // compute it before the transaction overwrites the old bytes — otherwise
     // the partner cannot adopt the replacement through either match path
-    // (ADR 41).
-    await ensureContentHash(book.id).catch(() => null);
+    // (ADR 41). A failure or a null return (book gone, file unreadable) must
+    // stop the replacement, not swallow it: writing the new file anyway
+    // would silently lose the predecessor, and the partner would see a
+    // bundle with no ancestor to match.
+    let oldHash;
+    try {
+      oldHash = await ensureContentHash(book.id);
+    } catch (err) {
+      console.error('Vorgänger-Hash konnte nicht berechnet werden', err);
+      await showAlert({ message: t('library.replace.failed') });
+      return false;
+    }
+    if (!oldHash) {
+      // The book or its file is gone. Nothing to replace, and nothing to
+      // say to the person — the card is already gone from the shelf.
+      return false;
+    }
     let pdf;
     try {
       pdf = await loadPdf(file);
