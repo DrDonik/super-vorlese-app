@@ -79,9 +79,16 @@ the current one.** It is a provenance, not an identity.
   (`dialog-btn`, outlined, neutral). It opens a file picker; the chosen PDF
   goes through the same reader every import path uses (`loadPdf`,
   `readTitlePage`, `readWorkTitle`, `hashBook`) and lands via
-  `replaceBookFile()`. The book keeps its id and its keepsake; the
-  previous hash is appended to `previousContentHashes` automatically by
-  `replaceBookFile()`.
+  `replaceBookFile()`. The book keeps its id, its keepsake, its tags and
+  its title; the previous hash is appended to `previousContentHashes`
+  automatically by `replaceBookFile()`.
+
+  As in ADR 40's drop-import replace path, the book gives up its Lese-Code:
+  the room behind that code names the old edition, and the offer behind it
+  would now hand out the new file. `closeSyncForBook()` is called, and the
+  next shared reading starts with a fresh code — which is exactly how the
+  partner's device then sees `previousContentHashes` and adopts the new
+  edition into the matching old copy.
 
   The action is PDF-only. A photographed book is never a re-export of
   itself, and the camera remains the way to replace its pages.

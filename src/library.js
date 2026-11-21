@@ -2,6 +2,7 @@ import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany, getCompletions, buildWorkTitleIndex, replaceBookFile,
+  ensureContentHash,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import {
@@ -1299,6 +1300,12 @@ export class LibraryView {
   // to decide whether to rebuild the shelf — a new age tag can add a filter
   // chip, a new cover changes the card, so the grid cannot stand as it is.
   async replaceBookPdf(book, file) {
+    // The old file's hash records the predecessor in the book's provenance.
+    // A legacy book may have none yet (ensureContentHash supports that), so
+    // compute it before the transaction overwrites the old bytes — otherwise
+    // the partner cannot adopt the replacement through either match path
+    // (ADR 41).
+    await ensureContentHash(book.id).catch(() => null);
     let pdf;
     try {
       pdf = await loadPdf(file);

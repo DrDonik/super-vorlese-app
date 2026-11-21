@@ -171,8 +171,14 @@ async function adoptEdition({ id, workTitle, contentHash, previousContentHashes,
     if (Array.isArray(previousContentHashes) && previousContentHashes.length > 0) {
       const target = await findBookByAnyContentHash(previousContentHashes, { ignoreIds: [id] });
       // The sender's chain is merged in so the next step still recognises
-      // either side's ancestry (ADR 41).
-      if (target && await foldInto(target.id, { incomingPreviousContentHashes: previousContentHashes })) {
+      // either side's ancestry (ADR 41). `requireContentHashIn` closes the
+      // race between the lookup and the write: the target must still carry
+      // one of these ancestor hashes when the transaction opens, or the
+      // fold-in is refused and the title-path takes over.
+      if (target && await foldInto(target.id, {
+        incomingPreviousContentHashes: previousContentHashes,
+        requireContentHashIn: previousContentHashes,
+      })) {
         return target.id;
       }
     }
@@ -205,6 +211,11 @@ async function adoptEdition({ id, workTitle, contentHash, previousContentHashes,
     // the second book carrying this title.
     if (!(await foldInto(target, {
       soleWorkTitle: workTitle, ignoreIds: [id], requireKnownShelf: true,
+      // Carry the sender's chain over even when the fold-in was decided by
+      // workTitle rather than by hashes: if the receiver's old copy is a
+      // title-less ancestor the sender knows, a later re-send from here
+      // still needs to carry that ancestry so the next recipient can match.
+      incomingPreviousContentHashes: previousContentHashes || [],
     }))) return null;
     return target;
   } catch (err) {

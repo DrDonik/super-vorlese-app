@@ -263,6 +263,13 @@ export async function findBookByContentHash(hash, { type, pageCount } = {}) {
 // is being folded in: a hard-identity match that does not rely on workTitle.
 // `ignoreIds` leaves a book out of the count — the receive path holds the
 // freshly imported copy by its own id.
+//
+// Unknown hashes are backfilled before the "exactly one match" rule decides.
+// A shelf with `A` stored and a second book whose hash is `B` but unrecorded
+// would otherwise pass as "one match on `A`" while two of the incoming
+// ancestors are in fact on the shelf, and the wrong book would be folded
+// into. Resolving them up front costs a few PDF opens on the very first
+// shared reading after an update, and nothing after that.
 export async function findBookByAnyContentHash(hashes, { ignoreIds = [] } = {}) {
   if (!Array.isArray(hashes) || hashes.length === 0) return null;
   const skip = new Set(ignoreIds);
@@ -270,22 +277,34 @@ export async function findBookByAnyContentHash(hashes, { ignoreIds = [] } = {}) 
   const books = (await listBooks()).filter(
     (b) => !skip.has(b.id) && (b.type || 'pdf') === 'pdf',
   );
-  const matches = books.filter((b) => b.contentHash && wanted.has(b.contentHash));
-  if (matches.length === 0) {
-    // Older books on the shelf may not have their contentHash recorded yet —
-    // the same backfill findBookByContentHash does, kept to the type and the
-    // candidate hashes so nothing is digested that cannot match.
-    for (const book of books) {
-      if (book.contentHash) continue;
-      const h = await ensureContentHash(book.id);
-      if (h && wanted.has(h)) {
-        book.contentHash = h;
-        matches.push(book);
-      }
-    }
+  for (const book of books) {
+    if (book.contentHash) continue;
+    const h = await ensureContentHash(book.id);
+    if (h) book.contentHash = h;
   }
+  const matches = books.filter((b) => b.contentHash && wanted.has(b.contentHash));
   if (matches.length !== 1) return null;
   return matches[0];
+}
+
+// Merges the given hashes into a book's provenance list without touching its
+// current contentHash. Used when a .vorlese bundle carries ancestors the
+// local book did not know about and the bundle itself is being discarded as
+// a duplicate (ADR 41): the receiver still has to carry the chain forward,
+// or the next re-send from this device would drop it. The book's own
+// contentHash is never pushed, and anything already there stays in place.
+export async function mergeProvenance(id, hashes) {
+  if (!Array.isArray(hashes) || hashes.length === 0) return false;
+  return updateMeta(id, (meta) => {
+    const existing = Array.isArray(meta.previousContentHashes) ? meta.previousContentHashes : [];
+    const merged = [...existing];
+    for (const h of hashes) {
+      if (!h || h === meta.contentHash || merged.includes(h)) continue;
+      merged.push(h);
+    }
+    if (merged.length === existing.length) return meta;
+    return { ...meta, previousContentHashes: merged };
+  });
 }
 
 // If a book with the given content is already in the library, bump it to the
@@ -439,6 +458,13 @@ export function replaceBookFile(id, {
   // (ADR 41). Omitted on the library's own „PDF ersetzen" and import paths,
   // where only the local predecessor needs to be remembered.
   incomingPreviousContentHashes = [],
+  // The hash-match path's in-transaction guard (ADR 41): the target's current
+  // contentHash must still be one of the ancestor hashes the caller found it
+  // by. A book that was replaced locally between the lookup and the write no
+  // longer qualifies, and the write is refused — the newer file stays, and
+  // adoptEdition falls through to the title-path. The soleWorkTitle check
+  // below is the equivalent guard for the title path.
+  requireContentHashIn = null,
   keepAddedAt = false,
   soleWorkTitle = null, ignoreIds = [], requireKnownShelf = false,
 }) {
@@ -484,6 +510,14 @@ export function replaceBookFile(id, {
     metaReq.onsuccess = () => {
       const meta = metaReq.result;
       if (!meta) return;
+      // Hash-path guard: the target's current contentHash must still be one
+      // the caller matched against. If the book was replaced locally in the
+      // gap between the lookup and this transaction, the match is void.
+      if (Array.isArray(requireContentHashIn)
+          && requireContentHashIn.length > 0
+          && !requireContentHashIn.includes(meta.contentHash)) {
+        return;
+      }
       if (!soleWorkTitle) {
         write(meta);
         return;

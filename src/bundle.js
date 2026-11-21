@@ -2,6 +2,7 @@ import { zip, unzip } from 'fflate';
 import {
   getMeta, getPhotoPages, getBookFile, getThumb,
   savePhotoBook, saveBook, uid, hashBook, findAndBumpExistingBook,
+  mergeProvenance,
 } from './storage.js';
 import { loadPdf, closePdf, readTitlePage, readWorkTitle } from './pdf.js';
 import { t } from './i18n.js';
@@ -147,7 +148,16 @@ export async function importBundle(file, { dedupe = false } = {}) {
     const contentHash = await hashBook({ type: 'photos', pages });
     if (dedupe) {
       const existing = await findAndBumpExistingBook(contentHash, { type: 'photos', pageCount });
-      if (existing) return { id: existing.id, title: existing.title, previousContentHashes };
+      if (existing) {
+        // The bundle is being discarded as a duplicate, but its ancestors
+        // belong on the local book so a later re-send from here still carries
+        // them (ADR 41). A photographed book normally has no provenance, but
+        // the shape is kept uniform with the PDF path.
+        if (previousContentHashes.length > 0) {
+          await mergeProvenance(existing.id, previousContentHashes);
+        }
+        return { id: existing.id, title: existing.title, previousContentHashes };
+      }
     }
     await savePhotoBook({ id, title, pages, thumbBlob, contentHash });
   } else if (manifest.type === 'pdf') {
@@ -181,7 +191,14 @@ export async function importBundle(file, { dedupe = false } = {}) {
       // one place that does refresh an existing book is the library's own PDF
       // import, where re-adding the file is the deliberate act (ADR 29).
       const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount: actualPageCount });
-      if (existing) return { id: existing.id, title: existing.title, workTitle, previousContentHashes };
+      if (existing) {
+        // Keep the incoming ancestry on the local book, see the photos path
+        // above (ADR 41).
+        if (previousContentHashes.length > 0) {
+          await mergeProvenance(existing.id, previousContentHashes);
+        }
+        return { id: existing.id, title: existing.title, workTitle, previousContentHashes };
+      }
     }
     await saveBook({
       id,
