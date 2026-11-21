@@ -1,4 +1,4 @@
-import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, uid } from './storage.js';
+import { getBookFile, getMeta, getPhotoPage, getThumb, updateLastPage, markOpened, ensureContentHash, addCompletion, hashBook, uid } from './storage.js';
 import { loadPdf, closePdf, renderPageToCanvas } from './pdf.js';
 import { renderImageToCanvas } from './image.js';
 import { SyncSession, getSessionForBook, closeSyncForBook, lookupRoom } from './sync.js';
@@ -177,14 +177,24 @@ class PhotoSource {
   destroy() {}
 }
 
+// The source plus the edition it is made of: `{ source, edition }`, or null.
+//
+// The edition is hashed from the very bytes handed to loadPdf, not read from
+// the record. Those two can differ, because a book can be replaced while it is
+// being opened: the record says one thing before the file is read and another
+// after it. What the reader needs to know is which pages are on the screen, and
+// only the bytes themselves answer that (ADR 40). It costs one digest per book
+// opened, which is the price of the answer being true.
+//
+// A photographed book has no edition to speak of: nothing ever replaces one.
 async function createSource(meta) {
   if (meta.type === 'photos') {
-    return new PhotoSource(meta.id, meta.pageCount);
+    return { source: new PhotoSource(meta.id, meta.pageCount), edition: null };
   }
   const fileBlob = await getBookFile(meta.id);
   if (!fileBlob) return null;
   const pdf = await loadPdf(fileBlob);
-  return new PdfSource(pdf);
+  return { source: new PdfSource(pdf), edition: await hashBook({ type: 'pdf', fileBlob }) };
 }
 
 export class ReaderView {
@@ -470,20 +480,19 @@ export class ReaderView {
       if (blob && this.readerEl) this.coverUrl = URL.createObjectURL(blob);
     }).catch(() => {});
 
-    this.source = await createSource(meta);
-    if (!this.source) {
+    const opened = await createSource(meta);
+    if (!opened) {
       await showAlert({ message: t('error.bookNotFound') });
       this.close();
       return;
     }
-    // Which edition is on screen from here on. A book can be replaced while it
-    // is open — an import keeps running when the shelf is left (ADR 40) — and
-    // then the pages here are no longer the pages the shelf holds. Everything
-    // that would offer this book to somebody else compares against this value
-    // (see syncCreate and syncJoin). Written from the record if it is there,
-    // and otherwise computed once, which also backfills a book stored before
-    // hashing existed.
-    this.loadedEdition = meta.contentHash ?? await ensureContentHash(this.bookId);
+    this.source = opened.source;
+    // Which edition is on screen from here on, hashed from the bytes that were
+    // actually loaded. A book can be replaced while it is open — an import keeps
+    // running when the shelf is left (ADR 40) — and then the pages here are no
+    // longer the pages the shelf holds. Everything that would offer this book to
+    // somebody else compares against this value (see syncCreate and syncJoin).
+    this.loadedEdition = opened.edition;
     // Only now that the book actually opened — whether tapped in the library or
     // joined via a Lese-Code, both routes pass here. A book whose
     // pages are missing bails out above and must not be pushed to the top of
@@ -2810,25 +2819,28 @@ export class ReaderView {
       return;
     }
     if (this.isSyncing) return;
-    // Before anything is torn down — syncStop() below gives up the code this
-    // book may already have, and that must not happen for a room that is then
-    // not created.
-    //
-    // A code puts the book on offer (ADR 33), and what it offers is the edition
-    // the shelf holds, not the one on this screen. Those are the same until an
-    // import replaces this book while it is open, and from that moment a
-    // partner joining this code would read page numbers against a different
-    // break (ADR 40). The book has to be opened again first; no descriptor
-    // either, which means the book or its hash is gone.
-    const descriptor = await this.buildBookDescriptor();
-    if (!this.source) return;
-    if (!descriptor || (this.loadedEdition && descriptor.hash !== this.loadedEdition)) {
-      await showAlert({ message: t('sync.staleEdition') });
-      return;
-    }
+    // Set before the read below, because that read awaits: a second tap in the
+    // meantime would otherwise pass this very check too, and two rooms would
+    // be created, the first of them orphaned but still listening.
     this.isSyncing = true;
-    this.syncStop();
     try {
+      // Before anything is torn down — syncStop() further down gives up the code
+      // this book may already have, and that must not happen for a room that is
+      // then not created.
+      //
+      // A code puts the book on offer (ADR 33), and what it offers is the
+      // edition the shelf holds, not the one on this screen. Those are the same
+      // until an import replaces this book while it is open, and from that
+      // moment a partner joining this code would read page numbers against a
+      // different break (ADR 40). The book has to be opened again first; no
+      // descriptor either, which means the book or its hash is gone.
+      const descriptor = await this.buildBookDescriptor();
+      if (!this.source) return;
+      if (!descriptor || (this.loadedEdition && descriptor.hash !== this.loadedEdition)) {
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
+      this.syncStop();
       const session = new SyncSession(this.bookId);
       session.onRemotePageChange = (page) => this.onRemotePage(page);
       session.onRoomDeleted = () => {
