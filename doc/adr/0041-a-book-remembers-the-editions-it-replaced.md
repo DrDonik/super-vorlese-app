@@ -129,10 +129,12 @@ identity and does not participate in any of the three load-bearing checks.
 
 - The five un-titled books are repaired in one pass: open each in „Buch
   bearbeiten", tap „PDF ersetzen", pick the re-typeset file. The owner's
-  book keeps its id, its keepsake, its tags, its Lese-Code; the previous
-  hash is recorded. On the next shared reading the partner's device sees
+  book keeps its id, its keepsake, its tags and its title; the previous
+  hash is recorded, and the Lese-Code is given up as described above. On
+  the next shared reading the partner's device sees
   `manifest.previousContentHashes = [old]`, matches the old copy there, and
-  folds in.
+  folds in — the fresh Lese-Code read out that evening replaces the one
+  that left with the old edition.
 
 - `meta.previousContentHashes` is a new persistent field. It is absent on
   every book until that book is replaced for the first time, and small
