@@ -137,6 +137,7 @@ export const en = {
   'sync.ended': 'You are no longer reading together.',
   'sync.connectFailed': 'Could not connect.',
   'sync.connectFailedRetry': 'Could not connect. Please try again.',
+  'sync.staleEdition': 'There is a newer edition of this book. Please close it and open it again, then you can read together.',
   'sync.bookLoading': 'The book is still loading. Please wait.',
 
   'sync.error.length': 'A reading code has {n} characters.',

@@ -476,6 +476,14 @@ export class ReaderView {
       this.close();
       return;
     }
+    // Which edition is on screen from here on. A book can be replaced while it
+    // is open — an import keeps running when the shelf is left (ADR 40) — and
+    // then the pages here are no longer the pages the shelf holds. Everything
+    // that would offer this book to somebody else compares against this value
+    // (see syncCreate and syncJoin). Written from the record if it is there,
+    // and otherwise computed once, which also backfills a book stored before
+    // hashing existed.
+    this.loadedEdition = meta.contentHash ?? await ensureContentHash(this.bookId);
     // Only now that the book actually opened — whether tapped in the library or
     // joined via a Lese-Code, both routes pass here. A book whose
     // pages are missing bails out above and must not be pushed to the top of
@@ -2802,6 +2810,22 @@ export class ReaderView {
       return;
     }
     if (this.isSyncing) return;
+    // Before anything is torn down — syncStop() below gives up the code this
+    // book may already have, and that must not happen for a room that is then
+    // not created.
+    //
+    // A code puts the book on offer (ADR 33), and what it offers is the edition
+    // the shelf holds, not the one on this screen. Those are the same until an
+    // import replaces this book while it is open, and from that moment a
+    // partner joining this code would read page numbers against a different
+    // break (ADR 40). The book has to be opened again first; no descriptor
+    // either, which means the book or its hash is gone.
+    const descriptor = await this.buildBookDescriptor();
+    if (!this.source) return;
+    if (!descriptor || (this.loadedEdition && descriptor.hash !== this.loadedEdition)) {
+      await showAlert({ message: t('sync.staleEdition') });
+      return;
+    }
     this.isSyncing = true;
     this.syncStop();
     try {
@@ -2812,7 +2836,7 @@ export class ReaderView {
         showAlert({ message: t('sync.ended') });
       };
       this.syncSession = session;
-      const code = await session.createRoom(this.currentPage, await this.buildBookDescriptor());
+      const code = await session.createRoom(this.currentPage, descriptor);
       if (!this.source) {
         session.stop();
         this.syncSession = null;
@@ -2862,6 +2886,17 @@ export class ReaderView {
       // library takes (local copy by hash, otherwise WebRTC download).
       const ownHash = await ensureContentHash(this.bookId);
       if (!this.source) return;
+      // The same question as in syncCreate, from the other side: the comparison
+      // below asks the *shelf's* hash against the room, and that says nothing
+      // about the pages on this screen if the book was replaced while it was
+      // open. Joining then looks like a match and reads against a different
+      // break (ADR 40).
+      if (this.loadedEdition && ownHash && ownHash !== this.loadedEdition) {
+        input.value = '';
+        this.root.querySelector('.sync-join-btn').disabled = true;
+        await showAlert({ message: t('sync.staleEdition') });
+        return;
+      }
       if (room.book?.hash && room.book.hash !== ownHash) {
         const goThere = await showConfirm({
           title: t('sync.otherBook.title'),
@@ -2936,10 +2971,17 @@ export class ReaderView {
     }
   }
 
+  // The hash first, which also backfills a book stored before hashing existed,
+  // and the record after it: both have to describe one and the same edition. The
+  // other way round, a replacement landing between the two reads would put the
+  // new edition's hash in the room next to the old one's page count, and a
+  // device that recognises the hash would synchronise against a book of a
+  // different length. Null when they disagree, and the caller does not offer the
+  // book at all.
   async buildBookDescriptor() {
-    const meta = await getMeta(this.bookId);
     const hash = await ensureContentHash(this.bookId);
-    if (!meta || !hash) return null;
+    const meta = await getMeta(this.bookId);
+    if (!meta || !hash || meta.contentHash !== hash) return null;
     // Cap the title to the length the room's validation rule permits, so a long
     // (e.g. filename-derived) title can't make room creation fail.
     const title = (meta.title || '').slice(0, 200);

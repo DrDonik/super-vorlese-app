@@ -245,3 +245,37 @@ a way the rules above could be true on paper and wrong in the data.
   arrived since. Such a book cannot be counted, because only reading its PDF
   would say what it is and that cannot be done inside the write's transaction,
   so it might be the second book carrying the title in question.
+
+## Amendment (2026-11-21): a reader never offers an edition it is not showing
+
+A book can be replaced while it is open. An import run keeps going when the
+shelf is left — that is deliberate, the books belong in the shelf — and the
+reader meanwhile holds the document it opened. From the moment of the
+replacement, the pages on this screen are not the pages the shelf holds.
+
+That is invisible and harmless until the book is offered to somebody. A
+Lese-Code puts the *shelf's* book on offer
+([ADR 33](0033-showing-a-code-puts-the-book-on-offer.md)): the room's descriptor
+is built from the record, and the file served is read from storage when asked
+for. So a code created at that moment would hand a partner the new edition while
+this screen still shows the old one, and the two would then synchronise page
+numbers against different breaks — the one failure this whole decision exists to
+rule out, arrived at from the owner's own device.
+
+**The reader therefore records which edition it opened, and both paths that
+would offer the book compare against it.** Creating a code and typing one in
+both stop with „Von diesem Buch gibt es eine neuere Fassung. Bitte schliesse es
+und öffne es noch einmal", and the comparison happens before anything is torn
+down, so a code the book already had is not given up for a room that is then
+never created.
+
+Reloading the open document instead was considered and left out. It would mean
+swapping the source under a reader that somebody is looking at, with the page
+moving under them; closing and opening the book is one tap, says what happened,
+and leaves the reader in charge (rule 7).
+
+**The room descriptor is also read from one state.** The hash was fetched before
+the page count, so a replacement landing between the two reads could put the new
+edition's hash next to the old one's page count — a descriptor describing no
+edition that exists. Hash first, then the record, and they must agree, or the
+book is not offered at all.

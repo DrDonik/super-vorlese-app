@@ -150,6 +150,7 @@ export const da = {
   'sync.ended': 'I læser ikke længere sammen.',
   'sync.connectFailed': 'Forbindelsen mislykkedes.',
   'sync.connectFailedRetry': 'Forbindelsen mislykkedes. Prøv igen.',
+  'sync.staleEdition': 'Der findes en nyere udgave af bogen. Luk den og åbn den igen, så kan I læse sammen.',
   'sync.bookLoading': 'Bogen indlæses stadig. Vent et øjeblik.',
 
   // {n} ist die Codelänge aus sync.js, damit der Satz mitwandert, falls sie

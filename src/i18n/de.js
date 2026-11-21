@@ -165,6 +165,7 @@ export const de = {
   'sync.connectFailed': 'Verbindung fehlgeschlagen.',
   'sync.connectFailedRetry': 'Verbindung fehlgeschlagen. Bitte erneut versuchen.',
   'sync.bookLoading': 'Buch wird noch geladen. Bitte warten.',
+  'sync.staleEdition': 'Von diesem Buch gibt es eine neuere Fassung. Bitte schliesse es und öffne es noch einmal, dann könnt ihr gemeinsam lesen.',
 
   // {n} ist die Codelänge aus sync.js, damit der Satz mitwandert, falls sie
   // sich je ändert.

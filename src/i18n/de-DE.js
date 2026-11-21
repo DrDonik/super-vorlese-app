@@ -35,6 +35,7 @@ export const deDE = {
   'transfer.message': '„{title}“ wird von deinem Lesepartner gesendet…',
 
   // ── Nur die Rechtschreibung ─────────────────────────────
+  'sync.staleEdition': 'Von diesem Buch gibt es eine neuere Fassung. Bitte schließe es und öffne es noch einmal, dann könnt ihr gemeinsam lesen.',
   'common.close': 'Schließen',
   'reader.zoom': 'Seite vergrößern',
   'reader.finishCue': 'Fertig? Buch schließen',
