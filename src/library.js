@@ -253,6 +253,20 @@ async function refreshFromTitlePage(bookId, { cover, ageTag }) {
   if (ageTag) await addBookTag(bookId, ageTag, sameTag);
 }
 
+// The same, for the two paths that have already done the thing that counts —
+// taken a book on, or given it a new edition — and are only adding what the
+// title page offers on top. A failure here must not be reported as „die Datei
+// konnte nicht gelesen werden", which is what the import's own catch would say,
+// and must not take the replacement out of the closing line: the file *was*
+// replaced, and the reader has to be told that above all.
+async function refreshFromTitlePageQuietly(bookId, { cover, ageTag }) {
+  try {
+    await refreshFromTitlePage(bookId, { cover, ageTag });
+  } catch (err) {
+    console.error('Titelseite konnte nicht nachgetragen werden', bookId, err);
+  }
+}
+
 // Which book on the shelf a freshly imported file replaces, or none. A first
 // answer from the snapshot taken at the start of the run; the write re-checks it
 // against the shelf itself (see replaceBookFile). Only ever at exactly one
@@ -1633,8 +1647,8 @@ export class LibraryView {
           const existing = await findAndBumpExistingBook(contentHash, { type: 'pdf', pageCount });
           const { cover, ageTag } = await readTitlePage(pdf);
           if (existing) {
-            await refreshFromTitlePage(existing.id, { cover, ageTag });
             unchanged++;
+            await refreshFromTitlePageQuietly(existing.id, { cover, ageTag });
             continue;
           }
           // Bytes nobody has seen, but a work title that is already on the
@@ -1655,9 +1669,12 @@ export class LibraryView {
             // moment the file is replaced, and not depend on two metadata
             // writes that could fail in between (ADR 40).
             closeSyncForBook(target.id);
-            await refreshFromTitlePage(target.id, { cover, ageTag });
+            // Counted before the title page is read off, not after: from here
+            // the edition is replaced whatever else happens, and the closing
+            // line has to say so.
             updated++;
             replacedTitle = target.title;
+            await refreshFromTitlePageQuietly(target.id, { cover, ageTag });
             continue;
           }
           // Either no work title to go by, or more than one book could be meant,

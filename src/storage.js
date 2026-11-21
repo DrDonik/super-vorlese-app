@@ -211,8 +211,20 @@ export async function ensureContentHash(id) {
   // Hashing a large book takes long enough for the book to be deleted meanwhile
   // (the library stays usable while an import runs). A hash for a book that no
   // longer exists would let callers act on a phantom, so report it as no hash.
-  if (!(await updateMeta(id, (m) => ({ ...m, contentHash })))) return null;
-  return contentHash;
+  //
+  // Long enough, too, for the book to be given a new edition meanwhile, which
+  // writes the file and its hash together (see replaceBookFile). The hash
+  // computed here then describes bytes the book no longer holds, and writing it
+  // back would leave the corrected file wearing the old edition's hash — where
+  // a partner's device would recognise it as that old edition and synchronise
+  // page by page against a different break. So a hash that is there by the time
+  // this writes wins, and is what the caller gets.
+  let stored = contentHash;
+  if (!(await updateMeta(id, (m) => {
+    stored = m.contentHash || contentHash;
+    return { ...m, contentHash: stored };
+  }))) return null;
+  return stored;
 }
 
 // Finds a locally stored book whose content matches the given hash, or null.
