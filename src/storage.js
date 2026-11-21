@@ -67,10 +67,11 @@ export async function saveBook({ id, title, fileBlob, thumbBlob, pageCount, cont
     addedAt: Date.now(),
     lastPage: 1,
     contentHash: contentHash ?? await hashBook({ type: 'pdf', fileBlob }),
-    // Always written, null included, because the null carries information:
-    // "looked, and this PDF has no title" (see ensureWorkTitle).
-    workTitle: workTitle ?? null,
   };
+  // null is written, because that null carries information: "looked, and this
+  // PDF has no title". undefined is not: the field then stays absent, which
+  // means "not read yet", and the next import tries again (see ensureWorkTitle).
+  if (workTitle !== undefined) meta.workTitle = workTitle;
   // Only written when there is something to write, so a book whose title page
   // yields no age recommendation keeps the shape every book has always had.
   if (tags?.length) meta.tags = tags;
@@ -267,6 +268,10 @@ export async function ensureWorkTitle(id, readWorkTitleFromBlob) {
   const fileBlob = await get(bookKey(id));
   if (!fileBlob) return null;
   const workTitle = await readWorkTitleFromBlob(fileBlob);
+  // A file that could not be read is not a book without a title, and writing it
+  // down as one would be permanent: undefined is passed straight back and
+  // nothing is stored, so the next run tries again.
+  if (workTitle === undefined) return undefined;
   // Opening a PDF takes long enough for the book to be deleted meanwhile (the
   // library stays usable while an import runs) — the same race
   // ensureContentHash() guards against, with the same answer: report no title
@@ -275,15 +280,22 @@ export async function ensureWorkTitle(id, readWorkTitleFromBlob) {
   return workTitle;
 }
 
-// Every PDF book on the shelf by its work title: Map<workTitle, [{id, title}]>.
-// Books stored before the title was recorded are read on the way through, so the
-// index is complete the first time it is built and free every time after that.
-// `onBackfill(done, total)` reports only that reading, because it is the one
-// part of this a person waits for.
+// Every PDF book on the shelf by its work title, as `{ index, unreadable }`:
+// a Map<workTitle, [{id, title}]> and the number of books whose file could not
+// be read at all. Books stored before the title was recorded are read on the way
+// through, so the index is complete the first time it is built and free every
+// time after that. `onBackfill(done, total)` reports only that reading, because
+// it is the one part of this a person waits for.
+//
+// `unreadable` is handed out rather than swallowed because it is the one thing
+// that makes the index silently incomplete, and a book missing from it cannot be
+// recognised: it would get a duplicate with nothing on screen to say why. The
+// caller says so in its closing line.
 export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
   const books = (await listBooks()).filter((b) => (b.type || 'pdf') === 'pdf');
   const total = books.filter((b) => !('workTitle' in b)).length;
   let done = 0;
+  let unreadable = 0;
   const index = new Map();
   for (const book of books) {
     let workTitle;
@@ -292,6 +304,7 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
     } else {
       workTitle = await ensureWorkTitle(book.id, readWorkTitleFromBlob);
       onBackfill?.(++done, total);
+      if (workTitle === undefined) unreadable++;
     }
     if (!workTitle) continue;
     const entry = { id: book.id, title: book.title };
@@ -299,7 +312,20 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
     if (found) found.push(entry);
     else index.set(workTitle, [entry]);
   }
-  return index;
+  return { index, unreadable };
+}
+
+// The books that carry this work title *right now*, read from storage rather
+// than from an index built minutes ago. The index above decides which book a
+// file is meant for; this is what confirms that decision immediately before the
+// file is written, so a shelf that changed in between (a second import run, a
+// book deleted) cannot have the wrong book replaced.
+export async function findBookIdsByWorkTitle(workTitle) {
+  if (!workTitle) return [];
+  const books = await listBooks();
+  return books
+    .filter((b) => (b.type || 'pdf') === 'pdf' && b.workTitle === workTitle)
+    .map((b) => b.id);
 }
 
 // Hands a book already on the shelf the file of a newer edition of itself: the
@@ -314,23 +340,34 @@ export async function buildWorkTitleIndex(readWorkTitleFromBlob, onBackfill) {
 // them to the book afterwards, exactly as it does for a copy it recognised by
 // its hash.
 //
-// False if the book was deleted meanwhile, and the file written for it is taken
-// back again — like updateBookThumb(), and for the same reason.
-export async function replaceBookFile(id, { fileBlob, pageCount, contentHash, workTitle }) {
-  await set(bookKey(id), fileBlob);
-  const updated = await updateMeta(id, (meta) => ({
+// The file and the metadata are written in one transaction, and nothing at all
+// is written when the book has gone. Two writes would mean a window in which the
+// book holds the new bytes under the old page count and the old hash — and if
+// the second write failed, it would stay that way: a book whose bytes nobody
+// has the metadata for any more.
+//
+// `keepAddedAt` leaves the book's place on the shelf alone. The library's own
+// import does bump it, because dropping a file that is already there is one act
+// with one answer and the hash path has always bumped; a book folded in from a
+// sync session must not move, because nothing on the receiver's shelf may
+// rearrange itself under their hands (ADR 29).
+//
+// False if the book was deleted meanwhile, which is also the answer when the
+// read below finds nothing. The remaining window — a delete between that read
+// and the transaction — is the one every writer here lives with.
+export async function replaceBookFile(id, { fileBlob, pageCount, contentHash, workTitle, keepAddedAt = false }) {
+  const meta = await get(metaKey(id));
+  if (!meta) return false;
+  const next = {
     ...meta,
     pageCount,
     contentHash,
-    workTitle: workTitle ?? null,
     lastPage: Math.min(Math.max(meta.lastPage || 1, 1), pageCount),
-    // Where the hash path bumps a re-imported book to the front of the shelf,
-    // this one does too: dropping a file that is already there is one act with
-    // one answer, whether or not its bytes changed in the meantime.
-    addedAt: Date.now(),
-  }));
-  if (!updated) await del(bookKey(id));
-  return updated;
+  };
+  if (workTitle !== undefined) next.workTitle = workTitle;
+  if (!keepAddedAt) next.addedAt = Date.now();
+  await setMany([[bookKey(id), fileBlob], [metaKey(id), next]]);
+  return true;
 }
 
 // Records that the book was just opened, so the library can offer a "zuletzt

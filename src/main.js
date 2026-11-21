@@ -124,7 +124,7 @@ async function adoptEdition({ id, workTitle, contentHash, progress }) {
   if (!workTitle) return null;
   try {
     progress.update(1, t('transfer.adopting'));
-    const byWorkTitle = await buildWorkTitleIndex(readWorkTitleFromBlob);
+    const { index: byWorkTitle } = await buildWorkTitleIndex(readWorkTitleFromBlob);
     // Without the fresh import itself, which was just put on the shelf under
     // this very work title.
     const candidates = (byWorkTitle.get(workTitle) || []).filter((c) => c.id !== id);
@@ -133,19 +133,32 @@ async function adoptEdition({ id, workTitle, contentHash, progress }) {
     const [fileBlob, meta] = await Promise.all([getBookFile(id), getMeta(id)]);
     if (!fileBlob || !meta) return null;
     if (!(await replaceBookFile(target, {
-      fileBlob, pageCount: meta.pageCount, contentHash, workTitle,
+      // The card must not move: on the shelf of someone who only receives
+      // books, nothing may rearrange itself under their hands (ADR 29), and
+      // „Zuletzt hinzugefügt" orders by exactly this field.
+      fileBlob, pageCount: meta.pageCount, contentHash, workTitle, keepAddedAt: true,
     }))) return null;
     // The code this book carried pointed at a room describing the edition that
     // has just been replaced, so it is given up with it — the same move the
     // library's own import makes. The code of the room being joined right now
     // takes its place a moment later, when the reader opens.
     closeSyncForBook(target);
-    await deleteBook(id);
+    // From here the fold-in has happened, and the book to open is the old one
+    // whatever else goes wrong. Clearing away the temporary import is tidying
+    // up, not part of the decision: if it fails, the shelf holds one book too
+    // many — visible, deletable — and that is far better than sending the
+    // reader to a copy with none of their evenings in it.
+    try {
+      await deleteBook(id);
+    } catch (err) {
+      console.error('Übernommener Zwischenimport konnte nicht gelöscht werden', err);
+    }
     return target;
   } catch (err) {
-    // The book is downloaded and verified either way; failing to fold it into
-    // an older edition is a reason to leave it standing on its own, not to
-    // throw away a transfer that worked.
+    // Nothing has been written to the existing book at this point: the index
+    // could not be built, or the book vanished. The transfer is downloaded and
+    // verified either way, so it stays on the shelf as a book of its own rather
+    // than being thrown away.
     console.error('Fassung konnte nicht übernommen werden', err);
     return null;
   }

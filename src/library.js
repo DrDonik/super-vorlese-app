@@ -2,6 +2,7 @@ import {
   listBooks, saveBook, deleteBook, updateBookTitle, updateBookTags, updateBookThumb,
   addBookTag, getThumbs, uid, findAndBumpExistingBook, hashBook,
   getCompletionsMany, getCompletions, buildWorkTitleIndex, replaceBookFile,
+  findBookIdsByWorkTitle,
 } from './storage.js';
 import { moodById, moodIconUrl, splitMoods, splitWitness, moodRevealRowsHTML, moodWitnessRowsHTML } from './moods.js';
 import {
@@ -267,6 +268,17 @@ function takeSoleCandidate(byWorkTitle, workTitle) {
   return candidates[0];
 }
 
+// The index is a snapshot from the start of the run, and a file is written
+// seconds or minutes later. So the choice is confirmed against the shelf as it
+// stands immediately before the write: still exactly one book under this work
+// title, and still this one. A shelf that changed in between — a book deleted,
+// a book arrived — therefore cannot have the wrong book replaced; the file
+// lands as a book of its own instead, which is visible in the closing line.
+async function isStillSoleCandidate(bookId, workTitle) {
+  const ids = await findBookIdsByWorkTitle(workTitle);
+  return ids.length === 1 && ids[0] === bookId;
+}
+
 // How long the closing line of an import stays up. Longer than the one
 // handleBundle() shows for a single file: this one ends a run that can take
 // minutes, and it is read after looking up from something else (rule 4).
@@ -279,26 +291,35 @@ const SUMMARY_LINGER_MS = 8000;
 // answer. A single *replaced* one very much does: its card looks exactly as it
 // did, and whether the book was replaced or laid down beside itself is the one
 // difference a person cannot see.
-function showImportSummary(status, { files, unchanged, updated, added, replacedTitle }) {
-  let message = '';
+function showImportSummary(status, { files, unchanged, updated, added, replacedTitle, unreadable }) {
+  const parts = [];
   if (files === 1 && updated === 1) {
-    message = t('library.import.replaced', { title: replacedTitle });
+    parts.push(t('library.import.replaced', { title: replacedTitle }));
   } else if (files > 1) {
-    message = t('library.import.summary', { updated, added: added.length, unchanged });
+    parts.push(t('library.import.summary', { updated, added: added.length, unchanged }));
     // Named, not just counted: on a shelf of corrected books a title that comes
     // in as new is the one thing worth looking at, and the count alone would
     // leave the reader hunting for which it was.
-    if (added.length > 0) message += ` ${t('library.import.summaryNew', { titles: added.join(', ') })}`;
+    if (added.length > 0) parts.push(t('library.import.summaryNew', { titles: added.join(', ') }));
   }
-  if (!message) {
+  // A book on the shelf whose own file could not be read has no work title, so
+  // nothing can be recognised as its newer edition and it quietly collects a
+  // duplicate. That is said out loud, even when there would otherwise be
+  // nothing to say: it is the one thing here that cannot be seen on the shelf.
+  if (unreadable > 0) parts.push(t('library.import.unreadableShelf', { n: unreadable }));
+  if (parts.length === 0) {
     status.hidden = true;
     return;
   }
+  const message = parts.join(' ');
   status.textContent = message;
   setTimeout(() => {
     if (status.textContent === message) status.hidden = true;
   }, SUMMARY_LINGER_MS);
 }
+
+// Serialises import runs; see handleImport().
+let importQueue = Promise.resolve();
 
 let tagLabelSeq = 0;
 
@@ -1532,8 +1553,26 @@ export class LibraryView {
         await showAlert({ message: t('library.import.unsupported', { name: f.name }) });
       }
     }
-    if (pdfs.length > 0) await this.handleFiles(pdfs);
-    for (const bundle of bundles) await this.handleBundle([bundle]);
+    // One run after another. Two overlapping imports would each work from
+    // their own snapshot of the shelf and could replace the same book from two
+    // different views of it — and on an iPad they would hold twice as many PDFs
+    // open at once. Nothing stopped a second drop before: the window is the
+    // whole drop target, and the file dialog stays available while a run is in
+    // flight.
+    //
+    // Queued rather than refused, so no drop is lost (rule 7). The chain lives
+    // in the module, like the scroll position above, so it survives the view
+    // being remounted — a book opened and closed again mid-import must not
+    // start a second run beside the first.
+    importQueue = importQueue.then(async () => {
+      if (pdfs.length > 0) await this.handleFiles(pdfs);
+      for (const bundle of bundles) await this.handleBundle([bundle]);
+    }).catch((err) => {
+      // Both handlers report their own failures on screen; this only keeps a
+      // rejection from poisoning the chain for every later import.
+      console.error('Import fehlgeschlagen', err);
+    });
+    await importQueue;
   }
 
   async handleBundle(fileList) {
@@ -1571,11 +1610,14 @@ export class LibraryView {
     // A shelf that cannot be read must not stop the import: without an index
     // nothing is replaced and every file lands as a new book, which is exactly
     // where this stood before ADR 40.
-    const byWorkTitle = await buildWorkTitleIndex(readWorkTitleFromBlob, (done, total) => {
-      status.textContent = t('library.import.indexing', { done, total });
-    }).catch((err) => {
+    const { index: byWorkTitle, unreadable } = await buildWorkTitleIndex(
+      readWorkTitleFromBlob,
+      (done, total) => {
+        status.textContent = t('library.import.indexing', { done, total });
+      },
+    ).catch((err) => {
       console.error('Werktitel-Index konnte nicht gebaut werden', err);
-      return new Map();
+      return { index: new Map(), unreadable: 0 };
     });
 
     let unchanged = 0;
@@ -1606,14 +1648,16 @@ export class LibraryView {
           // cannot tell apart from the first (ADR 40).
           const workTitle = await readWorkTitle(pdf);
           const target = takeSoleCandidate(byWorkTitle, workTitle);
-          if (target && await replaceBookFile(target.id, { fileBlob: file, pageCount, contentHash, workTitle })) {
-            await refreshFromTitlePage(target.id, { cover, ageTag });
-            // The saved Lese-Code belonged to the old edition: its room names
-            // that edition's hash, and the offer behind it would now hand out a
-            // file the room does not describe. So the code is given up with the
-            // edition, and the next shared reading of this book starts with a
-            // fresh one (ADR 40).
+          if (target
+            && await isStillSoleCandidate(target.id, workTitle)
+            && await replaceBookFile(target.id, { fileBlob: file, pageCount, contentHash, workTitle })) {
+            // Before the refresh below, not after it. The saved Lese-Code names
+            // the old edition's hash in its room, while the offer behind it
+            // would now hand out the new file — so the code has to go the
+            // moment the file is replaced, and not depend on two metadata
+            // writes that could fail in between (ADR 40).
             closeSyncForBook(target.id);
+            await refreshFromTitlePage(target.id, { cover, ageTag });
             updated++;
             replacedTitle = target.title;
             continue;
@@ -1649,7 +1693,7 @@ export class LibraryView {
       }
     }
     showImportSummary(status, {
-      files: files.length, unchanged, updated, added: addedTitles, replacedTitle,
+      files: files.length, unchanged, updated, added: addedTitles, replacedTitle, unreadable,
     });
     await this.renderGrid();
     this.scrollToTop();

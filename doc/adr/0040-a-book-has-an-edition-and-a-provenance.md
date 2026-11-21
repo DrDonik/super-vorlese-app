@@ -181,3 +181,43 @@ this household already knows how to pay.
   was survivable at one book and not at a hundred and fourteen, which is what
   this change would have asked of a correction round. `closePdf()` in
   `src/pdf.js` is now the one way to let a document go.
+
+## Amendment (2026-11-21): the write, the snapshot, and the file that will not open
+
+Three details from the review of the change that implemented this, each of them
+a way the rules above could be true on paper and wrong in the data.
+
+- **The file and the metadata are written in one transaction.** Two writes left
+  a window in which a book held the corrected bytes under the old page count
+  and the old hash, and if the second write failed it stayed that way: a book
+  nobody holds the metadata for any more. `replaceBookFile()` now reads the
+  record, and writes the file and the record together or not at all.
+
+- **Import runs are serialised, and the decision is confirmed before the
+  write.** The work-title index is a snapshot taken when a run starts, and a
+  file is written minutes later. Nothing stopped a second drop meanwhile — the
+  drop target is the whole window, and the file dialog stays open for business —
+  so two runs could each replace a book from their own view of the shelf. They
+  are queued now, one after another; drops are kept rather than refused. And
+  immediately before a file is written, the shelf is asked again whether this
+  work title still names exactly one book, and still this one. A changed shelf
+  therefore cannot have the wrong book replaced: the file lands as a book of its
+  own, and the closing line says so.
+
+- **A file that cannot be read is not a book without a title.** Both answers
+  used to come back as null, and the null was written into the record — so one
+  unreadable book would have been remembered as titleless for good, stayed
+  invisible to the index, and collected a duplicate at every correction round
+  with nothing on screen to explain it. The two are now distinct: null is
+  "read it, no title", undefined is "could not read it", and only the first is
+  stored. The second is counted and named in the closing line („Im Regal nicht
+  lesbar: 1"), because a book missing from the index is exactly the case this
+  cannot otherwise show.
+
+  What this deliberately does **not** do is refuse every replacement while one
+  book on the shelf is unreadable. For the wrong book to be replaced, that
+  unreadable book would have to share its work title with another book *and* a
+  corrected file of that title would have to be imported. Against that stands
+  the certain cost: a single broken file would turn a correction round into
+  thirty duplicates. The incompleteness is reported instead of being traded for
+  that.

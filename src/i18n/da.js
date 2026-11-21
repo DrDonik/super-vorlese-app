@@ -112,6 +112,7 @@ export const da = {
   'library.import.summary': 'Færdig: {updated} erstattet, {added} tilføjet, {unchanged} uændret.',
   'library.import.summaryNew': 'Nyt i reolen: {titles}',
   'library.import.replaced': '»{title}« har fået den nye udgave.',
+  'library.import.unreadableShelf': 'Ikke læsbare i reolen: {n} (sprunget over ved genkendelse).',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Redigér bogen',

@@ -117,6 +117,7 @@ export const de = {
   'library.import.summary': 'Fertig: {updated} ersetzt, {added} neu, {unchanged} unverändert.',
   'library.import.summaryNew': 'Neu im Regal: {titles}',
   'library.import.replaced': '«{title}» hat die neue Fassung bekommen.',
+  'library.import.unreadableShelf': 'Im Regal nicht lesbar: {n} (beim Erkennen übersprungen).',
 
   // ── Buch bearbeiten ──────────────────────────────────────────────────
   'bookEdit.title': 'Buch bearbeiten',

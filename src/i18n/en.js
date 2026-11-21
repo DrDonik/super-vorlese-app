@@ -102,6 +102,7 @@ export const en = {
   'library.import.summary': 'Done: {updated} replaced, {added} new, {unchanged} unchanged.',
   'library.import.summaryNew': 'New on the shelf: {titles}',
   'library.import.replaced': '“{title}” now has the new edition.',
+  'library.import.unreadableShelf': 'Unreadable on the shelf: {n} (skipped when matching).',
 
   // ── Edit book ────────────────────────────────────────────────────────
   'bookEdit.title': 'Edit book',

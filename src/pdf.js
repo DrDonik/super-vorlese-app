@@ -321,6 +321,12 @@ export async function readTitlePage(pdf) {
 // downstream cares about more than a title's worth of characters.
 const MAX_WORK_TITLE_LENGTH = 300;
 
+// Three answers, and the third one matters: a string, `null` for "read it, and
+// this PDF carries no title", and `undefined` for "could not read it at all".
+// Collapsing the last two would be the quiet kind of wrong — a book whose file
+// failed to open once would be remembered as a book without a title, stay
+// invisible to the shelf's index forever, and get a duplicate at the next
+// correction round with nothing on screen to say why.
 export async function readWorkTitle(pdf) {
   let info;
   try {
@@ -329,14 +335,15 @@ export async function readWorkTitle(pdf) {
     // Loud, for the same reason readTitlePage() is: "this book has no work
     // title" and "the metadata could not be read" would otherwise look alike.
     console.warn('Werktitel: die PDF-Metadaten konnten nicht gelesen werden', err);
-    return null;
+    return undefined;
   }
   const title = typeof info?.Title === 'string' ? info.Title.trim() : '';
   return title ? title.slice(0, MAX_WORK_TITLE_LENGTH) : null;
 }
 
 // The same for a book already on the shelf, whose PDF is not open. This is what
-// reads the work title off the books that were stored before it was recorded.
+// reads the work title off the books that were stored before it was recorded,
+// and it keeps the same three answers.
 export async function readWorkTitleFromBlob(blob) {
   let pdf = null;
   try {
@@ -344,7 +351,7 @@ export async function readWorkTitleFromBlob(blob) {
     return await readWorkTitle(pdf);
   } catch (err) {
     console.warn('Werktitel: die Datei konnte nicht geöffnet werden', err);
-    return null;
+    return undefined;
   } finally {
     await closePdf(pdf);
   }
